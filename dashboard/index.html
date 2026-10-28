@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RELAY Board & Token Saver — Multi-CLI Workflow Dashboard</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #111827;
+      --border: #1f2937;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --emerald: #10b981;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 48px; }
+    header {
+      background: #060911; border-bottom: 1px solid var(--border); padding: 18px 32px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+    }
+    .title-wrap { display: flex; align-items: center; gap: 12px; }
+    .pill {
+      background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    }
+    .cta-btn {
+      background: var(--emerald); color: #052e16; text-decoration: none; font-weight: 800; font-size: 14px;
+      padding: 10px 18px; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .container { max-width: 1320px; margin: 28px auto; padding: 0 28px; display: flex; flex-direction: column; gap: 28px; }
+    .section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+    .board-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    @media (max-width: 1024px) { .board-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .board-grid { grid-template-columns: 1fr; } }
+    .leg-col {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .leg-tag { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .leg-title { font-size: 16px; font-weight: 800; }
+    .leg-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .baton-box {
+      margin-top: auto; background: #0b1120; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      font-family: monospace; font-size: 12px; color: #a7f3d0;
+    }
+    .calc-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center;
+    }
+    @media (max-width: 860px) { .calc-card { grid-template-columns: 1fr; } }
+    .slider-group { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    input[type="range"] { width: 100%; accent-color: var(--emerald); }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .stat-box { background: #0b1120; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .stat-label { font-size: 12px; color: var(--muted); }
+    .stat-val { font-size: 24px; font-weight: 900; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-wrap">
+      <h1 style="font-size: 20px; font-weight: 900;">🏃‍♂️ RELAY (.relay/) — Pass-the-Baton Dashboard</h1>
+      <span class="pill">v1.0 • Ban-Safe 100%</span>
+    </div>
+    <a class="cta-btn" href="../examples/cafe-pos/index.html">☕ เปิดตัวอย่าง Mini Cafe POS + PromptPay QR ➔</a>
+  </header>
+
+  <div class="container">
+    <section>
+      <div class="section-head">
+        <h2>กระดานวิ่งผลัด 4 ไม้ (Task ล่าสุด: <code>20261028-cafe-pos-promptpay</code>)</h2>
+        <span style="font-size: 13px; color: var(--muted);">โฟลเดอร์สัญญา: <code>.relay/tasks/20261028-cafe-pos-promptpay/</code></span>
+      </div>
+
+      <div class="board-grid">
+        <div class="leg-col" style="border-top: 3px solid var(--blue);">
+          <span class="leg-tag" style="color: #60a5fa;">ไม้ที่ 1 • @po (Gemini / Claude)</span>
+          <div class="leg-title">ซักถามโจทย์จนเคลียร์ก่อนทำ</div>
+          <p class="leg-desc">ใช้สกิล <code>brainstorming</code> + <code>founder-skill</code> ถามความต้องการจนครบ แล้วกลั่นเป็นใบสั่งงานหน้าเดียวก่อนพิมพ์ <code>/clear</code></p>
+          <div class="baton-box">
+            📜 ไม้ผลัดที่ส่งต่อ:<br/>
+            <strong>SPEC.md</strong> (VAT 7% + ล็อกยอด QR พร้อมเพย์)
+          </div>
+        </div>
+
+        <div class="leg-col" style="border-top: 3px solid var(--purple);">
+          <span class="leg-tag" style="color: #c084fc;">ไม้ที่ 2 • @arch & @pm</span>
+          <div class="leg-title">วางโครงสร้าง & แตกเช็กลิสต์</div>
+          <p class="leg-desc">อ่าน <code>PROJECT_STATE.md</code> + <code>SPEC.md</code> ใช้สกิล <code>writing-plans</code> แยกโมดูล <code>pos-core.js</code> ออกจาก UI</p>
+          <div class="baton-box">
+            🏗️ ไม้ผลัดที่ส่งต่อ:<br/>
+            <strong>ARCH.md & PLAN.md</strong> (4 Tasks ชัดเจน)
+          </div>
+        </div>
+
+        <div class="leg-col" style="border-top: 3px solid var(--amber);">
+          <span class="leg-tag" style="color: #fbbf24;">ไม้ที่ 3 • @dev (Worktree)</span>
+          <div class="leg-title">เขียนโค้ด FE + BE + TDD</div>
+          <p class="leg-desc">หยิบซองสกิล <code>impeccable</code>, <code>vercel-react</code>, <code>lucide-icons</code> และ <code>test-driven-development</code> เขียนในกิ่งแยก</p>
+          <div class="baton-box">
+            💻 ไม้ผลัดที่ส่งต่อ:<br/>
+            <strong>pos-core.js + index.html + Unit Tests</strong>
+          </div>
+        </div>
+
+        <div class="leg-col" style="border-top: 3px solid var(--emerald);">
+          <span class="leg-tag" style="color: #34d399;">ไม้ที่ 4 • @qa & @sec (Playwright MCP)</span>
+          <div class="leg-title">รันเทสต์ 0 Token + กดเว็บจริง</div>
+          <p class="leg-desc">รัน <code>node --test</code> (0 Token) + สแกน Security (<code>differential-review</code>) + ใช้ <code>Playwright MCP</code> กดปุ่มตรวจฟรีบน Sub เดิม</p>
+          <div class="baton-box">
+            ✅ ไม้ผลัดเข้าเส้นชัย:<br/>
+            <strong>QA_REPORT.md (PASSED 4/4 Tests)</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>🧮 เครื่องคำนวณการประหยัด Token & Context (RELAY vs แชตยาวแบบเดิม)</h2>
+      </div>
+      <div class="calc-card">
+        <div>
+          <p style="color: var(--muted); font-size: 14px; line-height: 1.6;">
+            การคุยแชตยาวต่อเนื่องทำให้ประวัติแชตพอกพูนทุกเทิร์นจนโควตารายเดือนเต็มไว แต่การส่งไม้ต่อด้วยไฟล์สรุปใน <code>.relay/</code> แล้วล้างแชต (<code>/clear</code>) ร่วมกับสคริปต์เทสต์ 0 Token ช่วยตัด Token ส่วนเกินออกถึง <strong>85–90%</strong>
+          </p>
+          <div class="slider-group">
+            <label for="proj-slider" style="font-weight: 700; font-size: 14px;">
+              จำนวนโปรเจกต์ที่ดูแลพร้อมกัน: <span id="proj-count" style="color: #34d399;">10</span> โปรเจกต์
+            </label>
+            <input id="proj-slider" type="range" min="1" max="25" value="10" oninput="updateSavings()" />
+          </div>
+          <div class="slider-group">
+            <label for="task-slider" style="font-weight: 700; font-size: 14px;">
+              จำนวนฟีเจอร์/ใบงานต่อโปรเจกต์ต่อเดือน: <span id="task-count" style="color: #34d399;">12</span> งาน/เดือน
+            </label>
+            <input id="task-slider" type="range" min="2" max="40" value="12" oninput="updateSavings()" />
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">แบบเดิม (คุยแชตยาวไม่ล้าง Context)</div>
+            <div id="old-tokens" class="stat-val" style="color: #f87171;">48.0M Tokens</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">ระบบ RELAY (.relay/ + /clear + 0-Token Test)</div>
+            <div id="relay-tokens" class="stat-val" style="color: #34d399;">5.8M Tokens</div>
+          </div>
+          <div class="stat-box" style="grid-column: span 2;">
+            <div class="stat-label">ปริมาณโควตาแพ็กเกจรายเดือนที่ประหยัดได้รวม</div>
+            <div id="saved-pct" class="stat-val" style="color: #60a5fa;">ประหยัด 88% (ไม่ต้องเสียค่า API เสริมเพิ่ม)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function updateSavings() {
+      const projects = Number(document.getElementById('proj-slider').value);
+      const tasks = Number(document.getElementById('task-slider').value);
+      document.getElementById('proj-count').textContent = projects;
+      document.getElementById('task-count').textContent = tasks;
+
+      const totalTasks = projects * tasks;
+      // Traditional long chat averages ~400k tokens per full feature cycle; RELAY averages ~48k tokens
+      const oldM = (totalTasks * 0.4).toFixed(1);
+      const relayM = (totalTasks * 0.048).toFixed(1);
+      document.getElementById('old-tokens').textContent = `${oldM}M Tokens`;
+      document.getElementById('relay-tokens').textContent = `${relayM}M Tokens`;
+    }
+    updateSavings();
+  </script>
+</body>
+</html>

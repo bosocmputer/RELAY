@@ -1,0 +1,22 @@
+# Secrets & Databases (Blocked by RELAY Guard)
+.env
+.env.*
+!.env.example
+!.env.test
+*.pem
+*.key
+*.p12
+*.sqlite
+*.db
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencies & Build
+node_modules/
+dist/
+build/
+coverage/

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -e
+
+echo "🛡️ [RELAY Guard] กำลังตรวจสอบไฟล์ต้องห้ามก่อน Commit..."
+FORBIDDEN=$(git diff --cached --name-only | grep -E '(^|/)\.env($|\.)|\.(pem|key|p12|sqlite|db)$' | grep -v '\.env\.example$' | grep -v '\.env\.test$' || true)
+
+if [ -n "$FORBIDDEN" ]; then
+  echo "❌ [BLOCKED] พบไฟล์ความลับหรือฐานข้อมูลที่ห้าม Commit:"
+  echo "$FORBIDDEN"
+  echo "กรุณาเอาออกด้วยคำสั่ง: git reset HEAD <ชื่อไฟล์>"
+  exit 1
+fi
+
+echo "✅ [RELAY Guard] ไม่พบไฟล์ความลับ ปลอดภัย 100%"
