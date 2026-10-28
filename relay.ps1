@@ -151,6 +151,56 @@ function Configure-RolesMenu {
 
     if ($scope -eq "2") { Save-RoleConfig $ProjectRolesConf } else { Save-RoleConfig $GlobalRolesConf }
     Write-Host "✅ บันทึกการตั้งค่าเรียบร้อยแล้ว!" -ForegroundColor Green
+    $runTest = Read-Host "🧪 ต้องการทดสอบความพร้อมของตัวแทน AI แต่ละตำแหน่ง (เช็ก CLI + โมเดล + บทบาทและทักษะ) ตอนนี้เลยหรือไม่? [Y/n]"
+    if ([string]::IsNullOrWhiteSpace($runTest) -or $runTest -match '^[Yy]') {
+        Test-AgentReadiness
+    }
+}
+
+function Invoke-SingleRolePing([string]$RoleCode, [string]$RoleTitle, [string]$Provider, [string]$ConfiguredModel, [string]$ExpectedSkills, [string]$ExpectedDuty) {
+    $modelLabel = Get-EffectiveModelLabel $Provider $ConfiguredModel
+    Write-Host ""
+    Write-Host "----------------------------------------------------------------------" -ForegroundColor Yellow
+    Write-Host "🧪 กำลังทดสอบการเชื่อมต่อและรายงานตัวของ: $RoleTitle ($Provider / $modelLabel)" -ForegroundColor Yellow
+    if (-not (Get-Command $Provider -ErrorAction SilentlyContinue)) {
+        Write-Host "❌ ไม่สามารถยิงทดสอบ $RoleCode ได้ เนื่องจากยังไม่ได้ติดตั้ง CLI ค่าย '$Provider'" -ForegroundColor Red
+        return
+    }
+    $prompt = "นี่คือการทดสอบความพร้อมของระบบ RELAY v1.0 กรุณารายงานตัวสั้นๆ ไม่เกิน 4 บรรทัด (ห้ามแก้ไขไฟล์ใดๆ): 1. ยืนยันบทบาท '$RoleTitle' ($Provider / $modelLabel) 2. หน้าที่หลัก ($ExpectedDuty) 3. ยืนยันชุดทักษะประจำตำแหน่ง: $ExpectedSkills 4. ปิดท้ายว่า 'สถานะ: พร้อมปฏิบัติงาน 100%'"
+    if ($Provider -eq "claude") {
+        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & claude --model $ConfiguredModel -p $prompt } else { & claude -p $prompt }
+    } elseif ($Provider -eq "gemini") {
+        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & gemini -m $ConfiguredModel -p $prompt } else { & gemini -p $prompt }
+    } elseif ($Provider -eq "codex") {
+        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & codex -m $ConfiguredModel exec $prompt } else { & codex exec $prompt }
+    }
+}
+
+function Test-AgentReadiness {
+    Load-RoleConfig
+    Write-Host ""
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "🧪 RELAY Agent Readiness Check — ตรวจสอบบทบาท ทักษะ และทดสอบการเชื่อมต่อจริง" -ForegroundColor Cyan
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "1️⃣  @po       ➔ $($Script:ROLE_PO) ($(Get-EffectiveModelLabel $Script:ROLE_PO $Script:MODEL_PO)) | Skills: brainstorming, founder-skill"
+    Write-Host "2️⃣  @arch/@pm ➔ $($Script:ROLE_ARCH) ($(Get-EffectiveModelLabel $Script:ROLE_ARCH $Script:MODEL_ARCH)) | Skills: writing-plans, supabase-postgres-best-practices"
+    Write-Host "3️⃣  @dev      ➔ $($Script:ROLE_DEV) ($(Get-EffectiveModelLabel $Script:ROLE_DEV $Script:MODEL_DEV)) | Skills: impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging"
+    Write-Host "4️⃣  @qa/@sec  ➔ $($Script:ROLE_QA) ($(Get-EffectiveModelLabel $Script:ROLE_QA $Script:MODEL_QA)) | Skills: verification-before-completion, differential-review, semgrep, playwright-qa"
+    Write-Host "----------------------------------------------------------------------"
+    Write-Host "  [1] ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง | [2] เฉพาะ @po | [3] เฉพาะ @arch | [4] เฉพาะ @dev | [5] เฉพาะ @qa | [Enter] กลับ"
+    $tc = Read-Host "เลือกหมายเลขการทดสอบ"
+    switch ($tc) {
+        "1" {
+            Invoke-SingleRolePing "@po" "ขั้นตอนที่ 1: @po (Product Owner)" $Script:ROLE_PO $Script:MODEL_PO "brainstorming, founder-skill" "ซักถามความต้องการและสรุปเป็น SPEC.md"
+            Invoke-SingleRolePing "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" $Script:ROLE_ARCH $Script:MODEL_ARCH "writing-plans, supabase-postgres-best-practices" "ออกแบบ ARCH.md และ PLAN.md"
+            Invoke-SingleRolePing "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" $Script:ROLE_DEV $Script:MODEL_DEV "impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging" "เขียนโค้ดและชุดทดสอบใน Git Worktree"
+            Invoke-SingleRolePing "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor)" $Script:ROLE_QA $Script:MODEL_QA "verification-before-completion, differential-review, semgrep, playwright-qa" "รันชุดทดสอบ ตรวจสอบความปลอดภัย และสรุป QA_REPORT.md"
+        }
+        "2" { Invoke-SingleRolePing "@po" "ขั้นตอนที่ 1: @po (Product Owner)" $Script:ROLE_PO $Script:MODEL_PO "brainstorming, founder-skill" "ซักถามความต้องการและสรุปเป็น SPEC.md" }
+        "3" { Invoke-SingleRolePing "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" $Script:ROLE_ARCH $Script:MODEL_ARCH "writing-plans, supabase-postgres-best-practices" "ออกแบบ ARCH.md และ PLAN.md" }
+        "4" { Invoke-SingleRolePing "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" $Script:ROLE_DEV $Script:MODEL_DEV "impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging" "เขียนโค้ดและชุดทดสอบใน Git Worktree" }
+        "5" { Invoke-SingleRolePing "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor)" $Script:ROLE_QA $Script:MODEL_QA "verification-before-completion, differential-review, semgrep, playwright-qa" "รันชุดทดสอบ ตรวจสอบความปลอดภัย และสรุป QA_REPORT.md" }
+    }
 }
 
 function Run-DoctorMenu {
@@ -200,20 +250,22 @@ function Print-Dashboard {
     Write-Host "----------------------------------------------------------------------"
     Write-Host "  [1] เริ่มขั้นตอนที่ 1 (@po)        | [2] เริ่มขั้นตอนที่ 2 (@arch/@pm)"
     Write-Host "  [3] เริ่มขั้นตอนที่ 3 (@dev)       | [4] เริ่มขั้นตอนที่ 4 (@qa/@sec)"
-    Write-Host "  [c] ตั้งค่าค่าย AI & เลือกโมเดล     | [d] ตรวจสอบการเชื่อมต่อ & ติดตั้ง CLI"
-    Write-Host "  [n] สร้างใบงานใหม่ (New Task)    | [i] เตรียม .relay/ | [q] ออกจากโปรแกรม"
+    Write-Host "  [c] ตั้งค่าค่าย AI & เลือกโมเดล     | [t] ทดสอบความพร้อม Agent แต่ละตำแหน่ง (เช็กบทบาท & Skills)"
+    Write-Host "  [d] ตรวจสอบการเชื่อมต่อ & ติดตั้ง CLI | [n] สร้างใบงานใหม่ | [i] เตรียม .relay/ | [q] ออก"
     Write-Host "======================================================================" -ForegroundColor Cyan
 }
 
 if ($SubCommand -eq "status") { Print-Dashboard; exit 0 }
 if ($SubCommand -eq "config") { Configure-RolesMenu; exit 0 }
+if ($SubCommand -eq "test")   { Test-AgentReadiness; exit 0 }
 if ($SubCommand -eq "doctor") { Run-DoctorMenu; exit 0 }
 
 while ($true) {
     Print-Dashboard
-    $action = Read-Host "👉 เลือกคำสั่ง [1-4, c, d, n, i, q]"
+    $action = Read-Host "👉 เลือกคำสั่ง [1-4, c, t, d, n, i, q]"
     switch ($action.ToLower()) {
         "c" { Configure-RolesMenu }
+        "t" { Test-AgentReadiness }
         "d" { Run-DoctorMenu }
         "q" { exit 0 }
         "exit" { exit 0 }

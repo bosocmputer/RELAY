@@ -262,6 +262,192 @@ configure_roles_menu() {
     save_role_config "$GLOBAL_ROLES_CONF"
     echo "✅ บันทึกการตั้งค่าส่วนกลางลงใน $GLOBAL_ROLES_CONF เรียบร้อยแล้ว!"
   fi
+
+  echo ""
+  read -r -p "🧪 ต้องการทดสอบความพร้อมของตัวแทน AI แต่ละตำแหน่ง (เช็ก CLI + โมเดล + บทบาทและทักษะ) ตอนนี้เลยหรือไม่? [Y/n]: " run_test_now
+  if [[ -z "$run_test_now" || "$run_test_now" =~ ^[Yy]$ ]]; then
+    run_agent_readiness_test
+  fi
+}
+
+# 7.5 ฟังก์ชันตรวจสอบทักษะและยิงทดสอบความพร้อมของตัวแทน AI แต่ละตำแหน่ง (Agent Readiness & Live Handshake Test)
+check_role_skills_status() {
+  local skills_list="$1"
+  local output=""
+  for sk in $skills_list; do
+    if [ -d "$GLOBAL_DIR/skills/$sk" ]; then
+      output="${output}[✓] $sk  "
+    else
+      output="${output}[•] $sk  "
+    fi
+  done
+  echo "$output"
+}
+
+get_provider_rules_status() {
+  local provider="$1"
+  case "$provider" in
+    claude)
+      [ -e "$HOME/.claude/CLAUDE.md" ] && echo "✅ เชื่อมต่อ ~/.claude/CLAUDE.md แล้ว" || echo "❌ ยังไม่พบ ~/.claude/CLAUDE.md"
+      ;;
+    codex)
+      [ -e "$HOME/.codex/AGENTS.md" ] && echo "✅ เชื่อมต่อ ~/.codex/AGENTS.md แล้ว" || echo "❌ ยังไม่พบ ~/.codex/AGENTS.md"
+      ;;
+    gemini)
+      [ -e "$HOME/.gemini/GEMINI.md" ] && echo "✅ เชื่อมต่อ ~/.gemini/GEMINI.md แล้ว" || echo "❌ ยังไม่พบ ~/.gemini/GEMINI.md"
+      ;;
+    *)
+      echo "⚠️ ไม่ทราบค่าย"
+      ;;
+  esac
+}
+
+ping_single_role_agent() {
+  local role_code="$1"
+  local role_title="$2"
+  local provider="$3"
+  local configured_model="$4"
+  local expected_skills="$5"
+  local expected_duty="$6"
+  local model_label
+  model_label="$(get_effective_model_label "$provider" "$configured_model")"
+
+  echo ""
+  echo "----------------------------------------------------------------------"
+  echo "🧪 กำลังทดสอบการเชื่อมต่อและรายงานตัวของ: $role_title"
+  echo "   • ค่ายผู้ให้บริการ : $provider"
+  echo "   • โมเดลที่ใช้     : $model_label"
+  echo "   • ทักษะประจำตำแหน่ง: $expected_skills"
+  echo "----------------------------------------------------------------------"
+
+  if ! command -v "$provider" >/dev/null 2>&1; then
+    echo "❌ ไม่สามารถยิงทดสอบ $role_code ได้ เนื่องจากยังไม่ได้ติดตั้ง CLI ค่าย '$provider' ในเครื่อง"
+    echo "   👉 กด [d] ในหน้าหลักเพื่อติดตั้ง '$provider' หรือกด [c] เพื่อเปลี่ยนไปใช้ค่ายที่มีในเครื่อง"
+    return 1
+  fi
+
+  local self_check_prompt="นี่คือการทดสอบความพร้อมของระบบ RELAY v1.0 กรุณารายงานตัวสั้นๆ ไม่เกิน 4 บรรทัด (ห้ามรันคำสั่งแก้ไขไฟล์ใดๆ) โดยระบุข้อมูลดังนี้:
+1. ยืนยันบทบาทของคุณคือ '$role_title' (ทำงานผ่านค่าย $provider โมเดล $model_label)
+2. สรุปหน้าที่หลักของคุณในระบบ RELAY ($expected_duty)
+3. ยืนยันชุดทักษะ (Skills) ประจำตำแหน่งของคุณ ได้แก่: $expected_skills
+4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน 100%'"
+
+  echo "⏳ กำลังรอคำตอบรายงานตัวจาก $provider ($model_label)..."
+  local exit_code=0
+  case "$provider" in
+    claude)
+      if [ -n "$configured_model" ] && [ "$configured_model" != "default" ]; then
+        claude --model "$configured_model" -p "$self_check_prompt" || exit_code=$?
+      else
+        claude -p "$self_check_prompt" || exit_code=$?
+      fi
+      ;;
+    gemini)
+      if [ -n "$configured_model" ] && [ "$configured_model" != "default" ]; then
+        gemini -m "$configured_model" -p "$self_check_prompt" || exit_code=$?
+      else
+        gemini -p "$self_check_prompt" || exit_code=$?
+      fi
+      ;;
+    codex)
+      if [ -n "$configured_model" ] && [ "$configured_model" != "default" ]; then
+        codex -m "$configured_model" exec "$self_check_prompt" 2>/dev/null || codex -m "$configured_model" -q "$self_check_prompt" || exit_code=$?
+      else
+        codex exec "$self_check_prompt" 2>/dev/null || codex -q "$self_check_prompt" || exit_code=$?
+      fi
+      ;;
+    *)
+      echo "⚠️ ไม่รองรับการยิงทดสอบอัตโนมัติสำหรับค่าย $provider"
+      exit_code=1
+      ;;
+  esac
+
+  if [ "$exit_code" -eq 0 ]; then
+    echo "✅ [ผ่านการทดสอบ] $role_title เชื่อมต่อกับ $provider ($model_label) และพร้อมใช้งานเรียบร้อย!"
+  else
+    echo "❌ [ไม่ผ่านการทดสอบ] $role_title ไม่สามารถรับคำสั่งผ่าน $provider ($model_label) ได้ (กรุณาเช็กการ Login ในเมนู [d] หรือเช็กชื่อโมเดลในเมนู [c])"
+  fi
+}
+
+run_agent_readiness_test() {
+  load_role_config
+  local po_model arch_model dev_model qa_model
+  po_model="$(get_effective_model_label "$ROLE_PO" "$MODEL_PO")"
+  arch_model="$(get_effective_model_label "$ROLE_ARCH" "$MODEL_ARCH")"
+  dev_model="$(get_effective_model_label "$ROLE_DEV" "$MODEL_DEV")"
+  qa_model="$(get_effective_model_label "$ROLE_QA" "$MODEL_QA")"
+
+  local po_skills="brainstorming founder-skill"
+  local arch_skills="writing-plans supabase-postgres-best-practices"
+  local dev_skills="impeccable vercel-react-best-practices lucide-icons simple-icons test-driven-development systematic-debugging"
+  local qa_skills="verification-before-completion differential-review semgrep playwright-qa"
+
+  echo ""
+  echo "======================================================================"
+  echo "🧪 RELAY Agent Readiness Check — ตรวจสอบบทบาท ทักษะ และทดสอบการเชื่อมต่อจริง"
+  echo "======================================================================"
+  echo "ส่วนที่ 1: ตรวจสอบการตั้งค่า กฎส่วนกลาง และทักษะประจำตำแหน่งในเครื่อง (Local Check)"
+  echo "----------------------------------------------------------------------"
+  echo "1️⃣  ขั้นตอนที่ 1: @po (Product Owner — วิเคราะห์ความต้องการและสร้าง SPEC.md)"
+  echo "   • ค่าย / โมเดล : $ROLE_PO | โมเดล: $po_model | $(get_provider_status "$ROLE_PO")"
+  echo "   • กฎส่วนกลาง  : $(get_provider_rules_status "$ROLE_PO")"
+  echo "   • ทักษะประจำตัว: $(check_role_skills_status "$po_skills")"
+  echo ""
+  echo "2️⃣  ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner — สร้าง ARCH.md & PLAN.md)"
+  echo "   • ค่าย / โมเดล : $ROLE_ARCH | โมเดล: $arch_model | $(get_provider_status "$ROLE_ARCH")"
+  echo "   • กฎส่วนกลาง  : $(get_provider_rules_status "$ROLE_ARCH")"
+  echo "   • ทักษะประจำตัว: $(check_role_skills_status "$arch_skills")"
+  echo ""
+  echo "3️⃣  ขั้นตอนที่ 3: @dev (Full-Stack Developer — พัฒนาโค้ดและ Unit Tests ใน Git Worktree)"
+  echo "   • ค่าย / โมเดล : $ROLE_DEV | โมเดล: $dev_model | $(get_provider_status "$ROLE_DEV")"
+  echo "   • กฎส่วนกลาง  : $(get_provider_rules_status "$ROLE_DEV")"
+  echo "   • ทักษะประจำตัว: $(check_role_skills_status "$dev_skills")"
+  echo ""
+  echo "4️⃣  ขั้นตอนที่ 4: @qa & @sec (QA Verifier & Security Auditor — ตรวจรับงานและสร้าง QA_REPORT.md)"
+  echo "   • ค่าย / โมเดล : $ROLE_QA | โมเดล: $qa_model | $(get_provider_status "$ROLE_QA")"
+  echo "   • กฎส่วนกลาง  : $(get_provider_rules_status "$ROLE_QA")"
+  echo "   • ทักษะประจำตัว: $(check_role_skills_status "$qa_skills")"
+  echo "----------------------------------------------------------------------"
+  echo "💡 หมายเหตุ: สัญลักษณ์ [✓] = มีโฟลเดอร์สกิลใน ~/.agents/skills/ แล้ว | [•] = อ้างอิงตามกฎ GLOBAL_AGENTS.md (กด [s]->[2] หากต้องการดาวน์โหลดเพิ่ม)"
+  echo "======================================================================"
+  echo "ส่วนที่ 2: ยิงคำสั่งทดสอบให้ AI แต่ละตำแหน่งรายงานบทบาทและทักษะกลับมาจริง (Live Agent Handshake)"
+  echo "  [1] ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec)"
+  echo "  [2] ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po        ➔ $ROLE_PO / $po_model)"
+  echo "  [3] ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm  ➔ $ROLE_ARCH / $arch_model)"
+  echo "  [4] ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev       ➔ $ROLE_DEV / $dev_model)"
+  echo "  [5] ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec   ➔ $ROLE_QA / $qa_model)"
+  echo "  [Enter หรือ b] กลับสู่หน้าจอหลัก"
+  echo "======================================================================"
+  read -r -p "เลือกหมายเลขการทดสอบ [1-5 หรือ Enter เพื่อกลับ]: " test_choice
+
+  case "$test_choice" in
+    1)
+      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po (Product Owner)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md" || true
+      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md" || true
+      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด" || true
+      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
+      echo ""
+      read -r -p "🏁 ทดสอบครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว กด Enter เพื่อกลับสู่หน้าจอหลัก..." _
+      ;;
+    2)
+      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po (Product Owner)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md" || true
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _
+      ;;
+    3)
+      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md" || true
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _
+      ;;
+    4)
+      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด" || true
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _
+      ;;
+    5)
+      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _
+      ;;
+    *)
+      ;;
+  esac
 }
 
 # 8. เมนูตรวจสอบการเชื่อมต่อ ติดตั้ง CLI และ Login (Doctor & Connection Check)
@@ -585,9 +771,10 @@ print_dashboard() {
   echo "  [4] เริ่มขั้นตอนที่ 4 (@qa/@sec)   — รันชุดทดสอบ + ตรวจความปลอดภัย + สรุป QA_REPORT.md"
   echo "  [5] ผสานโค้ดและจัดเก็บใบงาน      — Merge เข้ากิ่ง main และย้ายเข้า .relay/archive/"
   echo "----------------------------------------------------------------------"
-  echo "  [c] ตั้งค่าค่าย AI & เลือกโมเดลประจำตำแหน่ง | [d] ตรวจสอบการเชื่อมต่อ & ติดตั้ง/Login CLI"
+  echo "  [c] ตั้งค่าค่าย AI & เลือกโมเดลประจำตำแหน่ง | [t] ทดสอบความพร้อม Agent แต่ละตำแหน่ง (เช็กบทบาท & Skills)"
+  echo "  [d] ตรวจสอบการเชื่อมต่อ & ติดตั้ง/Login CLI  | [s] จัดการ/อัปเดต Skills"
   echo "  [n] สร้างใบงานใหม่ (New Task)          | [i] เตรียม .relay/ (โครงการใหม่ / โครงการเดิม)"
-  echo "  [s] จัดการ/อัปเดต Skills               | [q] ออกจากโปรแกรม"
+  echo "  [q] ออกจากโปรแกรม"
   echo "======================================================================"
 }
 
@@ -624,6 +811,10 @@ case "$SUBCOMMAND" in
     configure_roles_menu
     exit 0
     ;;
+  test)
+    run_agent_readiness_test
+    exit 0
+    ;;
   doctor)
     run_doctor_menu
     exit 0
@@ -642,7 +833,7 @@ esac
 # Interactive Main Loop ในหน้าต่าง Terminal เดียว
 while true; do
   print_dashboard
-  read -r -p "👉 เลือกคำสั่ง [1-5, c, d, n, i, s, q]: " action
+  read -r -p "👉 เลือกคำสั่ง [1-5, c, t, d, s, n, i, q]: " action
   case "$action" in
     1) run_phase_1_po ;;
     2) run_phase_2_arch ;;
@@ -650,6 +841,7 @@ while true; do
     4) run_phase_4_qa ;;
     5) run_phase_5_merge ;;
     c|C) configure_roles_menu ;;
+    t|T) run_agent_readiness_test ;;
     d|D) run_doctor_menu ;;
     n|N) create_new_task ;;
     i|I) run_init_project ;;
@@ -659,7 +851,7 @@ while true; do
       exit 0
       ;;
     *)
-      echo "⚠️ กรุณาเลือกคำสั่งที่กำหนด (1-5, c, d, n, i, s, q)"
+      echo "⚠️ กรุณาเลือกคำสั่งที่กำหนด (1-5, c, t, d, s, n, i, q)"
       ;;
   esac
 done
