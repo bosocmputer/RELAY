@@ -1,0 +1,23 @@
+# ==============================================================================
+# RELAY Skills Manifest (รายการคลังทักษะมาตรฐานสำหรับติดตั้งและอัปเดตอัตโนมัติ)
+# รูปแบบ: <GitHub_Repo_URL>|<Skill_Name_หรือ_เว้นว่างถ้าลงทั้งRepo>|<คำอธิบายบทบาท>
+# ==============================================================================
+
+# ── ไม้ที่ 1: @po (Product Owner — ซักถามโจทย์ & วิเคราะห์ธุรกิจ) ──
+https://github.com/obra/superpowers|brainstorming|[ไม้ 1 @po] ซักถามความต้องการทีละข้อจนชัดเจนก่อนเริ่มงาน
+https://github.com/Jakeschincariol/founder-skill||[ไม้ 1 @po] วิเคราะห์โมเดลธุรกิจและกลยุทธ์ผลิตภัณฑ์เมื่อเริ่มโปรเจกต์ใหม่
+
+# ── ไม้ที่ 2: @arch & @pm (Architect & Planner — วางโครงสร้าง & แตกแผนงาน) ──
+https://github.com/obra/superpowers|writing-plans|[ไม้ 2 @arch/@pm] แตกแผนงานเช็กลิสต์และโครงสร้างไฟล์อย่างเป็นระบบ
+
+# ── ไม้ที่ 3: @dev (Full-Stack Developer — ซอง Frontend, Backend & TDD) ──
+https://github.com/pbakaus/impeccable|impeccable|[ไม้ 3 @dev-FE] ออกแบบและจัดวาง UI/UX ระดับมืออาชีพ ไม่เป็น AI Slop
+https://github.com/vercel-labs/agent-skills|vercel-react-best-practices|[ไม้ 3 @dev-FE] มาตรฐานการเขียน React / Next.js ประสิทธิภาพสูง
+https://github.com/supabase/agent-skills|supabase-postgres-best-practices|[ไม้ 3 @dev-BE] มาตรฐานการออกแบบฐานข้อมูล PostgreSQL, SQL, Auth และ RLS
+https://github.com/obra/superpowers|test-driven-development|[ไม้ 3 @dev-Core] เขียน Unit Test นำโค้ดจริงตามหลัก TDD
+https://github.com/obra/superpowers|systematic-debugging|[ไม้ 3 @dev-Core] วิเคราะห์และหาต้นตอของบั๊กอย่างเป็นระบบ ไม่เดาสุ่ม
+
+# ── ไม้ที่ 4: @qa & @sec (Verifier & Security Auditor — ตรวจรับงาน & ความปลอดภัย) ──
+https://github.com/obra/superpowers|verification-before-completion|[ไม้ 4 @qa] กฎเหล็กห้ามสรุปว่างานเสร็จจนกว่าจะรันเทสต์ผ่านจริง
+https://github.com/trailofbits/skills|differential-review|[ไม้ 4 @sec] ตรวจสอบความปลอดภัยเฉพาะจุดที่แก้ไขใน git diff (Trail of Bits)
+https://github.com/semgrep/skills||[ไม้ 4 @sec] สแกนหาช่องโหว่ความปลอดภัยตามมาตรฐาน OWASP Top 10 (Semgrep)
