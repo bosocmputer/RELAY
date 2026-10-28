@@ -22,10 +22,15 @@
    - ทดสอบครบ 2 ระดับ:
      1. **ระดับโครงสร้างในเครื่อง (Local Skills & Rules Verification):** ตรวจสอบไฟล์กฎส่วนกลาง (`GLOBAL_AGENTS.md`) และโฟลเดอร์ทักษะ (`~/.agents/skills/<skill>`) ประจำตำแหน่ง `@po`, `@arch/@pm`, `@dev`, และ `@qa/@sec` ว่าติดตั้งครบถ้วนหรือไม่
      2. **ระดับยิงทดสอบ CLI และ Model จริง (Live Agent Handshake):** ส่งคำสั่งทดสอบ (One-shot Prompt) ไปยัง CLI (`claude`, `codex`, `gemini`) และ Model ที่ตั้งไว้ของแต่ละตำแหน่ง เพื่อให้ตัวแทน AI ตอบกลับมารายงานตัวใน Terminal ว่าเชื่อมต่อสำเร็จ ระบุบทบาทหน้าที่ของตนเอง และแสดงรายชื่อทักษะ (Skills) ที่พร้อมใช้งาน
+4. **ส่วนติดต่อผู้ใช้มาตรฐานระดับสากลบน Terminal (`RELAY Modern Interactive TUI`):**
+   - ออกแบบหน้าจอด้วย **3D Pixel-Block Gradient Banner (`> RELAY`)** ไล่เฉดสี ANSI 256-color พร้อมกรอบข้อมูล **2 คอลัมน์ (`╭─── ... ───╮`)** แสดงสถานะการเชื่อมต่อ CLI ทั้ง 3 ค่าย (`● Claude Code`, `● Gemini CLI`, `● OpenAI Codex`), ตารางจับคู่ 4 ตำแหน่งพร้อมชื่อ Model และชุดทักษะ (`Skills`), แถบสถานะ Git Branch และกล่องรับคำสั่ง
+   - รองรับการควบคุมด้วย **ปุ่มลูกศร ขึ้น/ลง (`↑` / `↓`) เลื่อนแถบสีไฮไลต์แล้วกด `Enter`** ได้ทุกเมนู (แก้ปัญหาการกดลูกศรแล้วขึ้นรหัส `^[[B^[[A`) ควบคู่กับการกดคีย์ลัด (`1-5`, `c`, `t`, `d`, `s`, `n`, `i`, `q`) และการพิมพ์คำสั่ง `/command` (เช่น `/model`, `/connect`, `/test`, `/po`, `/arch`, `/dev`, `/qa`, `/skills`, `/quit`)
+   - รองรับการตั้งค่าเชื่อมต่อ CLI (ติดตั้งอัตโนมัติ + เปิดหน้า Login) และการเลือก Model ของแต่ละค่าย/แต่ละตำแหน่ง รวมถึงการตั้งค่า Default Model ของแต่ละ CLI (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/config.toml`) ได้โดยตรงจากภายในหน้าจอ `relay`
 
 ## 3. เกณฑ์การตรวจรับงาน (Acceptance Criteria สำหรับ `@qa`)
 - [x] **AC-1:** มีสคริปต์ `relay.sh` (macOS/Linux) และ `relay.ps1` (Windows PowerShell) พร้อมไฟล์แม่แบบ `templates/relay-roles.conf`
 - [x] **AC-2:** สคริปต์ติดตั้ง `setup-mac.sh` และ `setup-win.ps1` ติดตั้งคำสั่ง `relay` ลงใน `~/.agents/bin/relay` พร้อมเพิ่มเข้าสู่ `PATH` (`~/.zshrc` / Windows User PATH) ให้เรียกพิมพ์คำว่า `relay` ได้จากทุกโฟลเดอร์
 - [x] **AC-3:** รองรับการอ่านค่าจาก `~/.agents/relay-roles.conf` และ `.relay/roles.conf` (Project Override) ได้อย่างถูกต้อง
 - [x] **AC-4:** มีคำสั่ง `[t]` (`relay test`) สำหรับตรวจสอบ Skills ประจำตำแหน่งและยิงทดสอบให้ AI แต่ละตำแหน่งรายงานบทบาทและทักษะของตนเองผ่าน CLI และ Model ที่ตั้งไว้จริง
-- [x] **AC-5:** อัปเดตเอกสาร `README.md` และ `docs/` อธิบายการใช้งานหน้าจอ Terminal กลาง (`relay`) และการตั้งค่าจับคู่ค่าย AI อย่างละเอียด
+- [x] **AC-5:** หน้าจอ `relay` แสดงผลแบบ Modern Interactive TUI (3D Pixel-Block Gradient Banner + กรอบ 2 คอลัมน์ + รองรับปุ่มลูกศร `↑`/`↓` + `Enter` และ `/command`) พร้อมตั้งค่าการเชื่อมต่อ CLI และเลือก Model ของแต่ละค่ายได้ในหน้าจอเดียว
+- [x] **AC-6:** อัปเดตเอกสาร `README.md` และ `docs/` อธิบายการใช้งานหน้าจอ Terminal กลาง (`relay`) และการตั้งค่าจับคู่ค่าย AI อย่างละเอียด

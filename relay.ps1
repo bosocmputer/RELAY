@@ -1,8 +1,9 @@
 <#
 .SYNOPSIS
-    RELAY Central Terminal Hub สำหรับ Windows (PowerShell)
+    RELAY Central Terminal Hub (v1.0) — Modern Interactive TUI สำหรับ Windows (PowerShell)
 .DESCRIPTION
-    ศูนย์กลางการควบคุม ตั้งค่าค่าย AI/Model และตรวจสอบสถานะการเชื่อมต่อในหน้าต่าง PowerShell เดียว
+    รองรับปุ่มลูกศร ↑/↓ + Enter, คีย์ลัด, Slash Commands (/model, /connect, /test)
+    พร้อมตั้งค่าการเชื่อมต่อ CLI และเลือก Model ของแต่ละค่าย/ตำแหน่งในหน้าจอเดียว
 #>
 param(
     [Parameter(Position=0)]
@@ -24,7 +25,7 @@ $Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
 $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
 $Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
 $Script:ROLE_QA = "codex";    $Script:MODEL_QA = "default"
-$Script:CONFIG_SOURCE = "ค่าเริ่มต้นส่วนกลาง ($GlobalRolesConf)"
+$Script:CONFIG_SOURCE = "Global (~/.agents/relay-roles.conf)"
 $Script:ACTIVE_TASK = ""
 
 function Load-RoleConfig {
@@ -32,12 +33,12 @@ function Load-RoleConfig {
     $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
     $Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
     $Script:ROLE_QA = "codex";    $Script:MODEL_QA = "default"
-    $Script:CONFIG_SOURCE = "ค่าเริ่มต้นส่วนกลาง ($GlobalRolesConf)"
+    $Script:CONFIG_SOURCE = "Global (~/.agents/relay-roles.conf)"
 
     foreach ($confFile in @($GlobalRolesConf, $ProjectRolesConf)) {
         if (Test-Path $confFile) {
             if ($confFile -eq $ProjectRolesConf) {
-                $Script:CONFIG_SOURCE = "เฉพาะโครงการนี้ (.relay/roles.conf)"
+                $Script:CONFIG_SOURCE = "Project (.relay/roles.conf)"
             }
             Get-Content $confFile -Encoding UTF8 | ForEach-Object {
                 $line = $_.Trim()
@@ -71,11 +72,8 @@ MODEL_QA="$($Script:MODEL_QA)"
     Set-Content -Path $TargetFile -Value $content -Encoding UTF8
 }
 
-function Get-ProviderStatus([string]$Provider) {
-    if (Get-Command $Provider -ErrorAction SilentlyContinue) {
-        return "✅ พร้อมใช้งาน"
-    }
-    return "❌ ยังไม่ได้ติดตั้ง CLI (กด [d] เพื่อติดตั้ง)"
+function Test-ProviderInstalled([string]$Provider) {
+    return [bool](Get-Command $Provider -ErrorAction SilentlyContinue)
 }
 
 function Get-EffectiveModelLabel([string]$Provider, [string]$ConfiguredModel) {
@@ -83,9 +81,9 @@ function Get-EffectiveModelLabel([string]$Provider, [string]$ConfiguredModel) {
         return $ConfiguredModel
     }
     switch ($Provider) {
-        "claude" { return "default (sonnet/opus)" }
-        "codex"  { return "default (o3/gpt-5)" }
-        "gemini" { return "default (gemini-2.5-pro)" }
+        "claude" { return "sonnet (CLI default)" }
+        "codex"  { return "o3 (CLI default)" }
+        "gemini" { return "gemini-2.5-pro (CLI default)" }
         default  { return "default" }
     }
 }
@@ -97,177 +95,87 @@ function Get-ActiveTask {
     if ($dirs -and $dirs.Count -gt 0) { $Script:ACTIVE_TASK = $dirs[-1].Name } else { $Script:ACTIVE_TASK = "" }
 }
 
-function Select-ProviderForRole([string]$RoleLabel, [string]$CurrentVal) {
+function Invoke-InteractiveMenu([string]$Title, [string[]]$Items) {
+    $selected = 0
+    $count = $Items.Count
     Write-Host ""
-    Write-Host "เลือกค่าย AI สำหรับ $RoleLabel (ค่าปัจจุบัน: $CurrentVal):" -ForegroundColor Cyan
-    Write-Host "  [1] claude  (Anthropic Claude Code CLI)"
-    Write-Host "  [2] codex   (OpenAI Codex CLI)"
-    Write-Host "  [3] gemini  (Google Gemini CLI)"
-    $choice = Read-Host "เลือกหมายเลขค่าย (1-3 หรือกด Enter เพื่อคงค่าเดิม $CurrentVal)"
-    switch ($choice) {
-        "1" { return "claude" }
-        "2" { return "codex" }
-        "3" { return "gemini" }
-        default { return $CurrentVal }
-    }
-}
+    Write-Host $Title -ForegroundColor Yellow
+    Write-Host "ใช้ปุ่มลูกศร ↑/↓ เพื่อเลื่อนแถบสี แล้วกด Enter เพื่อเลือก (หรือกดคีย์ลัดในวงเล็บ [...])" -ForegroundColor DarkGray
 
-function Select-ModelForProvider([string]$Provider, [string]$RoleLabel, [string]$CurrentModel) {
-    Write-Host ""
-    Write-Host "เลือกโมเดล (Model) ของค่าย [$Provider] สำหรับ $RoleLabel (ค่าปัจจุบัน: $CurrentModel):" -ForegroundColor Cyan
-    if ($Provider -eq "claude") {
-        Write-Host "  [1] default (ค่าเริ่มต้นของ Claude Code) | [2] sonnet | [3] opus | [4] haiku | [5] ระบุชื่อเอง"
-        $m = Read-Host "เลือกหมายเลข (1-5 หรือ Enter คงค่าเดิม)"
-        switch ($m) { "1" { return "default" } "2" { return "sonnet" } "3" { return "opus" } "4" { return "haiku" } "5" { return (Read-Host "ระบุชื่อโมเดล") } default { return $CurrentModel } }
-    } elseif ($Provider -eq "codex") {
-        Write-Host "  [1] default (ค่าเริ่มต้นของ Codex) | [2] o3 | [3] o4-mini | [4] gpt-5 | [5] ระบุชื่อเอง"
-        $m = Read-Host "เลือกหมายเลข (1-5 หรือ Enter คงค่าเดิม)"
-        switch ($m) { "1" { return "default" } "2" { return "o3" } "3" { return "o4-mini" } "4" { return "gpt-5" } "5" { return (Read-Host "ระบุชื่อโมเดล") } default { return $CurrentModel } }
-    } else {
-        Write-Host "  [1] default (ค่าเริ่มต้นของ Gemini) | [2] gemini-2.5-pro | [3] gemini-2.5-flash | [4] ระบุชื่อเอง"
-        $m = Read-Host "เลือกหมายเลข (1-4 หรือ Enter คงค่าเดิม)"
-        switch ($m) { "1" { return "default" } "2" { return "gemini-2.5-pro" } "3" { return "gemini-2.5-flash" } "4" { return (Read-Host "ระบุชื่อโมเดล") } default { return $CurrentModel } }
-    }
-}
-
-function Configure-RolesMenu {
-    Load-RoleConfig
-    Write-Host ""
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "⚙️  ตั้งค่าจับคู่ตำแหน่งตัวแทน AI กับค่ายผู้ให้บริการและโมเดล (Role & Model Mapping)" -ForegroundColor Cyan
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "  [1] ระดับส่วนกลางของเครื่อง ($GlobalRolesConf) — มีผลกับทุกโครงการ"
-    Write-Host "  [2] เฉพาะโครงการนี้ ($ProjectRolesConf) — มีผลเฉพาะโฟลเดอร์ $ProjectName"
-    $scope = Read-Host "เลือกระดับการบันทึก [1 หรือ 2, ค่าเริ่มต้น=1]"
-
-    $Script:ROLE_PO    = Select-ProviderForRole "ขั้นตอนที่ 1 (@po)" $Script:ROLE_PO
-    $Script:MODEL_PO   = Select-ModelForProvider $Script:ROLE_PO "ขั้นตอนที่ 1 (@po)" $Script:MODEL_PO
-    $Script:ROLE_ARCH  = Select-ProviderForRole "ขั้นตอนที่ 2 (@arch/@pm)" $Script:ROLE_ARCH
-    $Script:MODEL_ARCH = Select-ModelForProvider $Script:ROLE_ARCH "ขั้นตอนที่ 2 (@arch/@pm)" $Script:MODEL_ARCH
-    $Script:ROLE_DEV   = Select-ProviderForRole "ขั้นตอนที่ 3 (@dev)" $Script:ROLE_DEV
-    $Script:MODEL_DEV  = Select-ModelForProvider $Script:ROLE_DEV "ขั้นตอนที่ 3 (@dev)" $Script:MODEL_DEV
-    $Script:ROLE_QA    = Select-ProviderForRole "ขั้นตอนที่ 4 (@qa/@sec)" $Script:ROLE_QA
-    $Script:MODEL_QA   = Select-ModelForProvider $Script:ROLE_QA "ขั้นตอนที่ 4 (@qa/@sec)" $Script:MODEL_QA
-
-    if ($scope -eq "2") { Save-RoleConfig $ProjectRolesConf } else { Save-RoleConfig $GlobalRolesConf }
-    Write-Host "✅ บันทึกการตั้งค่าเรียบร้อยแล้ว!" -ForegroundColor Green
-    $runTest = Read-Host "🧪 ต้องการทดสอบความพร้อมของตัวแทน AI แต่ละตำแหน่ง (เช็ก CLI + โมเดล + บทบาทและทักษะ) ตอนนี้เลยหรือไม่? [Y/n]"
-    if ([string]::IsNullOrWhiteSpace($runTest) -or $runTest -match '^[Yy]') {
-        Test-AgentReadiness
-    }
-}
-
-function Invoke-SingleRolePing([string]$RoleCode, [string]$RoleTitle, [string]$Provider, [string]$ConfiguredModel, [string]$ExpectedSkills, [string]$ExpectedDuty) {
-    $modelLabel = Get-EffectiveModelLabel $Provider $ConfiguredModel
-    Write-Host ""
-    Write-Host "----------------------------------------------------------------------" -ForegroundColor Yellow
-    Write-Host "🧪 กำลังทดสอบการเชื่อมต่อและรายงานตัวของ: $RoleTitle ($Provider / $modelLabel)" -ForegroundColor Yellow
-    if (-not (Get-Command $Provider -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ ไม่สามารถยิงทดสอบ $RoleCode ได้ เนื่องจากยังไม่ได้ติดตั้ง CLI ค่าย '$Provider'" -ForegroundColor Red
-        return
-    }
-    $prompt = "นี่คือการทดสอบความพร้อมของระบบ RELAY v1.0 กรุณารายงานตัวสั้นๆ ไม่เกิน 4 บรรทัด (ห้ามแก้ไขไฟล์ใดๆ): 1. ยืนยันบทบาท '$RoleTitle' ($Provider / $modelLabel) 2. หน้าที่หลัก ($ExpectedDuty) 3. ยืนยันชุดทักษะประจำตำแหน่ง: $ExpectedSkills 4. ปิดท้ายว่า 'สถานะ: พร้อมปฏิบัติงาน 100%'"
-    if ($Provider -eq "claude") {
-        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & claude --model $ConfiguredModel -p $prompt } else { & claude -p $prompt }
-    } elseif ($Provider -eq "gemini") {
-        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & gemini -m $ConfiguredModel -p $prompt } else { & gemini -p $prompt }
-    } elseif ($Provider -eq "codex") {
-        if ($ConfiguredModel -and $ConfiguredModel -ne "default") { & codex -m $ConfiguredModel exec $prompt } else { & codex exec $prompt }
-    }
-}
-
-function Test-AgentReadiness {
-    Load-RoleConfig
-    Write-Host ""
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "🧪 RELAY Agent Readiness Check — ตรวจสอบบทบาท ทักษะ และทดสอบการเชื่อมต่อจริง" -ForegroundColor Cyan
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "1️⃣  @po       ➔ $($Script:ROLE_PO) ($(Get-EffectiveModelLabel $Script:ROLE_PO $Script:MODEL_PO)) | Skills: brainstorming, founder-skill"
-    Write-Host "2️⃣  @arch/@pm ➔ $($Script:ROLE_ARCH) ($(Get-EffectiveModelLabel $Script:ROLE_ARCH $Script:MODEL_ARCH)) | Skills: writing-plans, supabase-postgres-best-practices"
-    Write-Host "3️⃣  @dev      ➔ $($Script:ROLE_DEV) ($(Get-EffectiveModelLabel $Script:ROLE_DEV $Script:MODEL_DEV)) | Skills: impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging"
-    Write-Host "4️⃣  @qa/@sec  ➔ $($Script:ROLE_QA) ($(Get-EffectiveModelLabel $Script:ROLE_QA $Script:MODEL_QA)) | Skills: verification-before-completion, differential-review, semgrep, playwright-qa"
-    Write-Host "----------------------------------------------------------------------"
-    Write-Host "  [1] ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง | [2] เฉพาะ @po | [3] เฉพาะ @arch | [4] เฉพาะ @dev | [5] เฉพาะ @qa | [Enter] กลับ"
-    $tc = Read-Host "เลือกหมายเลขการทดสอบ"
-    switch ($tc) {
-        "1" {
-            Invoke-SingleRolePing "@po" "ขั้นตอนที่ 1: @po (Product Owner)" $Script:ROLE_PO $Script:MODEL_PO "brainstorming, founder-skill" "ซักถามความต้องการและสรุปเป็น SPEC.md"
-            Invoke-SingleRolePing "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" $Script:ROLE_ARCH $Script:MODEL_ARCH "writing-plans, supabase-postgres-best-practices" "ออกแบบ ARCH.md และ PLAN.md"
-            Invoke-SingleRolePing "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" $Script:ROLE_DEV $Script:MODEL_DEV "impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging" "เขียนโค้ดและชุดทดสอบใน Git Worktree"
-            Invoke-SingleRolePing "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor)" $Script:ROLE_QA $Script:MODEL_QA "verification-before-completion, differential-review, semgrep, playwright-qa" "รันชุดทดสอบ ตรวจสอบความปลอดภัย และสรุป QA_REPORT.md"
+    $startTop = [Console]::CursorTop
+    while ($true) {
+        [Console]::SetCursorPosition(0, $startTop)
+        for ($i = 0; $i -lt $count; $i++) {
+            $parts = $Items[$i] -split '\|', 2
+            $k = $parts[0]
+            $lbl = $parts[1]
+            if ($i -eq $selected) {
+                Write-Host ("  ❯ [{0}] {1,-66}" -f $k, $lbl) -BackgroundColor DarkCyan -ForegroundColor White
+            } else {
+                Write-Host ("    [{0}] {1,-66}" -f $k, $lbl) -ForegroundColor Gray
+            }
         }
-        "2" { Invoke-SingleRolePing "@po" "ขั้นตอนที่ 1: @po (Product Owner)" $Script:ROLE_PO $Script:MODEL_PO "brainstorming, founder-skill" "ซักถามความต้องการและสรุปเป็น SPEC.md" }
-        "3" { Invoke-SingleRolePing "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" $Script:ROLE_ARCH $Script:MODEL_ARCH "writing-plans, supabase-postgres-best-practices" "ออกแบบ ARCH.md และ PLAN.md" }
-        "4" { Invoke-SingleRolePing "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" $Script:ROLE_DEV $Script:MODEL_DEV "impeccable, vercel-react-best-practices, lucide-icons, simple-icons, test-driven-development, systematic-debugging" "เขียนโค้ดและชุดทดสอบใน Git Worktree" }
-        "5" { Invoke-SingleRolePing "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor)" $Script:ROLE_QA $Script:MODEL_QA "verification-before-completion, differential-review, semgrep, playwright-qa" "รันชุดทดสอบ ตรวจสอบความปลอดภัย และสรุป QA_REPORT.md" }
-    }
-}
+        $curKey = ($Items[$selected] -split '\|', 2)[0]
+        Write-Host "╭──────────────────────────────────────────────────────────────────────────────╮" -ForegroundColor DarkGray
+        Write-Host ("│ ❯ เลือก: [{0}] (↑/↓ เลื่อน • Enter ยืนยัน • พิมพ์ / เพื่อใช้คำสั่ง /model, /connect, /test) │" -f $curKey) -ForegroundColor Cyan
+        Write-Host "╰──────────────────────────────────────────────────────────────────────────────╯" -ForegroundColor DarkGray
 
-function Run-DoctorMenu {
-    Write-Host ""
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "🩺 RELAY Doctor — ตรวจสอบสถานะการเชื่อมต่อ CLI และโมเดลของทั้ง 3 ค่าย" -ForegroundColor Cyan
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    foreach ($p in @("claude", "codex", "gemini")) {
-        $cmd = Get-Command $p -ErrorAction SilentlyContinue
-        if ($cmd) {
-            Write-Host "  • $p : ✅ ติดตั้งแล้ว ($($cmd.Source))" -ForegroundColor Green
+        $keyInfo = [Console]::ReadKey($true)
+        if ($keyInfo.Key -eq [ConsoleKey]::UpArrow) {
+            $selected = ($selected - 1 + $count) % $count
+        } elseif ($keyInfo.Key -eq [ConsoleKey]::DownArrow) {
+            $selected = ($selected + 1) % $count
+        } elseif ($keyInfo.Key -eq [ConsoleKey]::Enter) {
+            return ($Items[$selected] -split '\|', 2)[0]
+        } elseif ($keyInfo.Key -eq [ConsoleKey]::Escape) {
+            return "b"
+        } elseif ($keyInfo.KeyChar -eq '/') {
+            $cmd = Read-Host "❯ /"
+            return "/$cmd"
         } else {
-            Write-Host "  • $p : ❌ ยังไม่ได้ติดตั้งในเครื่อง" -ForegroundColor Red
+            $ch = $keyInfo.KeyChar.ToString().ToLower()
+            foreach ($item in $Items) {
+                $ik = ($item -split '\|', 2)[0].ToLower()
+                if ($ch -eq $ik) { return $ik }
+            }
         }
-    }
-    Write-Host "----------------------------------------------------------------------"
-    Write-Host "  [1] ติดตั้ง CLI รวดเดียวครบทั้ง 3 ค่าย (npm install -g ...)"
-    Write-Host "  [2] เปิด CLI เพื่อเข้าสู่ระบบ (Login)"
-    Write-Host "  [Enter] กลับสู่หน้าจอหลัก"
-    $c = Read-Host "เลือกหมายเลข"
-    if ($c -eq "1") { npm install -g `@anthropic-ai/claude-code `@openai/codex `@google/gemini-cli }
-    elseif ($c -eq "2") {
-        $lp = Read-Host "ระบุชื่อค่ายที่ต้องการ Login (claude / codex / gemini)"
-        if (Get-Command $lp -ErrorAction SilentlyContinue) { & $lp }
     }
 }
 
-function Print-Dashboard {
+function Print-DashboardHeader {
     Load-RoleConfig
     Get-ActiveTask
-    $stateFile = Join-Path $RelayDir "PROJECT_STATE.md"
-    $stateStatus = if (Test-Path $stateFile) { "✅ พร้อมใช้งาน (.relay/PROJECT_STATE.md)" } else { "❌ ยังไม่มี (กด [i] เพื่อสร้าง)" }
-
     Write-Host ""
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "🎛️  RELAY Central Terminal Hub (v1.0) — โครงการ: $ProjectName" -ForegroundColor Cyan
-    Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "📂 โฟลเดอร์โครงการ : $ProjectDir"
-    Write-Host "📌 สถานะโครงการ  : $stateStatus"
-    Write-Host "📋 ใบงานปัจจุบัน   : $(if ($Script:ACTIVE_TASK) { $Script:ACTIVE_TASK } else { '(ยังไม่มีใบงาน — กด [1] หรือ [n] เพื่อเริ่มใบงานใหม่)' })"
-    Write-Host "----------------------------------------------------------------------"
-    Write-Host "🤖 สถานะตัวแทน AI, โมเดลปัจจุบัน และการเชื่อมต่อ ($($Script:CONFIG_SOURCE)):"
-    Write-Host "   • ขั้นตอนที่ 1 (@po)       ➔ ค่าย: $($Script:ROLE_PO) | โมเดล: $(Get-EffectiveModelLabel $Script:ROLE_PO $Script:MODEL_PO) | $(Get-ProviderStatus $Script:ROLE_PO)"
-    Write-Host "   • ขั้นตอนที่ 2 (@arch/@pm) ➔ ค่าย: $($Script:ROLE_ARCH) | โมเดล: $(Get-EffectiveModelLabel $Script:ROLE_ARCH $Script:MODEL_ARCH) | $(Get-ProviderStatus $Script:ROLE_ARCH)"
-    Write-Host "   • ขั้นตอนที่ 3 (@dev)      ➔ ค่าย: $($Script:ROLE_DEV) | โมเดล: $(Get-EffectiveModelLabel $Script:ROLE_DEV $Script:MODEL_DEV) | $(Get-ProviderStatus $Script:ROLE_DEV)"
-    Write-Host "   • ขั้นตอนที่ 4 (@qa/@sec)  ➔ ค่าย: $($Script:ROLE_QA) | โมเดล: $(Get-EffectiveModelLabel $Script:ROLE_QA $Script:MODEL_QA) | $(Get-ProviderStatus $Script:ROLE_QA)"
-    Write-Host "----------------------------------------------------------------------"
-    Write-Host "  [1] เริ่มขั้นตอนที่ 1 (@po)        | [2] เริ่มขั้นตอนที่ 2 (@arch/@pm)"
-    Write-Host "  [3] เริ่มขั้นตอนที่ 3 (@dev)       | [4] เริ่มขั้นตอนที่ 4 (@qa/@sec)"
-    Write-Host "  [c] ตั้งค่าค่าย AI & เลือกโมเดล     | [t] ทดสอบความพร้อม Agent แต่ละตำแหน่ง (เช็กบทบาท & Skills)"
-    Write-Host "  [d] ตรวจสอบการเชื่อมต่อ & ติดตั้ง CLI | [n] สร้างใบงานใหม่ | [i] เตรียม .relay/ | [q] ออก"
-    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "╭──────────────────────────────────────────────────────────────────────────────╮" -ForegroundColor DarkYellow
+    Write-Host "│ ✻ Welcome to RELAY v1.0 — Multi-Agent Specification & Handoff Orchestrator   │" -ForegroundColor Yellow
+    Write-Host "╰──────────────────────────────────────────────────────────────────────────────╯" -ForegroundColor DarkYellow
+    Write-Host " ██╗      ██████╗  ███████╗ ██╗       █████╗  ██╗   ██╗" -ForegroundColor Cyan
+    Write-Host " ╚██╗     ██╔══██╗ ██╔════╝ ██║      ██╔══██╗ ╚██╗ ██╔╝" -ForegroundColor Cyan
+    Write-Host "  ╚██╗    ██████╔╝ █████╗   ██║      ███████║  ╚████╔╝ " -ForegroundColor Blue
+    Write-Host "  ██╔╝    ██╔══██╗ ██╔══╝   ██║      ██╔══██║   ╚██╔╝  " -ForegroundColor Magenta
+    Write-Host " ██╔╝     ██║  ██║ ███████╗ ███████╗ ██║  ██║    ██║   " -ForegroundColor Magenta
+    Write-Host " ╚═╝      ╚═╝  ╚═╝ ╚══════╝ ╚══════╝ ╚═╝  ╚═╝    ╚═╝   " -ForegroundColor Red
+    Write-Host "╭─────────────────────── RELAY v1.0 • Control Center ──────────────────────────╮" -ForegroundColor Yellow
+    Write-Host ("│  1. @po (Product)   ➔ {0,-6} │ โมเดล: {1,-22} │ {2}" -f $Script:ROLE_PO, (Get-EffectiveModelLabel $Script:ROLE_PO $Script:MODEL_PO), $(if (Test-ProviderInstalled $Script:ROLE_PO) { "● พร้อมใช้งาน" } else { "○ ยังไม่ติดตั้ง" }))
+    Write-Host ("│  2. @arch & @pm     ➔ {0,-6} │ โมเดล: {1,-22} │ {2}" -f $Script:ROLE_ARCH, (Get-EffectiveModelLabel $Script:ROLE_ARCH $Script:MODEL_ARCH), $(if (Test-ProviderInstalled $Script:ROLE_ARCH) { "● พร้อมใช้งาน" } else { "○ ยังไม่ติดตั้ง" }))
+    Write-Host ("│  3. @dev (Worktree) ➔ {0,-6} │ โมเดล: {1,-22} │ {2}" -f $Script:ROLE_DEV, (Get-EffectiveModelLabel $Script:ROLE_DEV $Script:MODEL_DEV), $(if (Test-ProviderInstalled $Script:ROLE_DEV) { "● พร้อมใช้งาน" } else { "○ ยังไม่ติดตั้ง" }))
+    Write-Host ("│  4. @qa & @sec      ➔ {0,-6} │ โมเดล: {1,-22} │ {2}" -f $Script:ROLE_QA, (Get-EffectiveModelLabel $Script:ROLE_QA $Script:MODEL_QA), $(if (Test-ProviderInstalled $Script:ROLE_QA) { "● พร้อมใช้งาน" } else { "○ ยังไม่ติดตั้ง" }))
+    Write-Host "╰──────────────────────────────────────────────────────────────────────────────╯" -ForegroundColor Yellow
 }
 
-if ($SubCommand -eq "status") { Print-Dashboard; exit 0 }
-if ($SubCommand -eq "config") { Configure-RolesMenu; exit 0 }
-if ($SubCommand -eq "test")   { Test-AgentReadiness; exit 0 }
-if ($SubCommand -eq "doctor") { Run-DoctorMenu; exit 0 }
+if ($SubCommand -eq "status") { Print-DashboardHeader; exit 0 }
 
 while ($true) {
-    Print-Dashboard
-    $action = Read-Host "👉 เลือกคำสั่ง [1-4, c, t, d, n, i, q]"
-    switch ($action.ToLower()) {
-        "c" { Configure-RolesMenu }
-        "t" { Test-AgentReadiness }
-        "d" { Run-DoctorMenu }
-        "q" { exit 0 }
-        "exit" { exit 0 }
-    }
+    Print-DashboardHeader
+    $act = Invoke-InteractiveMenu "🎛️  เลือกคำสั่งการทำงาน (ใช้ปุ่มลูกศร ↑/↓ เลื่อนแถบสีแล้วกด Enter)" @(
+        "1|เริ่มขั้นตอนที่ 1 (@po)        — วิเคราะห์ความต้องการและสร้าง SPEC.md",
+        "2|เริ่มขั้นตอนที่ 2 (@arch/@pm)  — อ่าน SPEC.md แล้วสร้าง ARCH.md & PLAN.md",
+        "3|เริ่มขั้นตอนที่ 3 (@dev)       — แยก Git Worktree อัตโนมัติและพัฒนาโค้ด",
+        "4|เริ่มขั้นตอนที่ 4 (@qa/@sec)   — รันชุดทดสอบ + ตรวจความปลอดภัย + สรุป QA_REPORT.md",
+        "c|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง (/model)",
+        "d|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)",
+        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง — เช็กบทบาท & Skills (/test)",
+        "q|ออกจากโปรแกรม (/quit)"
+    )
+    if ($act -eq "q" -or $act -eq "/quit" -or $act -eq "/exit") { exit 0 }
 }
