@@ -17,8 +17,8 @@ cp "$SCRIPT_DIR/relay-init.sh" ~/.agents/bin/relay-init
 cp "$SCRIPT_DIR/relay-skills.sh" ~/.agents/bin/relay-skills
 cp "$SCRIPT_DIR/relay.sh" ~/.agents/bin/relay
 
-# สร้างไฟล์ตั้งค่าการจับคู่ค่าย AI เริ่มต้น (หากยังไม่มี)
-if [ ! -f ~/.agents/relay-roles.conf ]; then
+# สร้างหรืออัปเดตไฟล์ตั้งค่าการจับคู่ค่าย AI และโมเดลเริ่มต้น
+if [ ! -f ~/.agents/relay-roles.conf ] || ! grep -Fq "MODEL_PO=" ~/.agents/relay-roles.conf 2>/dev/null; then
   cp "$SCRIPT_DIR/templates/relay-roles.conf" ~/.agents/relay-roles.conf
 fi
 
