@@ -25,8 +25,8 @@
 | :--- | :--- | :--- |
 | **1. ไม้ผลัดเอกสารสัญญา (พระเอก)** | **Obsidian** + โฟลเดอร์ **`.relay/`** + **[`github/spec-kit`](https://github.com/github/spec-kit)** | บังคับให้ **"ซักถามความต้องการให้จบก่อนลงมือทำ"** แล้วกลั่นเป็นไฟล์ `SPEC.md` และ `PLAN.md` หน้าเดียว ส่งไม้ต่อข้ามค่ายโดย Context ไม่เต็ม |
 | **2. ทีมนักวิ่ง AI 3 ค่าย (ใช้ Sub เดิม)** | Official CLI: **`claude`**, **`codex`**, **`gemini`** + กฎ **`GLOBAL_AGENTS.md`** | เปิดใช้ CLI ของแต่ละเจ้าตรงๆ กำหนดบทบาท (`@po`, `@arch`, `@pm`, `@dev`, `@qa`, `@sec`) พร้อมผูก **ซองทักษะ (Skills)** เฉพาะสายงาน |
-| **3. ลู่วิ่งแยกกิ่ง & ตาตรวจหน้าเว็บ** | **[`BloopAI/vibe-kanban`](https://github.com/BloopAI/vibe-kanban)** หรือ **[`smtg-ai/claude-squad`](https://github.com/smtg-ai/claude-squad)** + **`Git Worktree`** + **`Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** | แยกห้องทดลอง (`Git Worktree`) ไม่ให้โค้ดหลักพัง, ดักจับไฟล์ `.env` ไม่ให้หลุดด้วย `pre-commit hook`, รันสคริปต์เทสต์จริง (**0 Token**), และใช้ **Playwright MCP** เปิดเว็บกดปุ่ม/แคปหน้าจอตรวจงานฟรี 100% |
-| **4. เลขาจดงานบนมือถือ (ตัวเลือกเสริม)** | **Hermes Agent (Telegram)** *(สำหรับจดไอเดียนอกบ้าน)* | ใช้คุยปั้นไอเดียบนมือถือแล้วเซฟเป็นไฟล์ร่าง `SPEC.md` ลงโฟลเดอร์ `.relay/` รอไว้ **(ไม่สั่งรัน CLI รายเดือนอัตโนมัติหลังบ้านเพื่อกันโดนแบน)** |
+| **3. ลู่วิ่งแยกกิ่ง & หน้าจอคุมงาน** | **[`BloopAI/vibe-kanban`](https://github.com/BloopAI/vibe-kanban)** หรือ **[`smtg-ai/claude-squad`](https://github.com/smtg-ai/claude-squad)** + **`Git Worktree`** | แยกห้องทดลอง (`Git Worktree`) อัตโนมัติไม่ให้โค้ดหลัก (`main`) พัง และดู `git diff` ก่อนรวมโค้ดได้ในหน้าจอเดียว |
+| **4. เกราะความปลอดภัย & ตาตรวจหน้าเว็บ** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ดักจับไฟล์ `.env` ไม่ให้หลุดด้วย `pre-commit hook`, รันสคริปต์เทสต์จริง (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** เปิดเว็บกดปุ่ม/แคปหน้าจอตรวจงานฟรี 100% |
 
 ```mermaid
 flowchart TD
