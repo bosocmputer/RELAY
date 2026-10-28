@@ -9,6 +9,9 @@
 *.sqlite
 *.db
 
+# RELAY Temporary Worktrees
+.relay/worktrees/
+
 # OS & Editor
 .DS_Store
 Thumbs.db

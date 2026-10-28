@@ -2,7 +2,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MANIFEST_FILE="$SCRIPT_DIR/skills-manifest.txt"
+if [ -f "$SCRIPT_DIR/skills-manifest.txt" ]; then
+  MANIFEST_FILE="$SCRIPT_DIR/skills-manifest.txt"
+  QA_TEMPLATE="$SCRIPT_DIR/templates/playwright-qa-SKILL.md"
+else
+  MANIFEST_FILE="$HOME/.agents/skills-manifest.txt"
+  QA_TEMPLATE="$HOME/.agents/skills/playwright-qa/SKILL.md"
+fi
 
 show_help() {
   echo "=================================================================="
@@ -35,7 +41,9 @@ sync_manifest_skills() {
 
   # คัดลอกสกิล playwright-qa ของ RELAY ให้เป็นเวอร์ชันล่าสุดเสมอ
   mkdir -p ~/.agents/skills/playwright-qa
-  cp "$SCRIPT_DIR/templates/playwright-qa-SKILL.md" ~/.agents/skills/playwright-qa/SKILL.md
+  if [ -f "$QA_TEMPLATE" ] && [ "$QA_TEMPLATE" != "$HOME/.agents/skills/playwright-qa/SKILL.md" ]; then
+    cp "$QA_TEMPLATE" ~/.agents/skills/playwright-qa/SKILL.md
+  fi
 
   # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
   if command -v claude >/dev/null 2>&1; then
