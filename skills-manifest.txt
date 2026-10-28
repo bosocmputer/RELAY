@@ -1,23 +1,23 @@
 # ==============================================================================
 # RELAY Skills Manifest (รายการคลังทักษะมาตรฐานสำหรับติดตั้งและอัปเดตอัตโนมัติ)
-# รูปแบบ: <GitHub_Repo_URL>|<Skill_Name_หรือ_เว้นว่างถ้าลงทั้งRepo>|<คำอธิบายบทบาท>
+# รูปแบบ: <GitHub_Repo_URL>|<Skill_Name_หรือ_เว้นว่างถ้าติดตั้งทั้งRepo>|<คำอธิบายบทบาท>
 # ==============================================================================
 
-# ── ไม้ที่ 1: @po (Product Owner — ซักถามโจทย์ & วิเคราะห์ธุรกิจ) ──
-https://github.com/obra/superpowers|brainstorming|[ไม้ 1 @po] ซักถามความต้องการทีละข้อจนชัดเจนก่อนเริ่มงาน
-https://github.com/Jakeschincariol/founder-skill||[ไม้ 1 @po] วิเคราะห์โมเดลธุรกิจและกลยุทธ์ผลิตภัณฑ์เมื่อเริ่มโปรเจกต์ใหม่
+# ── ขั้นตอนที่ 1: @po (Product Owner — การวิเคราะห์ความต้องการและโมเดลธุรกิจ) ──
+https://github.com/obra/superpowers|brainstorming|[ขั้นตอนที่ 1 @po] การซักถามและวิเคราะห์ความต้องการทีละประเด็นอย่างเป็นระบบ
+https://github.com/Jakeschincariol/founder-skill||[ขั้นตอนที่ 1 @po] การวิเคราะห์โมเดลธุรกิจและกลยุทธ์ผลิตภัณฑ์สำหรับโครงการใหม่
 
-# ── ไม้ที่ 2: @arch & @pm (Architect & Planner — วางโครงสร้าง & แตกแผนงาน) ──
-https://github.com/obra/superpowers|writing-plans|[ไม้ 2 @arch/@pm] แตกแผนงานเช็กลิสต์และโครงสร้างไฟล์อย่างเป็นระบบ
+# ── ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner — การออกแบบและวางแผนงาน) ──
+https://github.com/obra/superpowers|writing-plans|[ขั้นตอนที่ 2 @arch/@pm] การออกแบบโครงสร้างระบบและจัดทำแผนการดำเนินงานย่อย
 
-# ── ไม้ที่ 3: @dev (Full-Stack Developer — ซอง Frontend, Backend & TDD) ──
-https://github.com/pbakaus/impeccable|impeccable|[ไม้ 3 @dev-FE] ออกแบบและจัดวาง UI/UX ระดับมืออาชีพ ไม่เป็น AI Slop
-https://github.com/vercel-labs/agent-skills|vercel-react-best-practices|[ไม้ 3 @dev-FE] มาตรฐานการเขียน React / Next.js ประสิทธิภาพสูง
-https://github.com/supabase/agent-skills|supabase-postgres-best-practices|[ไม้ 3 @dev-BE] มาตรฐานการออกแบบฐานข้อมูล PostgreSQL, SQL, Auth และ RLS
-https://github.com/obra/superpowers|test-driven-development|[ไม้ 3 @dev-Core] เขียน Unit Test นำโค้ดจริงตามหลัก TDD
-https://github.com/obra/superpowers|systematic-debugging|[ไม้ 3 @dev-Core] วิเคราะห์และหาต้นตอของบั๊กอย่างเป็นระบบ ไม่เดาสุ่ม
+# ── ขั้นตอนที่ 3: @dev (Full-Stack Developer — ชุดทักษะ Frontend, Backend & TDD) ──
+https://github.com/pbakaus/impeccable|impeccable|[ขั้นตอนที่ 3 @dev-FE] มาตรฐานการออกแบบและจัดวางส่วนติดต่อผู้ใช้ (UI/UX) ระดับมืออาชีพ
+https://github.com/vercel-labs/agent-skills|vercel-react-best-practices|[ขั้นตอนที่ 3 @dev-FE] แนวทางปฏิบัติที่ดีที่สุดสำหรับการพัฒนา React และ Next.js
+https://github.com/supabase/agent-skills|supabase-postgres-best-practices|[ขั้นตอนที่ 3 @dev-BE] มาตรฐานการออกแบบฐานข้อมูล PostgreSQL, SQL, Auth และ RLS
+https://github.com/obra/superpowers|test-driven-development|[ขั้นตอนที่ 3 @dev-Core] การพัฒนาซอฟต์แวร์โดยเขียนชุดทดสอบนำโค้ดจริง (TDD)
+https://github.com/obra/superpowers|systematic-debugging|[ขั้นตอนที่ 3 @dev-Core] กระบวนการวิเคราะห์และแก้ไขข้อผิดพลาดของระบบอย่างมีแบบแผน
 
-# ── ไม้ที่ 4: @qa & @sec (Verifier & Security Auditor — ตรวจรับงาน & ความปลอดภัย) ──
-https://github.com/obra/superpowers|verification-before-completion|[ไม้ 4 @qa] กฎเหล็กห้ามสรุปว่างานเสร็จจนกว่าจะรันเทสต์ผ่านจริง
-https://github.com/trailofbits/skills|differential-review|[ไม้ 4 @sec] ตรวจสอบความปลอดภัยเฉพาะจุดที่แก้ไขใน git diff (Trail of Bits)
-https://github.com/semgrep/skills||[ไม้ 4 @sec] สแกนหาช่องโหว่ความปลอดภัยตามมาตรฐาน OWASP Top 10 (Semgrep)
+# ── ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor — การตรวจสอบคุณภาพและความปลอดภัย) ──
+https://github.com/obra/superpowers|verification-before-completion|[ขั้นตอนที่ 4 @qa] ข้อกำหนดการตรวจสอบผลลัพธ์จริงด้วยชุดทดสอบก่อนสรุปจบงาน
+https://github.com/trailofbits/skills|differential-review|[ขั้นตอนที่ 4 @sec] การตรวจสอบความมั่นคงปลอดภัยเฉพาะส่วนที่มีการแก้ไขโค้ด (Trail of Bits)
+https://github.com/semgrep/skills||[ขั้นตอนที่ 4 @sec] การสแกนหาช่องโหว่ความปลอดภัยตามมาตรฐาน OWASP Top 10 (Semgrep)

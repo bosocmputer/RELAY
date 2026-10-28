@@ -1,107 +1,107 @@
-# 🏃‍♂️ RELAY (`.relay/`): ระบบส่งไม้ต่อระหว่าง AI หลายค่ายผ่านเอกสารสัญญา (v1.0 Community Edition)
+# RELAY (`.relay/`): มาตรฐานสถาปัตยกรรมการทำงานร่วมกับตัวแทน AI หลายค่ายผ่านเอกสารกำหนดข้อตกลง (v1.0 Official Edition)
 
-**มาตรฐานการทำงานร่วมกับ AI (`Gemini` ➔ `Claude` ➔ `Codex`) แบบ "วิ่งผลัดส่งไม้ต่อ (Pass the Baton)"**  
-*รองรับทั้ง **Windows** และ **macOS** • เริ่มต้นจาก 0 • ประหยัด Token 90% • ไม่ต้องสร้างเซิร์ฟเวอร์ครอบเอง • ไม่เสี่ยงโดนแบนแพ็กเกจรายเดือน (Subscription) 100%*
-
----
-
-## 🌟 ทำไมถึงเกิดระบบ `RELAY` และมันช่วยคุณได้อย่างไร?
-
-เมื่อเราสั่งงาน AI ในแชตเดียวไปนานๆ เราจะเจอ 3 ปัญหาใหญ่เสมอ:
-1. **AI เริ่มมั่วและลืมคำสั่งแรก (Context Rot):** เพราะประวัติแชตยาวเกินไปจนข้อมูลเก่าตีกับข้อมูลใหม่
-2. **โควตารายเดือนหมดไว (Token Explosion):** เพราะทุกครั้งที่พิมพ์ถาม 1 บรรทัด ระบบต้องส่งประวัติแชตเก่าทั้งหมดกลับไปคิดเงินใหม่ทุกเทิร์น
-3. **เสี่ยงโดนแบนบัญชี (Ban Risk):** หากใช้โปรแกรมบอทเถื่อนแอบยิงคำสั่งอัตโนมัติรัวๆ หลังบ้านบนแพ็กเกจรายเดือน
-
-### 💡 ทางออกของ `RELAY`: "วิ่งผลัด 4 ไม้ ส่งต่อด้วยใบสัญญาแผ่นเดียว"
-แทนที่จะปล่อยให้ AI คุยกันเองในแชตยาวๆ ระบบ **`RELAY`** แบ่งการทำงานออกเป็น **4 ไม้ผลัด** โดยทุกครั้งที่คุยจบ 1 ไม้ เราจะกลั่นผลลัพธ์เป็นไฟล์สรุปสั้นๆ 1 หน้ากระดาษเก็บไว้ในโฟลเดอร์ **`.relay/`** (เปิดดูในแอป **Obsidian** ได้สวยงาม) แล้วพิมพ์ **`/clear` ล้างแชตทิ้งทันที!**
-
-เมื่อ AI ไม้ถัดไปมารับงาน มันจะอ่านเฉพาะใบสั่งงานแผ่นเดียวที่คมกริบ ทำให้ **สมองโล่ง 100%, ประหยัด Token ลงถึง 90%, และเปิดใช้ผ่าน Official CLI ของแต่ละค่ายตรงๆ จึงปลอดภัยจากการโดนแบน 100%!**
+**ระบบจัดการกระบวนการพัฒนาซอฟต์แวร์ร่วมกับตัวแทน AI (`Gemini` ➔ `Claude` ➔ `Codex`) แบบแบ่ง 4 ขั้นตอนผ่านเอกสารส่งมอบงาน**  
+*รองรับทั้งระบบปฏิบัติการ **Windows** และ **macOS** • เริ่มต้นติดตั้งตั้งแต่ศูนย์ • ลดการใช้ Token 85–90% • ไม่ต้องดูแลเซิร์ฟเวอร์ตัวกลาง • ปลอดภัยตามเงื่อนไขการใช้งานแพ็กเกจรายเดือน (Subscription) 100%*
 
 ---
 
-## 🏛️ สถาปัตยกรรม 4 เสาหลักของ `RELAY`
+## 1. ที่มาและหลักการทำงานของระบบ `RELAY`
 
-| เสาหลักทั้ง 4 ส่วน | เครื่องมือที่ใช้จริง (ฟรี & Open-Source) | บทบาทหน้าที่ในระบบ |
+ในการพัฒนาซอฟต์แวร์ด้วยตัวแทน AI (AI Coding Agents) การสั่งงานต่อเนื่องในหน้าต่างสนทนาเดียวเป็นเวลานานมักก่อให้เกิดปัญหาสำคัญ 3 ประการ:
+1. **ความคลาดเคลื่อนของผลลัพธ์เมื่อบริบทยาวเกินไป (Context Rot):** เมื่อประวัติการสนทนาสะสมมากขึ้น โมเดลภาษาจะเริ่มสับสนระหว่างข้อกำหนดเริ่มต้นกับการแก้ไขเฉพาะหน้า
+2. **การสิ้นเปลืองโควตาการประมวลผล (Token Explosion):** ทุกข้อความใหม่ที่ส่งเข้าไปในหน้าต่างสนทนาเดิม ระบบจะต้องส่งประวัติการสนทนาทั้งหมดกลับไปประมวลผลซ้ำทุกครั้ง ทำให้โควตาของแพ็กเกจรายเดือนหมดลงอย่างรวดเร็ว
+3. **ความเสี่ยงด้านการระงับบัญชี (Subscription Ban Risk):** การใช้สคริปต์อัตโนมัติครอบ CLI เพื่อยิงคำสั่งวนซ้ำเบื้องหลัง (Unattended Headless Loop) ขัดต่อข้อกำหนดการให้บริการของผู้ให้บริการ AI
+
+### แนวทางแก้ไขของระบบ `RELAY` (4-Phase Artifact-Driven Workflow)
+ระบบ **`RELAY`** แยกกระบวนการทำงานออกเป็น **4 ขั้นตอน (Phases)** โดยเมื่อสิ้นสุดแต่ละขั้นตอน ข้อมูลสำคัญจะถูกสกัดเป็นเอกสารข้อตกลงขนาดกะทัดรัดเก็บไว้ในโฟลเดอร์ **`.relay/`** (สามารถเปิดอ่านและจัดการผ่านโปรแกรม **Obsidian**) จากนั้นผู้พัฒนาจะใช้คำสั่ง **`/clear` เพื่อล้างหน่วยความจำการสนทนาทันที**
+
+ตัวแทน AI ในขั้นตอนถัดไปจะอ่านเฉพาะเอกสารสรุปจากขั้นตอนก่อนหน้า ทำให้ได้รับบริบทที่ชัดเจนแม่นยำ ประหยัดโควตา Token ลงได้ถึง 85–90% และใช้งานผ่าน Official CLI ของผู้ให้บริการโดยตรงจึงปลอดภัยต่อบัญชีผู้ใช้งาน 100%
+
+---
+
+## 2. องค์ประกอบหลักทั้ง 4 ส่วนของสถาปัตยกรรม `RELAY`
+
+| องค์ประกอบหลัก | เครื่องมือมาตรฐานที่ใช้ (Open-Source & Official Tools) | หน้าที่ความรับผิดชอบในระบบ |
 | :--- | :--- | :--- |
-| **1. ไม้ผลัดเอกสารสัญญา (พระเอก)** | **Obsidian** + โฟลเดอร์ **`.relay/`** + **[`github/spec-kit`](https://github.com/github/spec-kit)** | บังคับให้ **"ซักถามความต้องการให้จบก่อนลงมือทำ"** แล้วกลั่นเป็นไฟล์ `SPEC.md` และ `PLAN.md` หน้าเดียว ส่งไม้ต่อข้ามค่ายโดย Context ไม่เต็ม |
-| **2. ทีมนักวิ่ง AI 3 ค่าย (ใช้ Sub เดิม)** | Official CLI: **`claude`**, **`codex`**, **`gemini`** + กฎ **`GLOBAL_AGENTS.md`** | เปิดใช้ CLI ของแต่ละเจ้าตรงๆ กำหนดบทบาท (`@po`, `@arch`, `@pm`, `@dev`, `@qa`, `@sec`) พร้อมผูก **ซองทักษะ (Skills)** เฉพาะสายงาน |
-| **3. ลู่วิ่งแยกกิ่ง & หน้าจอคุมงาน** | **[`BloopAI/vibe-kanban`](https://github.com/BloopAI/vibe-kanban)** หรือ **[`smtg-ai/claude-squad`](https://github.com/smtg-ai/claude-squad)** + **`Git Worktree`** | แยกห้องทดลอง (`Git Worktree`) อัตโนมัติไม่ให้โค้ดหลัก (`main`) พัง และดู `git diff` ก่อนรวมโค้ดได้ในหน้าจอเดียว |
-| **4. เกราะความปลอดภัย & ตาตรวจหน้าเว็บ** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ดักจับไฟล์ `.env` ไม่ให้หลุดด้วย `pre-commit hook`, รันสคริปต์เทสต์จริง (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** เปิดเว็บกดปุ่ม/แคปหน้าจอตรวจงานฟรี 100% |
+| **1. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | **Obsidian** + โฟลเดอร์ **`.relay/`** + **[`github/spec-kit`](https://github.com/github/spec-kit)** | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`) และรายงานผลการตรวจสอบ (`QA_REPORT.md`) |
+| **2. บทบาทตัวแทน AI และชุดทักษะเฉพาะทาง** | Official CLI: **`claude`**, **`codex`**, **`gemini`** + ไฟล์กฎ **`GLOBAL_AGENTS.md`** | กำหนดบทบาทการทำงานทั้ง 4 ขั้นตอน (`@po`, `@arch`, `@pm`, `@dev`, `@qa`, `@sec`) พร้อมเชื่อมโยงชุดทักษะเฉพาะทาง (Modular Skill Packs) |
+| **3. สภาพแวดล้อมการทำงานแยกอิสระ** | **[`BloopAI/vibe-kanban`](https://github.com/BloopAI/vibe-kanban)** หรือ **[`smtg-ai/claude-squad`](https://github.com/smtg-ai/claude-squad)** + **`Git Worktree`** | แยกกิ่งการพัฒนา (`Git Worktree`) ออกจากกิ่งหลัก (`main`) อัตโนมัติ เพื่อป้องกันผลกระทบต่อโค้ดหลักและตรวจสอบ `git diff` ก่อนผสานโค้ด |
+| **4. ระบบตรวจสอบความปลอดภัยและการทดสอบส่วนติดต่อผู้ใช้** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ป้องกันการบันทึกไฟล์ความลับ (`.env`) ด้วย `pre-commit hook`, รันชุดทดสอบระบบด้วยสคริปต์ (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** ทดสอบส่วนติดต่อผู้ใช้บนเบราว์เซอร์จริงโดยไม่เสียค่าใช้จ่าย API เพิ่มเติม |
 
 ```mermaid
 flowchart TD
-    subgraph P1 ["1. ไม้ผลัดเอกสารสัญญา (พระเอก: Obsidian + .relay/)"]
-        STATE[".relay/PROJECT_STATE.md<br/>(สรุปโครงสร้างล่าสุดของโปรเจกต์ใน 1 หน้า)"]
-        SPEC[".relay/tasks/YYYYMMDD-feature/SPEC.md & PLAN.md<br/>(ไม้ผลัดใบสั่งงานสั้นๆ — ล้างแชต /clear ได้ทันที)"]
+    subgraph P1 ["1. ระบบเอกสารข้อตกลงและสถานะโครงการ (Obsidian + .relay/)"]
+        STATE[".relay/PROJECT_STATE.md<br/>(สรุปโครงสร้างล่าสุดของโครงการ ความยาวไม่เกิน 2 หน้า)"]
+        SPEC[".relay/tasks/YYYYMMDD-feature/SPEC.md & PLAN.md<br/>(เอกสารส่งมอบงานแต่ละขั้นตอน — ล้างประวัติแชตด้วย /clear)"]
     end
 
-    subgraph P2 ["2. หน้าจอรวมศูนย์ & ลู่วิ่งแยกกิ่ง (vibe-kanban หรือ claude-squad)"]
-        UI["หน้าจอเดียวคุมทุกค่าย + แตก Git Worktree อัตโนมัติ<br/>(npx vibe-kanban หรือ claude --worktree)"]
+    subgraph P2 ["2. ระบบจัดการสภาพแวดล้อมแยกอิสระ (Git Worktree Management)"]
+        UI["จัดการกิ่งแยกและตรวจสอบโค้ด<br/>(claude --worktree, npx vibe-kanban หรือ claude-squad)"]
     end
 
-    subgraph P3 ["3. นักวิ่งทั้ง 4 ไม้ เปิดผ่าน Official CLI ตรงๆ (ใช้ Sub รายเดือน ปลอดภัย 100%)"]
-        C1["ไม้ที่ 1: @po (Gemini / Claude)<br/>ซักถามโจทย์จนเคลียร์ ➔ เขียน SPEC.md"]
-        C2["ไม้ที่ 2: @arch & @pm (Claude / Gemini)<br/>อ่าน PROJECT_STATE.md + SPEC.md ➔ เขียน ARCH.md & PLAN.md"]
-        C3["ไม้ที่ 3: @dev (Claude Code --worktree)<br/>หยิบซอง FE / BE / TDD ➔ เขียนโค้ด + Unit Tests ในกิ่งแยก"]
-        C4["ไม้ที่ 4: @qa & @sec (Codex / Claude + Playwright MCP)<br/>รันเทสต์ 0 Token + สแกน Security + เปิดเว็บกดปุ่มจริง & แคปหน้าจอ"]
+    subgraph P3 ["3. ขั้นตอนการทำงานของตัวแทน AI ทั้ง 4 ขั้นตอน (ผ่าน Official CLI โดยตรง)"]
+        C1["ขั้นตอนที่ 1: @po (Gemini / Claude)<br/>วิเคราะห์และซักถามความต้องการ ➔ จัดทำ SPEC.md"]
+        C2["ขั้นตอนที่ 2: @arch & @pm (Claude / Gemini)<br/>อ่าน PROJECT_STATE.md + SPEC.md ➔ จัดทำ ARCH.md & PLAN.md"]
+        C3["ขั้นตอนที่ 3: @dev (Claude Code --worktree)<br/>เรียกใช้ชุดทักษะ FE / BE / TDD ➔ พัฒนาโค้ดและชุดทดสอบในกิ่งแยก"]
+        C4["ขั้นตอนที่ 4: @qa & @sec (Codex / Claude + Playwright MCP)<br/>รันชุดทดสอบ (0 Token) + ตรวจสอบความปลอดภัย + ทดสอบ UI และบันทึกภาพหน้าจอ"]
     end
 
-    subgraph P4 ["4. เส้นชัย & เกราะความปลอดภัย (Git Harness)"]
-        HOOK["Global Git Pre-commit Hook + Playwright MCP<br/>1. บล็อกไฟล์ความลับ (.env, *.key) อัตโนมัติ<br/>2. รันสคริปต์เทสต์จริง (0 Token)<br/>3. แนบภาพหน้าจอใน QA_REPORT.md"]
-        MERGE["คุณตรวจ Diff + รูปหน้าจอ ➔ กด Merge เข้า main ➔ ย้ายเข้า .relay/archive/"]
+    subgraph P4 ["4. การตรวจสอบขั้นสุดท้ายและการผสานโค้ด (Verification & Merge)"]
+        HOOK["Global Git Pre-commit Hook + Playwright MCP<br/>1. ป้องกันการบันทึกไฟล์ความลับ (.env, *.key)<br/>2. ยืนยันผลการรันชุดทดสอบระบบ (0 Token)<br/>3. บันทึกรายงานและภาพหน้าจอลงใน QA_REPORT.md"]
+        MERGE["ผู้พัฒนาตรวจสอบ git diff และรายงาน ➔ ผสานโค้ดเข้าสู่ main ➔ ย้ายใบงานเข้าสู่ .relay/archive/"]
     end
 
     P1 <--> P2
     P2 --> C1 & C2 & C3 & C4
-    C1 -->|ส่งไม้ 1| SPEC
-    SPEC -->|ส่งไม้ 2| C2
-    C2 -->|ส่งไม้ 3| C3
-    C3 -->|ส่งไม้ 4| C4
+    C1 -->|ส่งมอบเอกสารขั้นที่ 1| SPEC
+    SPEC -->|ส่งมอบเอกสารขั้นที่ 2| C2
+    C2 -->|ส่งมอบเอกสารขั้นที่ 3| C3
+    C3 -->|ส่งมอบเอกสารขั้นที่ 4| C4
     C4 --> HOOK --> MERGE
 ```
 
 ---
 
-## 🐣 วิธีติดตั้งเริ่มตั้งแต่ 0 (Zero-to-Hero) รองรับทั้ง Windows และ macOS
+## 3. การติดตั้งระบบตั้งแต่เริ่มต้น (รองรับทั้ง Windows และ macOS)
 
-> 📖 **หากเครื่องของคุณยังไม่มี Git หรือ Node.js เลย:** สามารถเปิดอ่านคู่มือจับมือทำแบบละเอียดทีละคลิกได้ที่ **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)**
+> 📖 **สำหรับผู้เริ่มต้นที่ยังไม่มีเครื่องมือพื้นฐานในเครื่อง:** สามารถศึกษาขั้นตอนการติดตั้งแบบละเอียดทีละขั้นตอนได้ที่เอกสาร **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)**
 
-### ขั้นที่ 1: ติดตั้งโปรแกรมพื้นฐาน (Git, Node.js, Obsidian) และตัว CLI ของค่าย AI
+### ขั้นตอนที่ 3.1: ติดตั้งโปรแกรมพื้นฐาน (Git, Node.js, Obsidian) และ Official CLI
 
-#### 🍎 สำหรับเครื่อง Mac (เปิดแอป `Terminal`)
+#### 🍎 สำหรับระบบปฏิบัติการ macOS (รันใน `Terminal`)
 ```bash
-# 1. ลง Git, Node.js, pnpm และ Obsidian (ผ่าน Homebrew)
+# 1. ติดตั้ง Git, Node.js, pnpm และโปรแกรม Obsidian ผ่าน Homebrew
 brew install git node pnpm
 brew install --cask obsidian
 
-# 2. ลง Official CLI ของค่าย AI ที่คุณมีแพ็กเกจรายเดือน (มีค่ายไหนลงค่ายนั้น หรือลงครบทั้ง 3 ค่าย)
+# 2. ติดตั้ง Official CLI ของผู้ให้บริการที่คุณมีแพ็กเกจรายเดือน (เลือกค่ายที่ใช้งาน หรือติดตั้งทั้งหมด)
 npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 ```
 
-#### 🪟 สำหรับเครื่อง Windows (คลิกขวาเปิด `PowerShell` แบบ Run as Administrator)
+#### 🪟 สำหรับระบบปฏิบัติการ Windows (คลิกขวาเปิด `PowerShell` แบบ Run as Administrator)
 ```powershell
-# 1. ลง Git, Node.js (LTS) และ Obsidian ผ่าน winget
+# 1. ติดตั้ง Git, Node.js (LTS) และโปรแกรม Obsidian ผ่าน winget
 winget install --id Git.Git -e --source winget
 winget install --id OpenJS.NodeJS.LTS -e --source winget
 winget install --id Obsidian.Obsidian -e --source winget
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
-# (ปิด PowerShell แล้วเปิดใหม่ 1 ครั้ง จากนั้นรันคำสั่งลง CLI ด้านล่าง)
+# 2. ปิดหน้าต่าง PowerShell แล้วเปิดใหม่ 1 ครั้ง จากนั้นติดตั้ง Official CLI
 npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 ```
-*(หมายเหตุ: หลังลงเสร็จ ให้พิมพ์ `claude`, `codex`, หรือ `gemini` เพื่อ Login เข้าบัญชีรายเดือนของคุณ 1 ครั้ง)*
+*(หลังจากติดตั้งเสร็จสิ้น ให้พิมพ์คำสั่ง `claude`, `codex` หรือ `gemini` เพื่อเข้าสู่ระบบตามสิทธิ์บัญชีรายเดือนของคุณ 1 ครั้ง)*
 
 ---
 
-### ขั้นที่ 2: โคลน `RELAY` และติดตั้งสมองส่วนกลาง (ทำครั้งเดียว ใช้ได้ทุกโปรเจกต์ทั้งเครื่อง!)
+### ขั้นตอนที่ 3.2: ติดตั้งการตั้งค่าส่วนกลางของระบบ `RELAY` (ทำเพียงครั้งเดียว ใช้งานได้ทุกโครงการ)
 
-คุณ **ไม่ต้องติดตั้งซ้ำทีละโปรเจกต์** เพราะสคริปต์ของ `RELAY` จะติดตั้งกฎกลางและคลังทักษะไว้ที่โฟลเดอร์ Home ของเครื่อง (`~/.agents/` บน Mac หรือ `%USERPROFILE%\.agents\` บน Windows) ทำให้ทุกโปรเจกต์ในเครื่องใช้งานได้ทันที!
+สคริปต์ติดตั้งจะทำการสร้างโฟลเดอร์ส่วนกลาง (`~/.agents/` บน macOS หรือ `%USERPROFILE%\.agents\` บน Windows) เพื่อเก็บไฟล์กฎการทำงานส่วนกลาง ชุดทักษะทั้ง 4 ขั้นตอน สคริปต์เริ่มต้นโครงการ (`relay-init`) และกลไกตรวจสอบความปลอดภัยระดับ Global ทำให้ทุกโครงการในเครื่องพร้อมใช้งานทันทีโดยไม่ต้องติดตั้งซ้ำ
 
-#### 🍎 คำสั่งติดตั้งบน Mac / Linux:
+#### 🍎 คำสั่งติดตั้งบน macOS / Linux:
 ```bash
 git clone https://github.com/bosocmputer/RELAY.git
 cd RELAY
-chmod +x setup-mac.sh relay-skills.sh
+chmod +x setup-mac.sh relay-init.sh relay-skills.sh
 ./setup-mac.sh
 ./relay-skills.sh install
 ```
@@ -116,78 +116,113 @@ cd RELAY
 
 ---
 
-## 🧰 ระบบจัดการ อัปเดต และเพิ่ม Skills อัตโนมัติ (`relay-skills`)
+## 4. การติดตั้งและการใช้งานร่วมกับโปรแกรม Obsidian
 
-เราคัดสรรสุดยอด Skills มาตรฐานระดับโลกมาให้ครบทั้ง 4 ไม้ในไฟล์ [`skills-manifest.txt`](./skills-manifest.txt) และคุณสามารถสั่ง **อัปเดตตามผู้พัฒนาต้นทาง** หรือ **เพิ่มสกิลใหม่** ได้ตลอดเวลา:
+### 4.1 จำเป็นต้องติดตั้งโปรแกรม Obsidian หรือไม่?
+ไฟล์เอกสารทั้งหมดในโฟลเดอร์ `.relay/` เป็นไฟล์ Markdown มาตรฐาน (`.md`) ซึ่งสามารถเปิดอ่านและแก้ไขในโปรแกรมเขียนโค้ด (เช่น VS Code, Cursor หรือ Antigravity) ได้โดยตรง อย่างไรก็ตาม **เราแนะนำอย่างยิ่งให้ติดตั้งโปรแกรม Obsidian (ใช้งานฟรี 100%)** เพื่อใช้เป็น **"หน้าต่างจัดการเอกสารสัญญาและฐานความรู้ของโครงการ (Project Specification Hub)"** แยกต่างหากจากหน้าต่างเขียนโค้ด ช่วยให้อ่านแผนภาพสถาปัตยกรรม (Mermaid) ตรวจเช็กรายการงาน และดูภาพหน้าจอผลการทดสอบใน `QA_REPORT.md` ได้อย่างสะดวก
 
-| คำสั่งใช้งาน | บน Mac / Linux (`Terminal`) | บน Windows (`PowerShell`) | หน้าที่การทำงาน |
+- **ลิงก์ดาวน์โหลดโดยตรง (กรณีไม่ติดตั้งผ่านคำสั่งข้างต้น):** [https://obsidian.md](https://obsidian.md)
+
+### 4.2 วิธีเชื่อมต่อโฟลเดอร์ `.relay/` เข้ากับโปรแกรม Obsidian
+1. เปิดโปรแกรม **Obsidian**
+2. คลิกปุ่ม **"Open folder as vault"** (เปิดโฟลเดอร์เป็นคลังข้อมูล)
+3. เลือกไปที่โฟลเดอร์ **`.relay`** ภายในโครงการของคุณ (เช่น `my-project/.relay`) แล้วกด **Open**
+   *(คำแนะนำสำหรับผู้ใช้ macOS: หากไม่เห็นโฟลเดอร์ `.relay` ในหน้าต่างเลือกไฟล์ ให้กดปุ่มลัด `Command (⌘) + Shift + .` เพื่อแสดงโฟลเดอร์ที่ขึ้นต้นด้วยจุด)*
+4. คุณจะสามารถเปิดดูและแก้ไขไฟล์ `PROJECT_STATE.md`, เอกสารในโฟลเดอร์ `tasks/` และประวัติงานใน `archive/` ได้แบบเรียลไทม์ควบคู่ไปกับการทำงานของ AI
+
+---
+
+## 5. วิธีการนำระบบ `RELAY` ไปใช้งานจริง (2 กรณีศึกษาหลัก)
+
+> 📖 ศึกษารายละเอียดเชิงลึกและตัวอย่างชุดคำสั่งทั้งหมดเพิ่มเติมได้ที่ **[`docs/USE_CASES_NEW_AND_EXISTING.md`](./docs/USE_CASES_NEW_AND_EXISTING.md)**
+
+### กรณีศึกษาที่ 1: การเริ่มต้นโครงการใหม่ตั้งแต่ศูนย์ (Greenfield Project — ติดตั้ง `RELAY` ก่อนเริ่มพัฒนาซอฟต์แวร์)
+
+เมื่อคุณต้องการสร้างแอปพลิเคชันหรือระบบใหม่ตั้งแต่ศูนย์ ให้เตรียมโครงสร้าง `.relay/` ก่อนเริ่มเขียนโค้ดตามขั้นตอนดังนี้:
+
+1. **สร้างโฟลเดอร์โครงการและเตรียมโครงสร้าง `.relay/`:**
+   - **บน macOS / Linux:**
+     ```bash
+     mkdir my-new-app && cd my-new-app
+     git init -b main
+     ~/.agents/bin/relay-init . new
+     ```
+   - **บน Windows (PowerShell):**
+     ```powershell
+     mkdir my-new-app; cd my-new-app
+     git init -b main
+     & "$HOME\.agents\bin\relay-init.ps1" . new
+     ```
+   *(หรือสร้างด้วยคำสั่งพื้นฐาน: `mkdir -p .relay/tasks .relay/archive`)*
+
+2. **เริ่มขั้นตอนที่ 1 (`@po` — กำหนดความต้องการของโครงการใหม่):**
+   เปิดใช้งาน CLI (`gemini` หรือ `claude`) แล้วสั่งงาน:
+   > `"@po ฉันต้องการสร้างโปรเจกต์ใหม่เกี่ยวกับ [ระบุรายละเอียดระบบ] ช่วยซักถามความต้องการและขอบเขตของระบบทีละประเด็นจนชัดเจน แล้วสรุปเป็นไฟล์ .relay/tasks/20261028-initial-system/SPEC.md"`
+   เมื่อได้ไฟล์ `SPEC.md` ที่ถูกต้องแล้ว ให้พิมพ์ **`/clear`** เพื่อล้างประวัติการสนทนา
+
+3. **ส่งมอบงานไปยังขั้นตอนที่ 2, 3 และ 4 ตามลำดับ:**
+   - **ขั้นตอนที่ 2 (`@arch` & `@pm`):** สั่งให้อ่าน `SPEC.md` เพื่อสร้างแผนสถาปัตยกรรม `ARCH.md`, รายการดำเนินงาน `PLAN.md`, และบันทึกโครงสร้างตั้งต้นลงใน `.relay/PROJECT_STATE.md` จากนั้นพิมพ์ `/clear`
+   - **ขั้นตอนที่ 3 (`@dev`):** เปิดสภาพแวดล้อมแยกอิสระ (`claude --worktree initial-system`) แล้วสั่งให้อ่าน `SPEC.md`, `ARCH.md` และ `PLAN.md` เพื่อพัฒนาโค้ดและชุดทดสอบ
+   - **ขั้นตอนที่ 4 (`@qa` & `@sec`):** สั่งให้รันชุดทดสอบระบบ ตรวจสอบความปลอดภัยด้วย `differential-review` และทดสอบหน้าเว็บด้วย `Playwright MCP` พร้อมสรุปผลลงใน `QA_REPORT.md`
+
+---
+
+### กรณีศึกษาที่ 2: การนำ `RELAY` ไปใช้กับโครงการเดิมที่มีอยู่แล้ว (Brownfield / Existing Project)
+
+หากคุณมีโครงการเดิมที่พัฒนามาอยู่แล้วโดยไม่เคยใช้ระบบ `RELAY` มาก่อน คุณสามารถนำ `RELAY` เข้าไปติดตั้งเพื่อจัดระเบียบการพัฒนาต่อได้ทันที โดยไม่ต้องรื้อโครงสร้างโค้ดเดิม:
+
+1. **สร้างโครงสร้าง `.relay/` ในโฟลเดอร์โครงการเดิม:**
+   - **บน macOS / Linux:**
+     ```bash
+     cd /path/to/existing-project
+     ~/.agents/bin/relay-init . existing
+     ```
+   - **บน Windows (PowerShell):**
+     ```powershell
+     cd C:\path\to\existing-project
+     & "$HOME\.agents\bin\relay-init.ps1" . existing
+     ```
+
+2. **สั่งให้ `@arch` สแกนโครงการเดิมเพื่อสร้างไฟล์ `.relay/PROJECT_STATE.md` (ดำเนินการเพียงครั้งเดียว):**
+   เปิดใช้งาน CLI (`claude` หรือ `gemini`) ในโฟลเดอร์โครงการเดิม แล้วสั่งงานด้วยคำสั่งต่อไปนี้:
+   > `"@arch ช่วยสำรวจและวิเคราะห์โครงสร้างของโครงการเดิมนี้ทั้งหมด (ประกอบด้วย Tech Stack, โครงสร้างโฟลเดอร์สำคัญ, รูปแบบฐานข้อมูล/Schema, รายการ API หลัก และคำสั่งที่ใช้ในการ Build/Test) แล้วสรุปเขียนทับลงในไฟล์ .relay/PROJECT_STATE.md ให้มีความชัดเจนและกระชับ (ความยาวไม่เกิน 2 หน้า) โดยห้ามแก้ไขไฟล์โค้ดใดๆ ของระบบ"`
+   เมื่อได้ไฟล์ `.relay/PROJECT_STATE.md` แล้ว ให้พิมพ์ **`/clear`**
+
+3. **เริ่มต้นพัฒนาฟีเจอร์ใหม่หรือแก้ไขข้อผิดพลาดตามขั้นตอนปกติ:**
+   ตั้งแต่นี้เป็นต้นไป เมื่อต้องการเพิ่มฟีเจอร์หรือแก้ไขข้อผิดพลาดในโครงการเดิม ให้เริ่มที่ **ขั้นตอนที่ 1 (`@po`)** เพื่อสร้างใบงาน `.relay/tasks/YYYYMMDD-feature/SPEC.md` ➔ ส่งต่อให้ **ขั้นตอนที่ 2 (`@arch` & `@pm`)** ซึ่งจะอ่าน `.relay/PROJECT_STATE.md` คู่กับ `SPEC.md` ทำให้เข้าใจโครงสร้างโค้ดเดิมทันที ➔ พัฒนาในกิ่งแยกด้วย **ขั้นตอนที่ 3 (`@dev`)** ➔ และตรวจสอบด้วย **ขั้นตอนที่ 4 (`@qa` & `@sec`)**
+
+---
+
+## 6. ระบบจัดการ การอัปเดต และการเพิ่มชุดทักษะ (`relay-skills`)
+
+ระบบ `RELAY` รวบรวมชุดทักษะมาตรฐานสำหรับงานวิศวกรรมซอฟต์แวร์ไว้ในไฟล์ [`skills-manifest.txt`](./skills-manifest.txt) และรองรับการดึงอัปเดตเวอร์ชันล่าสุดจากผู้พัฒนาต้นทางบน GitHub รวมถึงการเพิ่มทักษะใหม่เข้าสู่ระบบ:
+
+| การดำเนินการ | คำสั่งบน macOS / Linux (`Terminal`) | คำสั่งบน Windows (`PowerShell`) | รายละเอียดการทำงาน |
 | :--- | :--- | :--- | :--- |
-| **1. ติดตั้งชุดมาตรฐาน** | `./relay-skills.sh install` | `.\relay-skills.ps1 install` | ติดตั้งชุด Skills ครบทั้ง 4 ไม้ + ผูก `Playwright MCP` |
-| **2. อัปเดตเป็นเวอร์ชันล่าสุด** | `./relay-skills.sh update` | `.\relay-skills.ps1 update` | **ดึงอัปเดตเวอร์ชันใหม่ล่าสุด** จาก GitHub ของผู้พัฒนาต้นทางทุกตัวใน [`skills-manifest.txt`](./skills-manifest.txt) |
-| **3. เพิ่ม Skill ใหม่เข้าคลัง** | `./relay-skills.sh add <repo_url> [skill]` | `.\relay-skills.ps1 add <repo_url> [skill]` | ติดตั้งสกิลใหม่เข้าเครื่อง **พร้อมบันทึกต่อท้ายลง `skills-manifest.txt` อัตโนมัติ** |
-| **4. ดูรายการสกิลทั้งหมด** | `./relay-skills.sh list` | `.\relay-skills.ps1 list` | แสดงรายการสกิลทั้งหมดในคลังและที่ติดตั้งแล้วในเครื่อง |
-
-### 📦 รายการซอง Skills มาตรฐานในชุด Base สายพัฒนาโปรแกรม (Software Engineering)
-- **🏃‍♂️ ไม้ที่ 1 (`@po` — Product Owner):**
-  - `brainstorming` ([`obra/superpowers`](https://github.com/obra/superpowers)) — ซักถามความต้องการทีละข้อจนเคลียร์ก่อนเริ่มทำ
-  - `founder-skill` ([`Jakeschincariol/founder-skill`](https://github.com/Jakeschincariol/founder-skill)) — วิเคราะห์โมเดลธุรกิจและกลยุทธ์เมื่อขึ้นโปรเจกต์ใหม่
-- **🏃‍♂️ ไม้ที่ 2 (`@arch & @pm` — Architect & Planner):**
-  - `writing-plans` ([`obra/superpowers`](https://github.com/obra/superpowers)) — อ่าน `PROJECT_STATE.md` + `SPEC.md` แล้วแตกแผนเช็กลิสต์ลง `ARCH.md` & `PLAN.md`
-- **🏃‍♂️ ไม้ที่ 3 (`@dev` — Full-Stack Developer แยก 3 ซองย่อย):**
-  - **ซอง Frontend (UI/UX):** `impeccable` ([`pbakaus/impeccable`](https://github.com/pbakaus/impeccable)) + `vercel-react-best-practices` ([`vercel-labs/agent-skills`](https://github.com/vercel-labs/agent-skills)) + กฎการใช้ไอคอนจริงจาก `lucide-icons` / `simple-icons`
-  - **ซอง Backend & Database:** `supabase-postgres-best-practices` ([`supabase/agent-skills`](https://github.com/supabase/agent-skills)) — มาตรฐานการออกแบบตาราง SQL, API, Auth และ RLS
-  - **ซองวิศวกรรม & แก้บั๊ก:** `test-driven-development` + `systematic-debugging` ([`obra/superpowers`](https://github.com/obra/superpowers))
-- **🏃‍♂️ ไม้ที่ 4 (`@qa & @sec` — Verifier & Security Auditor):**
-  - `verification-before-completion` ([`obra/superpowers`](https://github.com/obra/superpowers)) — ห้ามบอกว่างานเสร็จจนกว่าเทสต์จะผ่านจริง
-  - `differential-review` ([`trailofbits/skills`](https://github.com/trailofbits/skills)) & [`semgrep/skills`](https://github.com/semgrep/skills) — สแกนช่องโหว่ความปลอดภัย OWASP Top 10 เฉพาะจุดที่แก้ใน `git diff`
-  - `playwright-qa` ([`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)) — เปิดเบราว์เซอร์กดปุ่มทดสอบหน้าเว็บจริงและแคปหน้าจอฟรี 100%
+| **1. ติดตั้งชุดทักษะมาตรฐาน** | `./relay-skills.sh install` | `.\relay-skills.ps1 install` | ติดตั้งชุดทักษะทั้ง 4 ขั้นตอนและเชื่อมต่อ `Playwright MCP` |
+| **2. อัปเดตทักษะเป็นเวอร์ชันล่าสุด** | `./relay-skills.sh update` | `.\relay-skills.ps1 update` | ดึงข้อมูลอัปเดตเวอร์ชันล่าสุดจากคลังโค้ดของผู้พัฒนาต้นทางทุกตัวใน [`skills-manifest.txt`](./skills-manifest.txt) |
+| **3. เพิ่มทักษะใหม่เข้าสู่คลัง** | `./relay-skills.sh add <repo_url> [skill]` | `.\relay-skills.ps1 add <repo_url> [skill]` | ติดตั้งทักษะใหม่ลงเครื่องและบันทึกต่อท้ายลงใน `skills-manifest.txt` อัตโนมัติ |
+| **4. แสดงรายการทักษะทั้งหมด** | `./relay-skills.sh list` | `.\relay-skills.ps1 list` | แสดงรายการทักษะในคลังและที่ติดตั้งอยู่ในเครื่อง |
 
 ---
 
-## 🌍 การนำ `RELAY` ไปดัดแปลงใช้กับสายงานอื่นๆ (สร้างหนัง, วิดีโอ, บัญชี, ธุรกิจ)
+## 7. การประยุกต์ใช้ระบบ `RELAY` กับสายงานอื่น (`domains/`)
 
-นอกจากใช้สร้างและพัฒนาโปรแกรมแล้ว ระบบส่งไม้ต่อ 4 ไม้ของ `RELAY` ยังออกแบบให้ **ใครในสายอาชีพใดก็สามารถนำไปดัดแปลงใช้กับแผนกของตัวเองได้ทันที** เพียงแค่วางไฟล์ `AGENTS.md` ประจำสายงานนั้นลงในโฟลเดอร์งาน!
+นอกเหนือจากสายงานวิศวกรรมซอฟต์แวร์ซึ่งเป็นค่าเริ่มต้นของระบบแล้ว โครงสร้างการทำงาน 4 ขั้นตอนของ `RELAY` ยังสามารถนำไปประยุกต์ใช้กับสายงานอื่นๆ ได้โดยการวางไฟล์ `AGENTS.md` เฉพาะสายงานลงในโฟลเดอร์โครงการ:
 
-เราได้เตรียม **แม่แบบพร้อมใช้งาน (Domain Packs)** ไว้ให้ในโฟลเดอร์ **[`domains/`](./domains/)** ดังนี้:
-
-| สายงาน | แม่แบบพร้อมใช้ใน Repo นี้ | บทบาททั้ง 4 ไม้ในสายงานนั้น |
+| สายงาน | แม่แบบในคลังโค้ดนี้ | ลำดับบทบาททั้ง 4 ขั้นตอน |
 | :--- | :--- | :--- |
-| 💻 **1. สายพัฒนาซอฟต์แวร์ (Base หลัก)** | [`templates/GLOBAL_AGENTS.md`](./templates/GLOBAL_AGENTS.md) | `@po` (เก็บโจทย์) ➔ `@arch/@pm` (วางแผน) ➔ `@dev` (เขียนโค้ด FE/BE/TDD) ➔ `@qa/@sec` (เทสต์ + สแกนความปลอดภัย) |
-| 🎬 **2. สายสร้างภาพยนตร์ วิดีโอ & ครีเอเตอร์** | [`domains/film-video-production/`](./domains/film-video-production/) | `@writer` (เขียนพล็อต `SPEC.md`) ➔ `@director` (แตก Shot List `PLAN.md`) ➔ `@creator` (เขียนบทพูด + Prompt ภาพ/วิดีโอ/เสียง) ➔ `@editor` (ตรวจความต่อเนื่อง & เวลา) |
-| 📊 **3. สายบริษัท บัญชี & การเงิน** | [`domains/business-accounting/`](./domains/business-accounting/) | `@analyst` (เก็บเงื่อนไขภาษี `SPEC.md`) ➔ `@planner` (วางผังบัญชี/สูตร) ➔ `@operator` (ทำตาราง/สคริปต์คำนวณ) ➔ `@auditor` (รันสคริปต์ตรวจยอดดุล 0 Token) |
-
-> 👉 อ่านวิธีสร้างสายงานใหม่ของคุณเองแบบละเอียดได้ที่ **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)**
+| 💻 **1. สายงานวิศวกรรมซอฟต์แวร์ (ค่าเริ่มต้น)** | [`templates/GLOBAL_AGENTS.md`](./templates/GLOBAL_AGENTS.md) | `@po` (วิเคราะห์ความต้องการ) ➔ `@arch/@pm` (ออกแบบและวางแผน) ➔ `@dev` (พัฒนาโค้ดและชุดทดสอบ) ➔ `@qa/@sec` (ตรวจสอบคุณภาพและความปลอดภัย) |
+| 🎬 **2. สายงานผลิตภาพยนตร์ วิดีโอ และสื่อสร้างสรรค์** | [`domains/film-video-production/`](./domains/film-video-production/) | `@writer` (พัฒนาโครงเรื่อง `SPEC.md`) ➔ `@director` (ออกแบบลำดับภาพ `PLAN.md`) ➔ `@creator` (เขียนบทและคำสั่งสร้างภาพ/วิดีโอ/เสียง) ➔ `@editor` (ตรวจสอบความต่อเนื่องและเวลา) |
+| 📊 **3. สายงานบริหารธุรกิจ บัญชี และการเงิน** | [`domains/business-accounting/`](./domains/business-accounting/) | `@analyst` (กำหนดเงื่อนไขธุรกิจและภาษี `SPEC.md`) ➔ `@planner` (ออกแบบผังบัญชีและสูตรคำนวณ) ➔ `@operator` (จัดทำตารางและสคริปต์ประมวลผล) ➔ `@auditor` (รันสคริปต์ตรวจสอบความถูกต้องของตัวเลข) |
 
 ---
 
-## 🖥️ ทดสอบรัน 2 โปรเจกต์ตัวอย่างที่มีมาให้ใน Repo นี้ได้เลย!
+## 8. สารบัญเอกสารคู่มือเชิงลึก
 
-ภายใน Repo นี้มีโปรเจกต์ตัวอย่างที่สร้างด้วยกระบวนการ `RELAY` ครบทั้ง 4 ไม้ พร้อมให้คุณเปิดดูและรันทดสอบทันที:
-
-1. 📊 **`RELAY Board & Token Saver` ([`dashboard/index.html`](./dashboard/index.html)):**
-   - หน้าเว็บ Dashboard แสดงกระดานวิ่งผลัด 4 ไม้ของใบงานจริง พร้อมเครื่องคำนวณเปรียบเทียบปริมาณ Token ที่ประหยัดได้เมื่อดูแลหลายโปรเจกต์
-2. ☕ **`Mini Cafe POS + PromptPay QR` ([`examples/cafe-pos/`](./examples/cafe-pos/)):**
-   - เว็บแอปคิดเงินร้านกาแฟ คำนวณภาษีมูลค่าเพิ่ม VAT 7% และสร้างหน้าต่างสแกนจ่าย PromptPay QR แบบล็อกยอดเงิน พร้อมชุด Unit Test ที่รันด้วยสคริปต์จริง (**0 Token**)
-
-```bash
-# ทดสอบรัน Unit Test ของระบบคิดเงินร้านกาแฟ (ใช้เวลา 0.1 วินาที และใช้ 0 Token!)
-node --test examples/cafe-pos/pos-core.test.js
-
-# เปิดดูหน้าเว็บตัวอย่างบน Mac:
-open dashboard/index.html
-open examples/cafe-pos/index.html
-
-# เปิดดูหน้าเว็บตัวอย่างบน Windows (PowerShell):
-start dashboard\index.html
-start examples\cafe-pos\index.html
-```
-
----
-
-## 📚 สารบัญเอกสารเจาะลึกทั้งหมดในโปรเจกต์นี้
-
-- 🐣 **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)** — คู่มือติดตั้งเริ่มตั้งแต่ 0 แบบจับมือทำสำหรับเครื่องเปล่า (ทั้ง Windows และ macOS)
-- 🏛️ **[`docs/ARCHITECTURE_DEEP_DIVE.md`](./docs/ARCHITECTURE_DEEP_DIVE.md)** — เจาะลึกหลักการทำงาน สถาปัตยกรรม และการดูแลโปรเจกต์ระยะยาว 1 ปี+
-- 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดต Skills ตามผู้พัฒนาต้นทาง การเพิ่มสกิลใหม่ และการเขียน `SKILL.md` ของตัวเอง
-- 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการดัดแปลง `RELAY` ไปใช้กับสายงานสร้างหนัง บัญชี การตลาด และสายอาชีพอื่นๆ
-- 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** & **[`LICENSE`](./LICENSE)** — การมีส่วนร่วมของชุมชนภายใต้สัญญาอนุญาตเปิดเสรี MIT License
+- 🐣 **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)** — คู่มือการติดตั้งตั้งแต่เริ่มต้นสำหรับ Windows และ macOS และการเชื่อมต่อโปรแกรม Obsidian
+- 📘 **[`docs/USE_CASES_NEW_AND_EXISTING.md`](./docs/USE_CASES_NEW_AND_EXISTING.md)** — คู่มือการนำ `RELAY` ไปใช้กับโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield)
+- 🏛️ **[`docs/ARCHITECTURE_DEEP_DIVE.md`](./docs/ARCHITECTURE_DEEP_DIVE.md)** — รายละเอียดสถาปัตยกรรม หลักการทำงาน และการจัดการโครงการระยะยาว
+- 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
+- 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
+- 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License

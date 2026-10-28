@@ -1,8 +1,0 @@
-{
-  "name": "relay-cafe-pos-example",
-  "version": "1.0.0",
-  "description": "Mini Cafe POS + PromptPay QR example project built with the RELAY (.relay/) workflow",
-  "scripts": {
-    "test": "node --test pos-core.test.js"
-  }
-}
