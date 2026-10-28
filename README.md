@@ -25,7 +25,7 @@
 | :--- | :--- | :--- |
 | **1. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | **Obsidian** + โฟลเดอร์ **`.relay/`** + **[`github/spec-kit`](https://github.com/github/spec-kit)** | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`) และรายงานผลการตรวจสอบ (`QA_REPORT.md`) |
 | **2. บทบาทตัวแทน AI และชุดทักษะเฉพาะทาง** | Official CLI: **`claude`**, **`codex`**, **`gemini`** + ไฟล์กฎ **`GLOBAL_AGENTS.md`** | กำหนดบทบาทการทำงานทั้ง 4 ขั้นตอน (`@po`, `@arch`, `@pm`, `@dev`, `@qa`, `@sec`) พร้อมเชื่อมโยงชุดทักษะเฉพาะทาง (Modular Skill Packs) |
-| **3. สภาพแวดล้อมการทำงานแยกอิสระ** | **[`BloopAI/vibe-kanban`](https://github.com/BloopAI/vibe-kanban)** หรือ **[`smtg-ai/claude-squad`](https://github.com/smtg-ai/claude-squad)** + **`Git Worktree`** | แยกกิ่งการพัฒนา (`Git Worktree`) ออกจากกิ่งหลัก (`main`) อัตโนมัติ เพื่อป้องกันผลกระทบต่อโค้ดหลักและตรวจสอบ `git diff` ก่อนผสานโค้ด |
+| **3. สภาพแวดล้อมการทำงานแยกอิสระ** | **`Git Worktree`** มาตรฐาน (`git worktree` / `claude --worktree`) | แยกกิ่งการพัฒนา (`Git Worktree`) ออกจากกิ่งหลัก (`main`) เพื่อป้องกันผลกระทบต่อโค้ดหลักและตรวจสอบ `git diff` ก่อนผสานโค้ด |
 | **4. ระบบตรวจสอบความปลอดภัยและการทดสอบส่วนติดต่อผู้ใช้** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ป้องกันการบันทึกไฟล์ความลับ (`.env`) ด้วย `pre-commit hook`, รันชุดทดสอบระบบด้วยสคริปต์ (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** ทดสอบส่วนติดต่อผู้ใช้บนเบราว์เซอร์จริงโดยไม่เสียค่าใช้จ่าย API เพิ่มเติม |
 
 ```mermaid
@@ -35,8 +35,8 @@ flowchart TD
         SPEC[".relay/tasks/YYYYMMDD-feature/SPEC.md & PLAN.md<br/>(เอกสารส่งมอบงานแต่ละขั้นตอน — ล้างประวัติแชตด้วย /clear)"]
     end
 
-    subgraph P2 ["2. ระบบจัดการสภาพแวดล้อมแยกอิสระ (Git Worktree Management)"]
-        UI["จัดการกิ่งแยกและตรวจสอบโค้ด<br/>(claude --worktree, npx vibe-kanban หรือ claude-squad)"]
+    subgraph P2 ["2. ระบบจัดการสภาพแวดล้อมแยกอิสระ (Native Git Worktree)"]
+        UI["แยกกิ่งการพัฒนาและตรวจสอบโค้ด<br/>(claude --worktree หรือ git worktree add)"]
     end
 
     subgraph P3 ["3. ขั้นตอนการทำงานของตัวแทน AI ทั้ง 4 ขั้นตอน (ผ่าน Official CLI โดยตรง)"]

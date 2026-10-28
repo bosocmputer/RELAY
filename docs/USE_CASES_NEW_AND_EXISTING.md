@@ -52,7 +52,7 @@ git init -b main
    *(เมื่อตรวจสอบแผนใน Obsidian เรียบร้อยแล้ว ให้พิมพ์ `/clear`)*
 
 3. **ขั้นตอนที่ 3 (`@dev` — การพัฒนาโค้ดในสภาพแวดล้อมแยกอิสระ `Git Worktree`):**
-   เปิดใช้งานกิ่งแยก (เช่น `claude --worktree initial-system` หรือผ่าน `npx vibe-kanban`) แล้วสั่งงาน:
+   เปิดใช้งานกิ่งแยกด้วยคำสั่งมาตรฐาน (เช่น `claude --worktree initial-system` หรือ `git worktree add ../initial-system -b feat/initial-system`) แล้วสั่งงาน:
    ```text
    @dev อ่านเอกสารใน .relay/tasks/20261028-initial-system/ (SPEC.md, ARCH.md, PLAN.md) แล้วดำเนินการพัฒนาโค้ดและเขียนชุดทดสอบ (Unit Tests) ตามแผนที่กำหนด
    ```
