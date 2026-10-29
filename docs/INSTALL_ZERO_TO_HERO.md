@@ -1,6 +1,6 @@
-# คู่มือการติดตั้งระบบ `RELAY` ตั้งแต่เริ่มต้น (Zero-to-Hero) และการเชื่อมต่อโปรแกรม Obsidian
+# คู่มือการติดตั้งระบบ `RELAY` ตั้งแต่เริ่มต้น (Zero-to-Hero), การเชื่อมโควต้า Google AI Ultra (`agy`) และการเชื่อมต่อโปรแกรม Obsidian
 
-เอกสารฉบับนี้ออกแบบมาสำหรับผู้ใช้งานทุกระดับ โดยอธิบายขั้นตอนการติดตั้งตั้งแต่เครื่องคอมพิวเตอร์ที่ยังไม่มีเครื่องมือพัฒนาซอฟต์แวร์มาก่อน รองรับทั้งระบบปฏิบัติการ **Windows** และ **macOS** พร้อมวิธีการติดตั้งและเชื่อมต่อโปรแกรม **Obsidian**
+เอกสารฉบับนี้ออกแบบมาสำหรับผู้ใช้งานทุกระดับ โดยอธิบายขั้นตอนการติดตั้งตั้งแต่เครื่องคอมพิวเตอร์ที่ยังไม่มีเครื่องมือพัฒนาซอฟต์แวร์มาก่อน รองรับทั้งระบบปฏิบัติการ **Windows** และ **macOS** พร้อมวิธีการเชื่อมโควต้า **Google AI Ultra (`agy`)**, **Claude**, **Codex** และการเชื่อมต่อโปรแกรม **Obsidian**
 
 ---
 
@@ -62,36 +62,41 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ---
 
-## ส่วนที่ 3: การติดตั้ง Official CLI ของผู้ให้บริการ AI
+## ส่วนที่ 3: การติดตั้ง Official CLI และการเชื่อมโควต้า Google AI Ultra (`agy`)
 
-เลือกติดตั้งเฉพาะ CLI ของผู้ให้บริการที่คุณมีแพ็กเกจสมาชิกรายเดือน (Subscription) หรือติดตั้งครบทั้ง 3 ค่าย (ใช้คำสั่งเดียวกันทั้งบน macOS และ Windows):
+### 3.1 สำหรับผู้ที่มีแพ็กเกจ **Google AI Ultra** (ผ่าน Antigravity CLI `agy`)
+เนื่องจาก Google ยกเลิกการ Login ด้วยบัญชีส่วนบุคคลบน `@google/gemini-cli` รุ่นเก่า ระบบ `RELAY` จึงรองรับ **Antigravity CLI (`~/.gemini/bin/agy`)** เป็นค่ายหลัก (`agy`) ทำให้คุณสามารถใช้โควต้า **Google AI Ultra** ได้ครบทั้ง 2 ก้อนในแพ็กเกจเดียว:
+- **โควต้า Gemini Models:** `gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`, `gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.8-flash-low`
+- **โควต้า Claude & GPT Models:** `claude-opus-5-5-high`, `claude-opus-5-5-medium`, `claude-opus-5-5-low`, `claude-sonnet-5-5-high`, `claude-sonnet-5-5-medium`, `claude-sonnet-5-5-low`, `gpt-oss-120b-medium`
 
+### 3.2 การติดตั้ง CLI เสริม (`claude`, `codex`, `gemini`)
 ```bash
-# 1. Claude Code (เหมาะสำหรับขั้นตอนที่ 3 @dev และรองรับคำสั่ง --worktree)
+# 1. Claude Code CLI (สำหรับผู้มีแพ็กเกจ Anthropic Claude Pro/Max)
 npm install -g @anthropic-ai/claude-code
 
-# 2. OpenAI Codex CLI (เหมาะสำหรับขั้นตอนที่ 4 @qa และ @sec)
+# 2. OpenAI Codex CLI (สำหรับผู้มีแพ็กเกจ ChatGPT Plus/Pro)
 npm install -g @openai/codex
 
-# 3. Google Gemini CLI (เหมาะสำหรับขั้นตอนที่ 1 @po และขั้นตอนที่ 2 @arch/@pm)
+# 3. Google Gemini CLI (สำหรับผู้ใช้งานผ่าน GEMINI_API_KEY จาก Google AI Studio)
 npm install -g @google/gemini-cli
 ```
 
 **การยืนยันตัวตนครั้งแรก (Authentication):**
-รันคำสั่ง `claude`, `codex` หรือ `gemini` ใน Terminal / PowerShell เพื่อเข้าสู่ระบบผ่านเบราว์เซอร์ตามสิทธิ์บัญชีรายเดือนของคุณ จากนั้นพิมพ์ `/exit` เพื่อออกจากโปรแกรม
+คุณสามารถพิมพ์คำสั่ง `relay` แล้วกดเลือกเมนู **`[d] จัดการ CLI & เชื่อมต่อบัญชี Login`** เพื่อให้ระบบช่วยเปิดหน้า Login ของ `agy` (`agy auth login`), `claude` (`claude auth login`), หรือ `codex` (`codex login`) ได้ทันทีจากในโปรแกรม `relay`
 
 ---
 
 ## ส่วนที่ 4: การติดตั้งการตั้งค่าส่วนกลางของระบบ `RELAY` (ทำเพียงครั้งเดียวสำหรับทุกโครงการ)
 
-ขั้นตอนนี้จะทำการติดตั้งไฟล์กฎการทำงานส่วนกลาง (`GLOBAL_AGENTS.md`), สคริปต์เริ่มต้นโครงการ (`relay-init`), กลไกตรวจสอบความปลอดภัยก่อนบันทึกโค้ด (`pre-commit`), และชุดทักษะมาตรฐานทั้ง 4 ขั้นตอนไว้ที่โฟลเดอร์ผู้ใช้ของเครื่อง ทำให้สามารถใช้งานได้กับทุกโครงการทันทีโดยไม่ต้องติดตั้งซ้ำ
+ขั้นตอนนี้จะทำการติดตั้งไฟล์กฎการทำงานส่วนกลาง (`GLOBAL_AGENTS.md`), คำสั่งควบคุมกลาง (`relay`), สคริปต์เริ่มต้นโครงการ (`relay-init`), กลไกตรวจสอบความปลอดภัยก่อนบันทึกโค้ด (`pre-commit`), เชื่อม Symlink `~/.agents/bin/agy -> ~/.gemini/bin/agy` และติดตั้งชุดทักษะมาตรฐานทั้ง 4 ขั้นตอนไว้ที่โฟลเดอร์ผู้ใช้ของเครื่อง
 
 ### 🍎 สำหรับระบบปฏิบัติการ macOS / Linux:
 ```bash
 git clone https://github.com/bosocmputer/RELAY.git
 cd RELAY
-chmod +x setup-mac.sh relay-init.sh relay-skills.sh
+chmod +x setup-mac.sh relay.sh relay-init.sh relay-skills.sh
 ./setup-mac.sh
+source ~/.zshrc
 ./relay-skills.sh install
 ```
 
