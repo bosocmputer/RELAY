@@ -461,6 +461,12 @@ CODEX_5H_RESET_EPOCH="-"
 CODEX_7D_RESET_EPOCH="-"
 CLAUDE_5H_RESET_EPOCH="-"
 CLAUDE_7D_RESET_EPOCH="-"
+AGY_FETCH_OK="-"
+AGY_FETCHED_AT="-"
+CODEX_FETCH_OK="-"
+CODEX_FETCHED_AT="-"
+CLAUDE_FETCH_OK="-"
+CLAUDE_FETCHED_AT="-"
 
 refresh_quota_cache() {
   local mode="${1:-auto}"
@@ -475,7 +481,7 @@ refresh_quota_cache() {
   fi
 
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "$QUOTA_CACHE_FILE" "$CLI_AUTH_AGY" "$CLI_AUTH_CLAUDE" <<'PYEOF' 2>/dev/null || true
+    python3 - "$QUOTA_CACHE_FILE" "$CLI_AUTH_AGY" "$CLI_AUTH_CLAUDE" "$CLI_AUTH_CODEX" <<'PYEOF' 2>/dev/null || true
 import sys, os, re, json, glob, time, pty, subprocess
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -483,6 +489,8 @@ from concurrent.futures import ThreadPoolExecutor
 cache_file = sys.argv[1]
 has_agy = (sys.argv[2] == "1")
 has_claude = (sys.argv[3] == "1")
+has_codex = (len(sys.argv) > 4 and sys.argv[4] == "1")
+NOW_HM = datetime.now().strftime("%H:%M")
 TH_MONTHS = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
 
 def fmt_dt_short(dt, is_weekly=False):
@@ -521,6 +529,9 @@ vals = {
     "CODEX_7D_RESET_EPOCH": "-",
     "CLAUDE_5H_RESET_EPOCH": "-",
     "CLAUDE_7D_RESET_EPOCH": "-",
+    "AGY_FETCH_OK": "-", "AGY_FETCHED_AT": "-",
+    "CODEX_FETCH_OK": "-", "CODEX_FETCHED_AT": "-",
+    "CLAUDE_FETCH_OK": "-", "CLAUDE_FETCHED_AT": "-",
 }
 
 def to_epoch(dt):
@@ -589,6 +600,7 @@ with ThreadPoolExecutor(max_workers=2) as ex:
     raw_claude = fut_claude.result()
 
 # 1. แยกวิเคราะห์ผลลัพธ์จาก agy -p "/usage" (รองรับทั้งโหมด TSV ISO-8601 UTC เมื่อต่อ Pipe และโหมด TTY)
+agy_ok = False
 if raw_agy:
     try:
         for line in raw_agy.splitlines():
@@ -613,10 +625,19 @@ if raw_agy:
                 vals[f"{prefix}_{win_key}_REM"] = pct
                 vals[f"{prefix}_{win_key}_RESET"] = fmt_dt_short(dt_obj, is_weekly=is_wk)
                 vals[f"{prefix}_{win_key}_RESET_EPOCH"] = to_epoch(dt_obj)
+                agy_ok = True
     except Exception:
         pass
 
+if has_agy:
+    vals["AGY_FETCH_OK"] = "1" if agy_ok else "0"
+    if agy_ok:
+        vals["AGY_FETCHED_AT"] = NOW_HM
+else:
+    vals["AGY_FETCH_OK"] = "-"
+
 # 2. แยกวิเคราะห์ผลลัพธ์จาก ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+codex_ok = False
 try:
     codex_files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
     for cf in reversed(codex_files[-8:]):
@@ -643,13 +664,21 @@ try:
                 if pt:
                     vals["CODEX_PLAN"] = str(pt).capitalize()
                 found_rl = True
+                codex_ok = True
                 break
         if found_rl:
             break
 except Exception:
     pass
+if has_codex:
+    vals["CODEX_FETCH_OK"] = "1" if codex_ok else "0"
+    if codex_ok:
+        vals["CODEX_FETCHED_AT"] = NOW_HM
+else:
+    vals["CODEX_FETCH_OK"] = "-"
 
 # 3. แยกวิเคราะห์ผลลัพธ์จาก claude get_usage
+claude_ok = False
 if raw_claude:
     try:
         for line in raw_claude.splitlines():
@@ -680,9 +709,17 @@ if raw_claude:
                             dt7 = datetime.fromisoformat(str(sd["resets_at"]).replace("Z", "+00:00")).astimezone()
                             vals["CLAUDE_7D_RESET"] = fmt_dt_short(dt7, is_weekly=True)
                             vals["CLAUDE_7D_RESET_EPOCH"] = to_epoch(dt7)
+                claude_ok = True
                 break
     except Exception:
         pass
+
+if has_claude:
+    vals["CLAUDE_FETCH_OK"] = "1" if claude_ok else "0"
+    if claude_ok:
+        vals["CLAUDE_FETCHED_AT"] = NOW_HM
+else:
+    vals["CLAUDE_FETCH_OK"] = "-"
 
 with open(cache_file, "w", encoding="utf-8") as f:
     for k, v in vals.items():
@@ -724,6 +761,7 @@ for cf in reversed(files[-5:]):
 ' 2>/dev/null || true)"
   if [ -n "$cx_out" ]; then
     IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET CODEX_5H_RESET_EPOCH CODEX_7D_RESET_EPOCH <<<"$cx_out"
+    CODEX_FETCH_OK="1"
   fi
 }
 
@@ -847,10 +885,10 @@ render_quota_table() {
   command -v python3 >/dev/null 2>&1 || return 1
   python3 - "$(now_epoch)" "${QUOTA_UPDATED_EPOCH:-0}" "${QUOTA_UPDATED_AT:--}" \
     "$C_OK" "$C_WARN" "$C_ERR" "$C_MUTED" "$C_ACCENT" "$C_RESET" "$C_BOLD" \
-    "agy (Gemini)" "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET" "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET" \
-    "agy (Claude/GPT)" "$AGY_CLAUDE_5H_REM" "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET" "$AGY_CLAUDE_7D_REM" "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET" \
-    "codex (${CODEX_PLAN:-Plus})" "$CODEX_5H_REM" "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET" "$CODEX_7D_REM" "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET" \
-    "claude (${CLAUDE_PLAN:-Pro})" "$CLAUDE_5H_REM" "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET" "$CLAUDE_7D_REM" "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET" \
+    "agy (Gemini)" "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET" "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET" "$AGY_FETCH_OK" "$AGY_FETCHED_AT" \
+    "agy (Claude/GPT)" "$AGY_CLAUDE_5H_REM" "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET" "$AGY_CLAUDE_7D_REM" "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET" "$AGY_FETCH_OK" "$AGY_FETCHED_AT" \
+    "codex (${CODEX_PLAN:-Plus})" "$CODEX_5H_REM" "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET" "$CODEX_7D_REM" "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET" "$CODEX_FETCH_OK" "$CODEX_FETCHED_AT" \
+    "claude (${CLAUDE_PLAN:-Pro})" "$CLAUDE_5H_REM" "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET" "$CLAUDE_7D_REM" "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET" "$CLAUDE_FETCH_OK" "$CLAUDE_FETCHED_AT" \
     <<'PYEOF'
 import sys, unicodedata
 
@@ -859,7 +897,7 @@ now = int(a[0])
 upd, upd_at = a[1], a[2]
 OK, WARN, ERR, MUTED, ACC, RST, BOLD = a[3:10]
 rest = a[10:]
-rows = [rest[i:i + 7] for i in range(0, len(rest), 7)]
+rows = [rest[i:i + 9] for i in range(0, len(rest), 9)]
 
 def width(s):
     n = 0
@@ -882,7 +920,7 @@ def countdown(diff):
         return f"อีก {h}ชม.{m:02d}น."
     return f"อีก {max(1, m)}น."
 
-def cell(p, e, t):
+def cell(p, e, t, stale=False, at="-", first=False):
     has_ep = e.isdigit()
     passed = has_ep and int(e) <= now
     if passed:
@@ -891,6 +929,12 @@ def cell(p, e, t):
         pv = int(p)
     else:
         return MUTED + "—" + RST, "—"
+    if stale:
+        head = pad(f"? {pv}%", 6)
+        tail = ("ดึงไม่ได้ • ค่าเมื่อ " + at) if (first and at not in ("", "-")) else ("ดึงไม่ได้" if first else "")
+        if not first and has_ep and not passed:
+            tail = countdown(int(e) - now)
+        return MUTED + head + " " + tail + RST, head + " " + tail
     col = OK if pv >= 50 else (WARN if pv >= 20 else ERR)
     head = pad(("●" if pv >= 50 else "▲") + f" {pv}%", 6)
     if passed:
@@ -922,7 +966,7 @@ note = (WARN + f"▲ อัปเดต {upd_at} ({age_s}) — ข้อมู�
     else (MUTED + f"อัปเดต {upd_at} ({age_s}) • กด [u] ดึงข้อมูลสด" + RST)
 print(f"{ACC}│{RST} {BOLD}โควต้าคงเหลือ (Real-Time Quota){RST}  {note}")
 
-cells = [(r[0], cell(r[1], r[2], r[3]), cell(r[4], r[5], r[6])) for r in rows]
+cells = [(r[0], cell(r[1], r[2], r[3], r[7] == "0", r[8], True), cell(r[4], r[5], r[6], r[7] == "0", r[8], False)) for r in rows]
 h_name, h5, h7 = "ค่าย / กระเป๋า", "5 ชั่วโมง", "รายสัปดาห์"
 nw = max([width(h_name)] + [width(n) for n, _, _ in cells])
 w5 = max([width(h5)] + [width(c5[1]) for _, c5, _ in cells])
@@ -1003,6 +1047,16 @@ check_role_quota_safe() {
   qpair="$(get_role_quota_pair "$provider" "$model")"
   q5="${qpair%%|*}"
   q7="${qpair#*|}"
+
+  local fetch_ok="-" fetched_at="-"
+  case "$provider" in
+    agy)    fetch_ok="$AGY_FETCH_OK";    fetched_at="$AGY_FETCHED_AT" ;;
+    codex)  fetch_ok="$CODEX_FETCH_OK";  fetched_at="$CODEX_FETCHED_AT" ;;
+    claude) fetch_ok="$CLAUDE_FETCH_OK"; fetched_at="$CLAUDE_FETCHED_AT" ;;
+  esac
+  if [ "$fetch_ok" = "0" ]; then
+    printf "%s▲ ดึงโควต้าสดของ %s ไม่สำเร็จ — ใช้ค่าล่าสุดเมื่อ %s ในการตัดสิน%s\n" "$C_WARN" "$provider" "$fetched_at" "$C_RESET"
+  fi
 
   local low_flag=0
   if [[ "$q5" =~ ^[0-9]+$ ]] && [ "$q5" -lt "$min_pct" ]; then low_flag=1; fi
@@ -1117,9 +1171,16 @@ compute_stage3_next_step() {
   elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ]; then
     RECOMMENDED_STEP=2
     STAGE3_FOCUS_TEXT="มี SPEC.md แล้ว — กด [2] ให้ @arch วางแผน หรือกด [a] ⚡ รัน Auto-Relay Loop (2➔3⇄4) อัตโนมัติ"
-  elif [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ]; then
-    RECOMMENDED_STEP=5
-    STAGE3_FOCUS_TEXT="ผ่าน QA_REPORT.md แล้ว — กด Enter ที่ข้อ [5] เพื่อสกัดบทเรียน ผสานโค้ดเข้า main และเก็บเข้า Archive"
+  elif [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] || [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_VERDICT.json" ]; then
+    local s3v
+    s3v="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
+    if [ "${s3v%%|*}" = "PASS" ]; then
+      RECOMMENDED_STEP=5
+      STAGE3_FOCUS_TEXT="@qa ตรวจรับผ่านแล้ว (PASS) — กด Enter ที่ข้อ [5] เพื่อผสานโค้ดเข้า main สกัดบทเรียน และปิดใบงาน"
+    else
+      RECOMMENDED_STEP=3
+      STAGE3_FOCUS_TEXT="ผลตรวจรับล่าสุดยังไม่ผ่าน (${s3v%%|*}) — ดู QA_REPORT.md แล้วกด [3] ให้ @dev แก้ไข หรือกด [a] รันลูปแก้ไขอัตโนมัติ"
+    fi
   elif [ ! -d "$RELAY_DIR/worktrees/$ACTIVE_TASK" ] && [ "${LAST_COMPLETED_PHASE:-0}" -lt 3 ]; then
     RECOMMENDED_STEP=3
     STAGE3_FOCUS_TEXT="มี PLAN.md แล้ว — กด [3] ให้ @dev เขียนโค้ด หรือกด [a] ⚡ รัน Auto-Relay Loop (3⇄4) อัตโนมัติ"
@@ -1269,9 +1330,14 @@ print_dashboard_header() {
 
   local learned_cnt
   learned_cnt="$(get_learned_skills_count)"
+  local learned_pending
+  learned_pending="$(get_learned_pending_count)"
   local learned_badge="${C_MUTED}○ Learned Skills (รอสกัดเมื่อปิดใบงาน [5]/[l])${C_RESET}"
   if [ "${learned_cnt:-0}" -gt 0 ]; then
-    learned_badge="${C_OK}● Learned Skills (${learned_cnt} กฎสะสม)${C_RESET}"
+    learned_badge="${C_OK}● Learned Skills (${learned_cnt} กฎ)${C_RESET}"
+  fi
+  if [ "${learned_pending:-0}" -gt 0 ]; then
+    learned_badge="${learned_badge} ${C_WARN}▲ ${learned_pending} รออนุมัติ [l]${C_RESET}"
   fi
 
   local spec_m="${C_MUTED}[ ] SPEC.md${C_RESET}"
@@ -1280,7 +1346,15 @@ print_dashboard_header() {
   if [ -n "$ACTIVE_TASK" ]; then
     [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ] && spec_m="${C_OK}[✓] SPEC.md${C_RESET}"
     [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ] && plan_m="${C_OK}[✓] ARCH & PLAN${C_RESET}"
-    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] && qa_m="${C_OK}[✓] QA_REPORT.md${C_RESET}"
+    if [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] || [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_VERDICT.json" ]; then
+      local hv
+      hv="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
+      if [ "${hv%%|*}" = "PASS" ]; then
+        qa_m="${C_OK}[✓] QA PASS${C_RESET}"
+      else
+        qa_m="${C_WARN}[✗] QA ยังไม่ผ่าน (${hv%%|*})${C_RESET}"
+      fi
+    fi
   fi
 
   local agy_b codex_b claude_b
@@ -1417,6 +1491,7 @@ print_quota_report_box() {
   printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (ดึงข้อมูลสดจาก CLI ทั้ง 3 ค่ายโดยตรง)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s1. Google AI Ultra — กระเป๋า Gemini Models (agy)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  [ "$AGY_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$AGY_FETCHED_AT" "$C_RESET"
   printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$g5")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET")" "$C_RESET"
   printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$g7")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
@@ -1425,10 +1500,12 @@ print_quota_report_box() {
   printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$a7")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s3. OpenAI Codex CLI — แพ็กเกจ %s (codex)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CODEX_PLAN" "$C_RESET"
+  [ "$CODEX_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$CODEX_FETCHED_AT" "$C_RESET"
   printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$x5")" "$C_MUTED" "$(format_reset_detail "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET")" "$C_RESET"
   printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$x7")" "$C_MUTED" "$(format_reset_detail "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s4. Anthropic Claude Code CLI — แพ็กเกจ %s (claude)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CLAUDE_PLAN" "$C_RESET"
+  [ "$CLAUDE_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$CLAUDE_FETCHED_AT" "$C_RESET"
   printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$c5")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET")" "$C_RESET"
   printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$c7")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -2073,6 +2150,70 @@ run_agent_readiness_test() {
 }
 
 # ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน ──────────────────────────────────────
+# บันทึก 1 บรรทัดต่อการเรียก agent ลง .relay/tasks/<task>/RUN_LOG.jsonl
+append_run_log() {
+  local log_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
+  [ -n "$ACTIVE_TASK" ] && [ -d "$log_dir" ] || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$log_dir/RUN_LOG.jsonl" "$@" <<'PYEOF' 2>/dev/null || true
+import json, sys, datetime
+f = sys.argv[1]
+mode, step, prov, model, rc, s, e, qb, qa = sys.argv[2:11]
+def q(x):
+    p = x.split("|")
+    return {"5h": p[0] if p and p[0] else "-", "7d": p[1] if len(p) > 1 else "-"}
+rec = {
+    "started_at": datetime.datetime.fromtimestamp(int(s)).isoformat(timespec="seconds"),
+    "duration_sec": int(e) - int(s),
+    "mode": mode,
+    "step": step,
+    "provider": prov,
+    "model": model,
+    "exit_code": int(rc) if rc.lstrip("-").isdigit() else rc,
+    "quota_before": q(qb),
+    "quota_after": q(qa),
+}
+with open(f, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+PYEOF
+}
+
+# สรุปเวลาและโควต้าที่ใช้ต่อขั้นของ Auto-Loop จาก RUN_LOG.jsonl
+print_loop_run_summary() {
+  local since="$1"
+  local f="$RELAY_DIR/tasks/$ACTIVE_TASK/RUN_LOG.jsonl"
+  [ -f "$f" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$f" "$since" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_MUTED" <<'PYEOF' 2>/dev/null || true
+import json, sys, datetime
+f, since, ACC, RST, BOLD, MUTED = sys.argv[1:7]
+since = int(since)
+rows = []
+for line in open(f, encoding="utf-8"):
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    if r.get("mode") != "auto":
+        continue
+    if datetime.datetime.fromisoformat(r["started_at"]).timestamp() < since - 1:
+        continue
+    rows.append(r)
+if not rows:
+    sys.exit(0)
+def dur(s):
+    m, s = divmod(int(s), 60)
+    h, m = divmod(m, 60)
+    return f"{h}ชม.{m:02d}น." if h else f"{m}น.{s:02d}วิ"
+print(f"{ACC}│{RST} {BOLD}สรุปการทำงานของลูป (จาก RUN_LOG.jsonl){RST}")
+total = 0
+for r in rows:
+    total += r.get("duration_sec", 0)
+    qb, qa = r.get("quota_before", {}), r.get("quota_after", {})
+    print(f"{ACC}│{RST}  • {r['step']} — {r['provider']}/{r['model']} • {dur(r.get('duration_sec', 0))} • exit {r.get('exit_code')} {MUTED}• 5h {qb.get('5h')}%→{qa.get('5h')}%{RST}")
+print(f"{ACC}│{RST}  {MUTED}รวม {len(rows)} ขั้น • ใช้เวลาทั้งหมด {dur(total)}{RST}")
+PYEOF
+}
+
 launch_provider_cli() {
   local provider="$1"
   local configured_model="$2"
@@ -2096,6 +2237,9 @@ launch_provider_cli() {
     printf "%s" "$initial_prompt" | pbcopy
   fi
 
+  local run_start q_before
+  run_start="$(date +%s)"
+  q_before="$(get_role_quota_pair "$provider" "$configured_model")"
   (
     cd "$work_dir"
     case "$provider" in
@@ -2105,6 +2249,7 @@ launch_provider_cli() {
     esac
   )
   refresh_quota_cache --quiet
+  append_run_log "interactive" "$role_name" "$provider" "$configured_model" "0" "$run_start" "$(date +%s)" "$q_before" "$(get_role_quota_pair "$provider" "$configured_model")"
 }
 
 ensure_git_repo_ready_for_worktree() {
@@ -2173,6 +2318,23 @@ prepare_task_worktree() {
     cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
   fi
   TASK_WORK_DIR="$worktree_dir"
+  return 0
+}
+
+# ดึงเอกสารที่ agent เขียนใน Worktree กลับมาที่ใบงานหลัก
+# (ไม่ทับ LOOP_LOG.md / RUN_LOG.jsonl ที่ RELAY เขียนในใบงานหลักโดยตรง เพื่อไม่ให้บันทึกหาย)
+sync_task_docs_from_worktree() {
+  local src="$1"
+  local dst="$2"
+  [ -d "$src" ] && [ -d "$dst" ] || return 0
+  local f
+  for f in "$src"/* ; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in
+      LOOP_LOG.md|RUN_LOG.jsonl) continue ;;
+    esac
+    cp -R "$f" "$dst/" 2>/dev/null || true
+  done
   return 0
 }
 
@@ -2260,12 +2422,11 @@ run_phase_4_qa() {
 
   local learned_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal (0 Token) 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. หากมีส่วนติดต่อผู้ใช้บนเว็บ ให้ใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน) และอัปเดตไฟล์ .relay/PROJECT_STATE.md ให้เป็นปัจจุบัน"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal (0 Token) 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. หากมีส่วนติดต่อผู้ใช้บนเว็บ ให้ใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
-    cp -R "$worktree_dir/.relay/tasks/$ACTIVE_TASK/"* "$RELAY_DIR/tasks/$ACTIVE_TASK/" 2>/dev/null || true
-    [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
+    sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
   LAST_COMPLETED_PHASE=4
 }
@@ -2299,21 +2460,24 @@ distill_project_learned_skills() {
     [ "$mode" != "auto" ] && printf "%s▲ ยังไม่มีใบงานที่พร้อมสกัดบทเรียนใน .relay/tasks/ หรือ .relay/archive/%s\n" "$C_WARN" "$C_RESET"
     return 1
   fi
+  command -v python3 >/dev/null 2>&1 || return 1
 
-  mkdir -p "$RELAY_DIR/skills/project-learned"
-  local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
-  local ledger_file="$RELAY_DIR/skills/project-learned/LEDGER.md"
+  local learn_dir="$RELAY_DIR/skills/project-learned"
+  mkdir -p "$learn_dir"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s🧠 [Self-Learning Engine] กำลังสกัดบทเรียนและกฎป้องกันบั๊กจากใบงาน %s...%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$target_task" "$C_RESET"
-  printf "%s│%s  • ขอบเขตปลอดภัย : เขียนเฉพาะใน .relay/skills/project-learned/ (ไม่แตะต้องกฎส่วนกลาง)\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s🧠 [Self-Learning] กำลังสกัดกฎที่เสนอจากใบงาน %s...%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$target_task" "$C_RESET"
+  printf "%s│%s  • กฎที่สกัดได้จะเข้าคิว PENDING.md ก่อน — ยังไม่ถูกส่งให้ AI จนกว่าคุณจะอนุมัติใน [l]\n" "$C_ACCENT" "$C_RESET"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  python3 - "$PROJECT_DIR" "$PROJECT_NAME" "$target_task" "$task_dir" "$skill_file" "$ledger_file" <<'PYEOF'
+  python3 - "$target_task" "$task_dir" "$learn_dir" <<'PYEOF'
 import os, re, sys, datetime
 
-project_dir, project_name, task_id, task_dir, skill_file, ledger_file = sys.argv[1:7]
+task_id, task_dir, learn_dir = sys.argv[1:4]
+skill_file = os.path.join(learn_dir, "SKILL.md")
+pending_file = os.path.join(learn_dir, "PENDING.md")
+ledger_file = os.path.join(learn_dir, "LEDGER.md")
 
 def read_text(path):
     try:
@@ -2322,99 +2486,174 @@ def read_text(path):
     except Exception:
         return ""
 
+def bullets(text):
+    return [l.strip()[2:].strip() for l in text.splitlines() if l.strip().startswith("- ")]
+
+def norm(s):
+    return re.sub(r"\W+", "", s.lower())[:60]
+
 spec_txt = read_text(os.path.join(task_dir, "SPEC.md"))
 arch_txt = read_text(os.path.join(task_dir, "ARCH.md"))
 qa_txt = read_text(os.path.join(task_dir, "QA_REPORT.md"))
-existing_skill = read_text(skill_file)
 
-# ดึงรายการกฎเดิมที่มีอยู่แล้วใน SKILL.md เพื่อควบรวมโดยไม่ซ้ำ (Deduplication)
-existing_rules = []
-for line in existing_skill.splitlines():
-    s = line.strip()
-    if s.startswith("- "):
-        existing_rules.append(s[2:].strip())
+known = {norm(r) for r in bullets(read_text(skill_file))}
+pending = bullets(read_text(pending_file))
+known |= {norm(r) for r in pending}
 
-# สกัดหัวข้อหลักและข้อควรระวังทางสถาปัตยกรรม/QA จากเอกสารของใบงานจริง
-new_candidates = []
-for src_label, content in [("QA", qa_txt), ("ARCH", arch_txt), ("SPEC", spec_txt)]:
+candidates = []
+for content in (qa_txt, arch_txt, spec_txt):
     for line in content.splitlines():
         s = line.strip()
         if not s.startswith("- "):
             continue
         item = s[2:].strip()
-        # ข้ามหัวข้อย่อยที่ลงท้ายด้วย : หรือรายการ Checkbox
-        if len(item) < 30 or len(item) > 220 or item.endswith(":") or item.endswith("：**"):
-            continue
-        if item.startswith("[ ]") or item.startswith("[x]"):
+        if len(item) < 30 or len(item) > 220 or item.endswith(":") or item.startswith("[ ]") or item.startswith("[x]"):
             continue
         if any(k in item.lower() for k in [
-            "circuit breaker", "quota", "worktree", "skill", "security", "qa",
-            "timeout", "non-tty", "pipe", "guard", "โควต้า", "ความปลอดภัย",
-            "ห้าม", "ต้อง", "มาตรฐาน", "ป้องกัน", "แยกอิสระ", "fallback", "verdict", "tsv"
+            "circuit breaker", "quota", "worktree", "skill", "security", "timeout", "guard",
+            "fallback", "verdict", "โควต้า", "ความปลอดภัย", "ห้าม", "ต้อง", "มาตรฐาน", "ป้องกัน", "แยกอิสระ",
         ]):
-            clean_item = re.sub(r"\s+", " ", item)
-            new_candidates.append(clean_item)
+            candidates.append(re.sub(r"\s+", " ", item))
 
-if not new_candidates:
-    title_match = re.search(r"^#\s+(.+)$", spec_txt, re.M)
-    t_str = title_match.group(1).strip() if title_match else task_id
-    new_candidates.append(f"[{task_id}] ตรวจสอบความสอดคล้องของ SPEC.md, ARCH.md และผลลัพธ์ใน QA_REPORT.md ก่อนผสานโค้ด ({t_str})")
-
-added_rules = []
-norm_existing = {re.sub(r"\W+", "", r.lower())[:60] for r in existing_rules}
-for cand in new_candidates:
-    key = re.sub(r"\W+", "", cand.lower())[:60]
-    if key and key not in norm_existing:
-        existing_rules.append(cand)
-        added_rules.append(cand)
-        norm_existing.add(key)
-        if len(added_rules) >= 5:
+added = []
+for c in candidates:
+    k = norm(c)
+    if k and k not in known:
+        known.add(k)
+        added.append(c)
+        if len(added) >= 5:
             break
 
-# จำกัดเพดานสูงสุดไม่เกิน 25 กฎที่คมที่สุด (Bounded Context Window)
-final_rules = existing_rules[-25:]
+pending = (pending + added)[-30:]
+with open(pending_file, "w", encoding="utf-8") as f:
+    f.write("# กฎที่รออนุมัติ (RELAY Self-Learning — ยังไม่ถูกส่งให้ AI)\n\n")
+    f.write("> กด [l] ในหน้าจอ relay เพื่ออนุมัติหรือปฏิเสธ — เฉพาะกฎที่อนุมัติแล้วจะย้ายไปที่ SKILL.md\n\n")
+    for p in pending:
+        f.write(f"- {p}\n")
+
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-
-skill_md = f"""---
-name: project-learned-{project_name.lower()}
-description: บทเรียนสะสม กฎสถาปัตยกรรม และข้อควรระวังป้องกันบั๊กเฉพาะโครงการ {project_name} (สร้างและดูแลอัตโนมัติโดย RELAY Self-Learning Engine)
----
-
-# บทเรียนสะสมและมาตรฐานเฉพาะโครงการ ({project_name})
-
-> เอกสารนี้ถูกสกัดและควบรวมอัตโนมัติจากใบงานที่ผ่านการตรวจรับแล้ว (อัปเดตล่าสุด: `{now_str}` จากใบงาน `{task_id}`)
-> ตัวแทน AI ทุกตำแหน่ง (`@arch`, `@dev`, `@qa`) ต้องยึดถือปฏิบัติตามกฎด้านล่างนี้ควบคู่กับ `.relay/PROJECT_STATE.md`
-
-## กฎสถาปัตยกรรมและการป้องกันข้อผิดพลาดซ้ำ (Distilled Project Guardrails)
-"""
-for r in final_rules:
-    skill_md += f"- {r}\n"
-
-with open(skill_file, "w", encoding="utf-8") as f:
-    f.write(skill_md)
-
-# บันทึกสมุดบัญชีประวัติการเรียนรู้ (Append-Only Audit Ledger)
 if not os.path.exists(ledger_file):
     with open(ledger_file, "w", encoding="utf-8") as f:
-        f.write(f"# สมุดบัญชีประวัติการสกัดบทเรียนของโปรเจกต์ (RELAY Self-Learning Ledger — {project_name})\n\n")
-
+        f.write("# สมุดบัญชีประวัติบทเรียนของโปรเจกต์ (RELAY Self-Learning Ledger)\n\n")
 with open(ledger_file, "a", encoding="utf-8") as f:
-    f.write(f"## [{now_str}] ใบงาน `{task_id}`\n")
-    f.write(f"- จำนวนกฎสะสมทั้งหมดหลังควบรวม: **{len(final_rules)}/25 ข้อ** (เพิ่มใหม่ {len(added_rules)} ข้อ)\n")
-    for ar in added_rules:
-        f.write(f"  - `+` {ar}\n")
+    f.write(f"## [{now_str}] เสนอจากใบงาน `{task_id}` ({len(added)} ข้อ — รออนุมัติ)\n")
+    for a in added:
+        f.write(f"  - `?` {a}\n")
     f.write("\n")
 
-print(f"● สกัดและควบรวมบทเรียนสำเร็จ: ปัจจุบันมีกฎสะสม {len(final_rules)} ข้อ (เพิ่มใหม่ {len(added_rules)} ข้อ)")
+print(f"● เสนอกฎใหม่ {len(added)} ข้อ (รออนุมัติทั้งหมด {len(pending)} ข้อ ใน .relay/skills/project-learned/PENDING.md)")
 PYEOF
+}
 
-  printf "%s● บันทึกไฟล์ทักษะเฉพาะโปรเจกต์ที่: .relay/skills/project-learned/SKILL.md%s\n" "$C_OK" "$C_RESET"
-  printf "%s● บันทึกสมุดบัญชีประวัติการเรียนรู้ที่: .relay/skills/project-learned/LEDGER.md%s\n" "$C_MUTED" "$C_RESET"
+get_learned_pending_count() {
+  local f="$RELAY_DIR/skills/project-learned/PENDING.md"
+  [ -f "$f" ] || { echo "0"; return; }
+  local cnt
+  cnt="$(grep -cE '^[[:space:]]*-[[:space:]]+' "$f" 2>/dev/null || true)"
+  echo "${cnt:-0}"
+}
+
+# อนุมัติ/ปฏิเสธกฎจาก PENDING.md — selection: "a" ทั้งหมด, "x" ปฏิเสธทั้งหมด, หรือหมายเลขคั่นด้วยจุลภาค เช่น "1,3"
+apply_learned_approval() {
+  local selection="$1"
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$RELAY_DIR/skills/project-learned" "$PROJECT_NAME" "$selection" <<'PYEOF'
+import os, re, sys, datetime
+
+learn_dir, project_name, selection = sys.argv[1:4]
+skill_file = os.path.join(learn_dir, "SKILL.md")
+pending_file = os.path.join(learn_dir, "PENDING.md")
+ledger_file = os.path.join(learn_dir, "LEDGER.md")
+
+def read_text(path):
+    try:
+        return open(path, encoding="utf-8", errors="ignore").read()
+    except Exception:
+        return ""
+
+def bullets(text):
+    return [l.strip()[2:].strip() for l in text.splitlines() if l.strip().startswith("- ")]
+
+pending = bullets(read_text(pending_file))
+sel = selection.strip().lower()
+if sel == "a":
+    chosen = set(range(len(pending)))
+elif sel == "x":
+    chosen = set()
+else:
+    chosen = {int(n) - 1 for n in re.findall(r"\d+", sel) if 0 < int(n) <= len(pending)}
+
+approved = [p for i, p in enumerate(pending) if i in chosen]
+rejected = [p for i, p in enumerate(pending) if i not in chosen]
+
+rules = bullets(read_text(skill_file))
+seen = {re.sub(r"\W+", "", r.lower())[:60] for r in rules}
+for a in approved:
+    k = re.sub(r"\W+", "", a.lower())[:60]
+    if k not in seen:
+        rules.append(a)
+        seen.add(k)
+rules = rules[-25:]
+now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+if rules:
+    with open(skill_file, "w", encoding="utf-8") as f:
+        f.write(f"""---
+name: project-learned-{project_name.lower()}
+description: กฎและข้อควรระวังเฉพาะโครงการ {project_name} ที่ผ่านการอนุมัติจากผู้ใช้แล้ว (RELAY Self-Learning)
+---
+
+# บทเรียนสะสมที่อนุมัติแล้ว ({project_name})
+
+> ทุกข้อผ่านการอนุมัติจากผู้ใช้ผ่านเมนู [l] (อัปเดตล่าสุด `{now_str}`) • แก้ไขหรือลบข้อที่ไม่ต้องการในไฟล์นี้ได้โดยตรง
+> ตัวแทน AI (`@arch`, `@dev`, `@qa`) ต้องปฏิบัติตามกฎด้านล่างควบคู่กับ `.relay/PROJECT_STATE.md`
+
+## กฎสถาปัตยกรรมและการป้องกันข้อผิดพลาดซ้ำ
+""")
+        for r in rules:
+            f.write(f"- {r}\n")
+
+with open(pending_file, "w", encoding="utf-8") as f:
+    f.write("# กฎที่รออนุมัติ (RELAY Self-Learning — ยังไม่ถูกส่งให้ AI)\n\n")
+    f.write("> กด [l] ในหน้าจอ relay เพื่ออนุมัติหรือปฏิเสธ — เฉพาะกฎที่อนุมัติแล้วจะย้ายไปที่ SKILL.md\n\n")
+
+with open(ledger_file, "a", encoding="utf-8") as f:
+    f.write(f"## [{now_str}] ผลการทบทวนโดยผู้ใช้ (อนุมัติ {len(approved)} • ปฏิเสธ {len(rejected)})\n")
+    for a in approved:
+        f.write(f"  - `+ อนุมัติ` {a}\n")
+    for r in rejected:
+        f.write(f"  - `- ปฏิเสธ` {r}\n")
+    f.write("\n")
+
+print(f"● อนุมัติ {len(approved)} ข้อ • ปฏิเสธ {len(rejected)} ข้อ • กฎที่ใช้งานอยู่ทั้งหมด {len(rules)}/25 ข้อ")
+PYEOF
+}
+
+review_pending_learned_rules() {
+  local pending_file="$RELAY_DIR/skills/project-learned/PENDING.md"
+  local pcnt
+  pcnt="$(get_learned_pending_count)"
+  if [ "$pcnt" -eq 0 ]; then
+    printf "%sไม่มีกฎที่รออนุมัติ%s\n" "$C_MUTED" "$C_RESET"
+    return 0
+  fi
+  echo ""
+  printf "%sกฎที่รออนุมัติ (%s ข้อ):%s\n" "$C_BOLD" "$pcnt" "$C_RESET"
+  grep -E '^[[:space:]]*-[[:space:]]+' "$pending_file" | sed -E 's/^[[:space:]]*-[[:space:]]+//' | awk '{ printf "  [%d] %s\n", NR, $0 }'
+  echo ""
+  local sel=""
+  read -r -p "พิมพ์หมายเลขที่อนุมัติ (เช่น 1,3) • a = อนุมัติทั้งหมด • x = ปฏิเสธทั้งหมด • Enter = ข้ามไว้ก่อน: " sel || true
+  if [ -z "$sel" ]; then
+    printf "%sเก็บกฎไว้ในคิวรออนุมัติตามเดิม%s\n" "$C_MUTED" "$C_RESET"
+    return 0
+  fi
+  apply_learned_approval "$sel"
 }
 
 run_learned_skills_menu() {
   local mode="${1:-interactive}"
   refresh_project_paths
+  get_active_task
   if [ "$mode" = "--auto" ] || [ "$mode" = "auto" ]; then
     distill_project_learned_skills "$ACTIVE_TASK" "auto"
     return 0
@@ -2422,43 +2661,47 @@ run_learned_skills_menu() {
 
   local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
   local ledger_file="$RELAY_DIR/skills/project-learned/LEDGER.md"
-  local cnt
+  local cnt pcnt
   cnt="$(get_learned_skills_count)"
+  pcnt="$(get_learned_pending_count)"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s🧠 ศูนย์จัดการบทเรียนสะสมเฉพาะโปรเจกต์ (RELAY Self-Learning Project Skills)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s  • โปรเจกต์ปัจจุบัน : %s (%s กฎสะสมใน .relay/skills/project-learned/SKILL.md)\n" "$C_ACCENT" "$C_RESET" "$PROJECT_NAME" "$cnt"
-  printf "%s│%s  • ขอบเขตปลอดภัย : แก้ไขเฉพาะไฟล์ที่ RELAY สร้างเองในโปรเจกต์ ไม่แตะต้อง GLOBAL_AGENTS.md\n" "$C_ACCENT" "$C_RESET"
-  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  if [ -f "$skill_file" ]; then
-    sed 's/^/│  /' "$skill_file" | head -n 30
+  printf "%s│%s %s🧠 บทเรียนสะสมเฉพาะโปรเจกต์ (RELAY Self-Learning)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s  • ใช้งานอยู่ (ส่งให้ AI) : %s ข้อ ใน .relay/skills/project-learned/SKILL.md\n" "$C_ACCENT" "$C_RESET" "$cnt"
+  if [ "$pcnt" -gt 0 ]; then
+    printf "%s│%s  • %sรออนุมัติ            : %s ข้อ ใน PENDING.md (ยังไม่ถูกส่งให้ AI)%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$pcnt" "$C_RESET"
   else
-    printf "%s│%s  %s(ยังไม่มีไฟล์ .relay/skills/project-learned/SKILL.md ในโปรเจกต์นี้)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
+    printf "%s│%s  • รออนุมัติ            : 0 ข้อ\n" "$C_ACCENT" "$C_RESET"
   fi
+  printf "%s│%s  • ขอบเขตปลอดภัย : แก้ไขเฉพาะไฟล์ในโปรเจกต์นี้ ไม่แตะต้อง GLOBAL_AGENTS.md\n" "$C_ACCENT" "$C_RESET"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  interactive_menu "เลือกคำสั่งจัดการบทเรียนสะสมเฉพาะโปรเจกต์ (/learn)" 0 \
-    "1|★ สกัดและควบรวมบทเรียนจากใบงานปัจจุบัน/ใบงานล่าสุดทันที (Distill Now)" \
-    "2|ดูสมุดบัญชีประวัติการเรียนรู้ทั้งหมด (View LEDGER.md)" \
+  local default_idx=0
+  [ "$pcnt" -eq 0 ] && default_idx=1
+  interactive_menu "เลือกคำสั่งจัดการบทเรียนสะสม (/learn)" "$default_idx" \
+    "1|★ ทบทวนและอนุมัติกฎที่รออนุมัติ (${pcnt} ข้อ)" \
+    "2|สกัดกฎที่เสนอจากใบงานปัจจุบัน/ล่าสุดเข้าคิวรออนุมัติ" \
+    "3|ดูกฎที่ใช้งานอยู่ (SKILL.md)" \
+    "4|ดูประวัติการเสนอ/อนุมัติทั้งหมด (LEDGER.md)" \
     "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
-    1)
-      distill_project_learned_skills "$ACTIVE_TASK" "interactive" || true
-      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
-      ;;
-    2)
+    1) review_pending_learned_rules ;;
+    2) distill_project_learned_skills "$ACTIVE_TASK" "interactive" || true ;;
+    3)
       echo ""
-      if [ -f "$ledger_file" ]; then
-        cat "$ledger_file"
-      else
-        printf "%sยังไม่มีประวัติใน .relay/skills/project-learned/LEDGER.md%s\n" "$C_MUTED" "$C_RESET"
-      fi
-      echo ""
-      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+      if [ -f "$skill_file" ]; then cat "$skill_file"; else printf "%sยังไม่มีกฎที่อนุมัติแล้ว%s\n" "$C_MUTED" "$C_RESET"; fi
       ;;
+    4)
+      echo ""
+      if [ -f "$ledger_file" ]; then cat "$ledger_file"; else printf "%sยังไม่มีประวัติ%s\n" "$C_MUTED" "$C_RESET"; fi
+      ;;
+    *) return 0 ;;
   esac
+  if [ -t 0 ]; then
+    read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+  fi
 }
 
 # ─── 13.6 ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย 3 ชั้น (Bounded Auto-Relay Loop) ──
@@ -2524,27 +2767,73 @@ exec_provider_autonomous() {
       ;;
   esac
 
-  local rc=0
+  local rc=0 run_start q_before
+  run_start="$(date +%s)"
+  q_before="$(get_role_quota_pair "$provider" "$configured_model")"
   ( cd "$work_dir" && run_with_timeout "$step_timeout" "${cmd[@]}" ) || rc=$?
 
   refresh_quota_cache --quiet
+  append_run_log "auto" "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$(date +%s)" "$q_before" "$(get_role_quota_pair "$provider" "$configured_model")"
   return "$rc"
 }
 
-# ตัดสินผลจาก QA_REPORT.md: PASS เฉพาะเมื่อมี VERDICT: PASS ชัดเจนและไม่มี VERDICT: FAIL
+# ตัดสินผลตรวจรับ: อ่าน QA_VERDICT.json ก่อน (PASS ต้องไม่มี failed_criteria) ถ้าไม่มีจึงใช้ VERDICT ใน QA_REPORT.md เป็นทางสำรอง
+# คืนค่า "<PASS|FAIL|NONE|MISSING>|<json|invalid-json|md|->"
 qa_verdict() {
-  local f="$1"
-  if [ ! -f "$f" ]; then
-    echo "MISSING"
+  local d="$1"
+  local json="$d/QA_VERDICT.json"
+  local md="$d/QA_REPORT.md"
+  if [ -f "$json" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$json" <<'PYEOF'
+import json, sys
+try:
+    o = json.load(open(sys.argv[1], encoding="utf-8"))
+    v = str(o.get("verdict", "")).strip().upper()
+    fc = o.get("failed_criteria") or []
+    if v == "PASS" and not fc:
+        print("PASS|json")
+    elif v in ("PASS", "FAIL"):
+        print("FAIL|json")
+    else:
+        print("NONE|invalid-json")
+except Exception:
+    print("NONE|invalid-json")
+PYEOF
     return
   fi
-  if grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}FAIL' "$f"; then
-    echo "FAIL"
-  elif grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}PASS' "$f"; then
-    echo "PASS"
+  if [ ! -f "$md" ]; then
+    echo "MISSING|-"
+  elif grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}FAIL' "$md"; then
+    echo "FAIL|md"
+  elif grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}PASS' "$md"; then
+    echo "PASS|md"
   else
-    echo "NONE"
+    echo "NONE|md"
   fi
+}
+
+# ย้ายผลตรวจรับเดิมออกก่อน @qa รอบใหม่ เพื่อไม่ให้ผลเก่าถูกนับซ้ำ
+archive_old_qa_outputs() {
+  local round="$1"
+  shift
+  local d
+  for d in "$@"; do
+    [ -f "$d/QA_REPORT.md" ] && mv "$d/QA_REPORT.md" "$d/QA_REPORT.before-round-${round}.md"
+    [ -f "$d/QA_VERDICT.json" ] && mv "$d/QA_VERDICT.json" "$d/QA_VERDICT.before-round-${round}.json"
+  done
+  return 0
+}
+
+# ข้อกำหนดผลลัพธ์ของ @qa (ใช้ร่วมกันในขั้นตอนที่ 4 และ Auto-Loop)
+get_qa_prompt_contract() {
+  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่าง และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md' "$ACTIVE_TASK"
+}
+
+verdict_source_note() {
+  case "$1" in
+    md) printf " (ไม่มี QA_VERDICT.json — ใช้ VERDICT ใน QA_REPORT.md เป็นทางสำรอง)" ;;
+    invalid-json) printf " (QA_VERDICT.json รูปแบบไม่ถูกต้อง)" ;;
+  esac
 }
 
 LOOP_LOG_FILE=""
@@ -2637,6 +2926,8 @@ run_auto_relay_loop() {
   } > "$LOOP_LOG_FILE"
 
   local rc=0
+  local loop_started_at
+  loop_started_at="$(date +%s)"
 
   # 1. ขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
   if [ ! -f "$task_dir/PLAN.md" ]; then
@@ -2695,41 +2986,37 @@ run_auto_relay_loop() {
       return 1
     fi
 
-    # ย้ายรายงานเก่าออก เพื่อไม่ให้รายงานรอบก่อนถูกนับเป็นผลของรอบนี้
-    local d
-    for d in "$wt_task_dir" "$task_dir"; do
-      if [ -f "$d/QA_REPORT.md" ]; then
-        mv "$d/QA_REPORT.md" "$d/QA_REPORT.before-round-${round}.md"
-      fi
-    done
+    # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
+    archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1
 
     if [ -d "$wt_task_dir" ]; then
-      cp -R "$wt_task_dir/"* "$task_dir/" 2>/dev/null || true
-      [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
+      sync_task_docs_from_worktree "$wt_task_dir" "$task_dir"
     fi
     LAST_COMPLETED_PHASE=4
 
-    local verdict
-    verdict="$(qa_verdict "$task_dir/QA_REPORT.md")"
+    local vres verdict vnote
+    vres="$(qa_verdict "$task_dir")"
+    verdict="${vres%%|*}"
+    vnote="$(verdict_source_note "${vres#*|}")"
     case "$verdict" in
       PASS)
-        echo "- [PASS] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: PASS (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        echo "- [PASS] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: PASS${vnote} (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
         loop_passed=1
         break
         ;;
       FAIL)
-        echo "- [RETRY] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: FAIL (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        echo "- [RETRY] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: FAIL${vnote} (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
         ;;
       NONE)
-        echo "- [RETRY] รอบที่ $round/$max_rounds: QA_REPORT.md ไม่มี VERDICT ที่ชัดเจน — ไม่นับว่าผ่าน (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        echo "- [RETRY] รอบที่ $round/$max_rounds: ไม่มี VERDICT ที่ชัดเจน${vnote} — ไม่นับว่าผ่าน (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
         ;;
       *)
-        loop_halt "@qa ทำงานจบแต่ไม่ได้เขียน .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (รอบที่ $round)"
+        loop_halt "@qa ทำงานจบแต่ไม่ได้เขียน QA_REPORT.md หรือ QA_VERDICT.json (รอบที่ $round)"
         return 1
         ;;
     esac
@@ -2738,6 +3025,9 @@ run_auto_relay_loop() {
   done
 
   echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  print_loop_run_summary "$loop_started_at"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   if [ "$loop_passed" -eq 1 ]; then
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_OK" "$C_RESET"
     printf "%s│%s %s● [Auto-Relay Loop สำเร็จ!] @qa ระบุ VERDICT: PASS ในรอบที่ %d/%d%s\n" "$C_OK" "$C_RESET" "$C_BOLD" "$round" "$max_rounds" "$C_RESET"
@@ -2758,6 +3048,38 @@ run_auto_relay_loop() {
 }
 
 # ─── 13.7 ขั้นตอนที่ 5: ผสานโค้ดอย่างปลอดภัย (ไม่ลบอะไรจนกว่าจะผสานสำเร็จ) ────────
+# บันทึกใบงานที่ผสานแล้วลง PROJECT_STATE.md (เก็บล่าสุด 15 รายการ) — เรียกหลังผสานสำเร็จเท่านั้น
+record_task_in_project_state() {
+  local task="$1"
+  local commit="$2"
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$RELAY_DIR/PROJECT_STATE.md" "$RELAY_DIR/tasks/$task/SPEC.md" "$task" "$commit" <<'PYEOF' || true
+import os, re, sys, datetime
+ps, spec, task, commit = sys.argv[1:5]
+title = task
+if os.path.exists(spec):
+    for line in open(spec, encoding="utf-8", errors="ignore"):
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+title = re.sub(r"\s+", " ", title)[:120]
+entry = f"- `{datetime.date.today().isoformat()}` `{task}` — {title} (merge `{commit}`)"
+H = "## ประวัติใบงานที่ผสานแล้ว (RELAY อัปเดตอัตโนมัติ)"
+txt = open(ps, encoding="utf-8").read() if os.path.exists(ps) else "# สถานะปัจจุบันของโครงการ (PROJECT_STATE.md)\n"
+if H in txt:
+    before, after = txt.split(H, 1)
+    m = re.search(r"\n## ", after)
+    section = after[:m.start()] if m else after
+    rest = after[m.start():] if m else ""
+    items = [l for l in section.splitlines() if l.startswith("- ") and f"`{task}`" not in l]
+    items = ([entry] + items)[:15]
+    txt = before + H + "\n" + "\n".join(items) + "\n" + rest
+else:
+    txt = txt.rstrip("\n") + "\n\n" + H + "\n" + entry + "\n"
+open(ps, "w", encoding="utf-8").write(txt)
+PYEOF
+}
+
 archive_active_task() {
   mkdir -p "$RELAY_DIR/archive"
   local dest="$RELAY_DIR/archive/$ACTIVE_TASK"
@@ -2802,8 +3124,12 @@ run_phase_5_merge() {
 
   # ดึงเอกสารล่าสุดจาก Worktree กลับมาที่ใบงานหลักก่อน
   if [ -d "$worktree_dir/.relay/tasks/$task" ]; then
-    cp -R "$worktree_dir/.relay/tasks/$task/"* "$task_dir/" 2>/dev/null || true
+    sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$task" "$task_dir"
   fi
+
+  local qa_res qa_v
+  qa_res="$(qa_verdict "$task_dir")"
+  qa_v="${qa_res%%|*}"
 
   local dirty dirty_count ahead
   dirty="$(worktree_dirty_files "$worktree_dir")"
@@ -2815,6 +3141,11 @@ run_phase_5_merge() {
   printf "%s│%s %sตรวจสอบก่อนผสานโค้ด (ขั้นตอนที่ 5)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s  • ผสานจากกิ่ง  : %s ➔ เข้ากิ่ง %s%s%s\n" "$C_ACCENT" "$C_RESET" "$branch_name" "$C_BOLD" "$base" "$C_RESET"
   printf "%s│%s  • commit ใหม่   : %s commit\n" "$C_ACCENT" "$C_RESET" "$ahead"
+  if [ "$qa_v" = "PASS" ]; then
+    printf "%s│%s  • ผลตรวจรับ    : %sPASS%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
+  else
+    printf "%s│%s  • ผลตรวจรับ    : %s%s — ยังไม่ผ่านการตรวจรับจาก @qa%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$qa_v" "$C_RESET"
+  fi
   if [ "$dirty_count" -gt 0 ]; then
     printf "%s│%s  • %sไฟล์ที่ยังไม่ commit ใน Worktree : %s ไฟล์ (ไม่นับ .relay/)%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$dirty_count" "$C_RESET"
     printf "%s\n" "$dirty" | head -n 8 | sed "s/^/${C_ACCENT}│${C_RESET}      /"
@@ -2858,6 +3189,13 @@ run_phase_5_merge() {
     *) return 0 ;;
   esac
 
+  if [ "$qa_v" != "PASS" ]; then
+    interactive_menu "ใบงานนี้ยังไม่ผ่านการตรวจรับ (${qa_v}) — ยืนยันจะผสานเข้า ${base} หรือไม่?" 1 \
+      "y|ยืนยันผสานแม้ยังไม่ผ่าน QA (รับผิดชอบเอง)" \
+      "n|ยกเลิก — กลับไปแก้ไขก่อน"
+    [ "$MENU_RESULT" != "y" ] && return 0
+  fi
+
   if [ "$base" != "main" ] && [ "$base" != "master" ]; then
     interactive_menu "ยืนยันผสานเข้ากิ่ง '${base}' (ไม่ใช่ main/master)?" 1 \
       "y|ยืนยันผสานเข้า ${base}" \
@@ -2879,6 +3217,7 @@ run_phase_5_merge() {
   fi
   printf "%s● ผสาน %s เข้า %s สำเร็จ%s\n" "$C_OK" "$branch_name" "$base" "$C_RESET"
 
+  record_task_in_project_state "$task" "$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "-")"
   distill_project_learned_skills "$task" "auto" || true
 
   # ลบ Worktree เฉพาะเมื่อไม่มีไฟล์โค้ดค้าง (ไฟล์ใน .relay/ เป็นสำเนาที่ดึงกลับมาแล้ว)
@@ -2896,7 +3235,11 @@ run_phase_5_merge() {
   fi
 
   archive_active_task
-  printf "%s● ผสานโค้ด สกัดบทเรียน และย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$task" "$C_RESET"
+  printf "%s● ผสานโค้ด บันทึกลง PROJECT_STATE.md และย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$task" "$C_RESET"
+  local pend
+  pend="$(get_learned_pending_count)"
+  [ "$pend" -gt 0 ] && printf "%s▲ มีกฎที่เสนอจากใบงานนี้ %s ข้อรออนุมัติ — กด [l] เพื่อทบทวนก่อนนำไปใช้%s\n" "$C_WARN" "$pend" "$C_RESET"
+  printf "%s• หากโครงสร้างระบบเปลี่ยนมาก ให้ @arch ทบทวนส่วนบนของ .relay/PROJECT_STATE.md ในใบงานถัดไป%s\n" "$C_MUTED" "$C_RESET"
 }
 
 run_init_greenfield() {

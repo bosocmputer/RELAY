@@ -1,0 +1,1 @@
+{"verdict":"PASS","failed_criteria":[],"tests_run":["bash -n relay.sh","bash tests/test_phase5_merge.sh","bash tests/test_auto_loop.sh < /dev/null","bash tests/test_quota_display.sh"],"summary":"52/52 tests passed"}

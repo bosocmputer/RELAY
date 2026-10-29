@@ -44,10 +44,14 @@ case "$1" in
     n=$(( $(cat "$FAKE_LOG.qa-count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_LOG.qa-count"
     v=$(echo "$FAKE_QA_SEQUENCE" | cut -d, -f"$n")
     td=".relay/tasks/$FAKE_TASK"; mkdir -p "$td"
+    echo "HACKED-BY-QA" > .relay/PROJECT_STATE.md
     case "$v" in
-      PASS) printf "# QA\n**VERDICT: PASS**\n" > "$td/QA_REPORT.md" ;;
-      FAIL) printf "# QA\nVERDICT: FAIL\n- bug\n" > "$td/QA_REPORT.md" ;;
+      PASS) printf "# QA\n**VERDICT: PASS**\n" > "$td/QA_REPORT.md"; printf '{"verdict":"PASS","failed_criteria":[],"tests_run":["npm test"],"summary":"ok"}' > "$td/QA_VERDICT.json" ;;
+      FAIL) printf "# QA\nVERDICT: FAIL\n- bug\n" > "$td/QA_REPORT.md"; printf '{"verdict":"FAIL","failed_criteria":["AC-1"],"tests_run":[],"summary":"bug"}' > "$td/QA_VERDICT.json" ;;
       NONE) printf "# QA\nทุกอย่างดูดี\n" > "$td/QA_REPORT.md" ;;
+      MDPASS) printf "# QA\nVERDICT: PASS\n" > "$td/QA_REPORT.md" ;;
+      JSONBAD) printf "# QA\nVERDICT: PASS\n" > "$td/QA_REPORT.md"; printf '{verdict: PASS' > "$td/QA_VERDICT.json" ;;
+      JSONCONTRA) printf "# QA\nVERDICT: PASS\n" > "$td/QA_REPORT.md"; printf '{"verdict":"PASS","failed_criteria":["AC-2 ยังไม่ผ่าน"]}' > "$td/QA_VERDICT.json" ;;
       MISSING) : ;;
     esac
     exit 0 ;;
@@ -97,6 +101,12 @@ LOG | grep -q "\[PASS\] รอบที่ 2/3" && ok "ผ่านในรอ�
 grep -q '^.relay/worktrees/$' "$ROOT/proj/.gitignore" && ok "เพิ่ม .relay/worktrees/ ใน .gitignore" || bad ".gitignore ไม่ถูกอัปเดต"
 grep -q -- "--mode" "$ROOT/fake.agy-args" && grep -q "^auto$" "$ROOT/fake.agy-args" && ok "agy ถูกเรียกด้วย --mode auto" || bad "ไม่พบ --mode auto"
 git -C "$ROOT/proj" diff --quiet HEAD -- app.txt && ok "main ไม่ถูกแก้โค้ด" || bad "main ถูกแก้"
+grep -qx "state" "$ROOT/proj/.relay/PROJECT_STATE.md" && ok "PROJECT_STATE.md ของกิ่งหลักไม่ถูก @qa แก้ (F4)" || bad "PROJECT_STATE.md ถูกแก้ก่อนผสาน"
+[ -f "$ROOT/proj/.relay/tasks/$T/QA_VERDICT.before-round-2.json" ] && ok "เก็บ QA_VERDICT.json รอบก่อน" || bad "ไม่มี QA_VERDICT.before-round-2.json"
+nlines=$(wc -l < "$ROOT/proj/.relay/tasks/$T/RUN_LOG.jsonl" 2>/dev/null | tr -d ' ')
+[ "$nlines" = "5" ] && ok "RUN_LOG.jsonl มี 5 บรรทัด (arch + dev×2 + qa×2) (F5)" || bad "RUN_LOG.jsonl มี ${nlines:-0} บรรทัด"
+python3 -c "import json,sys; [json.loads(l) for l in open(sys.argv[1])]" "$ROOT/proj/.relay/tasks/$T/RUN_LOG.jsonl" 2>/dev/null && ok "RUN_LOG.jsonl เป็น JSON ที่อ่านได้" || bad "RUN_LOG.jsonl อ่านไม่ได้"
+grep -q "สรุปการทำงานของลูป" "$ROOT/out.log" && ok "แสดงสรุปเวลาและโควต้าท้ายลูป" || bad "ไม่แสดงสรุปท้ายลูป"
 
 echo "== AC-5: QA_REPORT ไม่มี VERDICT ➔ ไม่นับว่าผ่าน =="
 setup
@@ -104,6 +114,13 @@ FAKE_QA_SEQUENCE="NONE,NONE,NONE" run_loop
 LOG | grep -q "\[PASS\]" && bad "ถูกนับว่าผ่าน" || ok "ไม่ถูกนับว่าผ่าน"
 LOG | grep -q "ไม่มี VERDICT" && ok "บันทึกเหตุผล ไม่มี VERDICT" || bad "ไม่บันทึกเหตุผล"
 LOG | grep -q "ครบเพดาน 3 รอบ" && ok "หยุดเมื่อครบ 3 รอบ" || bad "ไม่หยุดที่ 3 รอบ"
+
+echo "== F3: ผลตรวจรับแบบ JSON =="
+setup
+FAKE_QA_SEQUENCE="JSONCONTRA,JSONBAD,MDPASS" run_loop
+LOG | sed -n '/รอบที่ 1\/3/p' | grep -q "RETRY" && ok "JSON PASS แต่มี failed_criteria ➔ ไม่ผ่าน" || bad "JSON ขัดแย้งถูกนับว่าผ่าน"
+LOG | grep -q "รูปแบบไม่ถูกต้อง" && ok "JSON เสีย ➔ ไม่ผ่านและบันทึกเหตุผล" || bad "JSON เสียไม่ถูกตรวจจับ"
+LOG | grep -q "\[PASS\] รอบที่ 3/3.*ทางสำรอง" && ok "ไม่มี JSON แต่ MD มี PASS ➔ ผ่านพร้อมบันทึกว่าใช้ทางสำรอง" || bad "ทางสำรอง MD ไม่ทำงาน"
 
 echo "== AC-6: agent ค้างเกินเวลา ➔ หยุดลูป =="
 setup

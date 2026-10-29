@@ -12,7 +12,7 @@ setup_repo() {
   git init -q -b main
   echo "base" > app.txt
   git add app.txt && git commit -q -m init
-  mkdir -p ".relay/tasks/$T" && echo "# SPEC demo" > ".relay/tasks/$T/SPEC.md"
+  mkdir -p ".relay/tasks/$T" && printf '# SPEC demo\n- ห้ามแก้ไขโค้ดบนกิ่ง main โดยตรง ต้องทำใน Worktree ของใบงานเสมอ\n- ต้องเขียนชุดทดสอบก่อนส่งงานให้ QA ตรวจรับทุกครั้งที่แก้ไขโค้ด\n' > ".relay/tasks/$T/SPEC.md"
   echo "state" > .relay/PROJECT_STATE.md
   git worktree add -q ".relay/worktrees/$T" -b "feat/$T"
   mkdir -p ".relay/worktrees/$T/.relay/tasks/$T"
@@ -31,6 +31,15 @@ git -C /tmp/relay-m1 ls-files | grep -q "^.relay/" && bad ".relay/ ถูก com
 git -C /tmp/relay-m1 show-ref --quiet "refs/heads/feat/$T" && bad "กิ่งยังอยู่" || ok "ลบกิ่งแล้ว"
 [ -f "/tmp/relay-m1/.relay/archive/$T/QA_REPORT.md" ] && ok "ใบงานเข้า archive พร้อม QA_REPORT จาก Worktree" || bad "ใบงานไม่อยู่ใน archive"
 grep -q '^.relay/worktrees/$' /tmp/relay-m1/.gitignore 2>/dev/null && bad "ไม่ควรแก้ .gitignore ในขั้นตอนที่ 5" || ok ".gitignore ไม่ถูกแตะ"
+grep -q "\`$T\` — SPEC demo (merge" /tmp/relay-m1/.relay/PROJECT_STATE.md && ok "บันทึกใบงานลง PROJECT_STATE.md หลังผสาน (F4)" || bad "ไม่มีรายการใน PROJECT_STATE.md"
+L=/tmp/relay-m1/.relay/skills/project-learned
+[ "$(grep -c '^- ' $L/PENDING.md 2>/dev/null)" = "2" ] && ok "กฎที่สกัดเข้าคิว PENDING.md 2 ข้อ (F2)" || bad "PENDING.md ไม่ถูกต้อง"
+[ ! -f $L/SKILL.md ] && ok "SKILL.md ยังไม่ถูกสร้างก่อนอนุมัติ" || bad "SKILL.md ถูกสร้างโดยไม่อนุมัติ"
+( cd /tmp/relay-m1 && printf "1\n1\n" | bash "$RELAY" learn > /tmp/relay-m1-learn.log 2>&1 )
+grep -q "ห้ามแก้ไขโค้ดบนกิ่ง main" $L/SKILL.md 2>/dev/null && ok "อนุมัติข้อ 1 ➔ เข้า SKILL.md" || bad "ข้อ 1 ไม่เข้า SKILL.md"
+grep -q "ต้องเขียนชุดทดสอบ" $L/SKILL.md 2>/dev/null && bad "ข้อ 2 ไม่ได้อนุมัติแต่เข้า SKILL.md" || ok "ข้อ 2 ที่ไม่อนุมัติไม่เข้า SKILL.md"
+grep -q "+ อนุมัติ" $L/LEDGER.md && grep -q -- "- ปฏิเสธ" $L/LEDGER.md && ok "LEDGER บันทึกทั้งอนุมัติและปฏิเสธ" || bad "LEDGER ไม่ครบ"
+[ "$(grep -c '^- ' $L/PENDING.md 2>/dev/null)" = "0" ] && ok "คิว PENDING.md ว่างหลังทบทวน" || bad "PENDING.md ไม่ว่าง"
 
 echo "== AC-2: Merge conflict ➔ ยกเลิก ไม่ลบอะไร =="
 setup_repo /tmp/relay-m2
