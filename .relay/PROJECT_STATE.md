@@ -17,6 +17,14 @@
       3. **`codex` (OpenAI Codex CLI):** อ่านสดจาก `rate_limits` ใน `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
       4. **`claude` (Anthropic Claude Code CLI):** ดึงผ่าน Control Protocol `get_usage` ของ `claude -p --input-format stream-json`
     - แสดงผลโควต้าคงเหลือทั้งในคอลัมน์สถานะของแต่ละตำแหน่ง (`@po`, `@arch`, `@dev`, `@qa`), ในส่วนสรุปบนหน้าแดชบอร์ดหลัก (`relay status`), และในหน้าจอหลอดโควต้าละเอียด (`relay quota` หรือกด `[u]` / `/quota`) พร้อมแจ้งเตือนอัตโนมัติหากค่ายใดเหลือโควต้าต่ำกว่า `20%`
+  - **ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย 3 ชั้น (`Bounded Auto-Relay Loop` — `[a]` / `/loop` / `relay loop`):**
+    - ให้มนุษย์ควบคุมขั้นตอนที่ 1 (`@po` สร้าง `SPEC.md`) และขั้นตอนที่ 5 (`Merge & Archive`) ขณะที่ขั้นตอน `2 (@arch) ➔ 3 (@dev ใน Worktree) ⇄ 4 (@qa ต่างค่าย)` สามารถรันอัตโนมัติภายใต้เบรกนิรภัย 3 ชั้น:
+      1. **Quota Circuit Breaker (`check_role_quota_safe`):** หยุดลูปทันทีหากโควต้า `5h` หรือ `7d` ของตำแหน่งถัดไปต่ำกว่า `20%`
+      2. **Max Remediation Cap (`3 รอบ`):** จำกัดการวนแก้บั๊ก `@dev ⇄ @qa` สูงสุดไม่เกิน 3 รอบ พร้อมบันทึก `.relay/tasks/<task-id>/LOOP_LOG.md`
+      3. **Cross-Provider QA Verifier:** ตัดสินผลผ่าน `VERDICT: PASS` หรือ `VERDICT: FAIL` ใน `QA_REPORT.md`
+  - **ระบบสกัดบทเรียนและสร้างทักษะเฉพาะโปรเจกต์อัตโนมัติ (`Self-Learning Project Skills` — `[l]` / `/learn` / `relay learn`):**
+    - สกัดกฎสถาปัตยกรรมและการป้องกันบั๊กซ้ำจาก `SPEC.md`, `ARCH.md`, และ `QA_REPORT.md` ลงใน `.relay/skills/project-learned/SKILL.md` (ควบรวมไม่ให้ซ้ำและจำกัดไม่เกิน 25 ข้อ) พร้อมสมุดบัญชีประวัติแบบ Append-Only ที่ `.relay/skills/project-learned/LEDGER.md`
+    - ทำงานอัตโนมัติเมื่อกด `[5] Merge & Archive` และแนบเข้าสู่ Prompt ของ `@arch`, `@dev`, `@qa` ในใบงานถัดไปโดยไม่แตะต้องไฟล์กฎส่วนกลาง `~/.agents/GLOBAL_AGENTS.md`
   - **ตรวจสอบความพร้อมจริง 3 ชั้น (3-Layer CLI Readiness Verification):**
     1. ตรวจการติดตั้ง CLI (`agy`, `claude`, `codex`, `gemini`)
     2. ตรวจสถานะการเข้าสู่ระบบจริง (`~/.gemini/jetski-standalone-oauth-token` สำหรับ `agy`, `claude auth status`, `codex login status`, และ `GEMINI_API_KEY` สำหรับ `gemini`)

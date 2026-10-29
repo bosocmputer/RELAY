@@ -858,6 +858,53 @@ format_role_status_cell() {
   fi
 }
 
+check_role_quota_safe() {
+  local provider="$1"
+  local model="$2"
+  local role_label="$3"
+  local min_pct="${4:-20}"
+
+  update_codex_quota_fast
+  local qpair q5 q7
+  qpair="$(get_role_quota_pair "$provider" "$model")"
+  q5="${qpair%%|*}"
+  q7="${qpair#*|}"
+
+  local low_flag=0
+  if [[ "$q5" =~ ^[0-9]+$ ]] && [ "$q5" -lt "$min_pct" ]; then low_flag=1; fi
+  if [[ "$q7" =~ ^[0-9]+$ ]] && [ "$q7" -lt "$min_pct" ]; then low_flag=1; fi
+
+  if [ "$low_flag" -eq 1 ]; then
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+    printf "%s│%s %s🛑 [Quota Circuit Breaker] หยุดลูปอัตโนมัติเพื่อปกป้องโควต้าของคุณ!%s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s  • ตำแหน่ง : %s (%s / %s)\n" "$C_ERR" "$C_RESET" "$role_label" "$provider" "$model"
+    printf "%s│%s  • โควต้าคงเหลือปัจจุบัน : 5 ชม. เหลือ %s%% │ รายสัปดาห์ เหลือ %s%% (ต่ำกว่าเกณฑ์ปลอดภัย %s%%)\n" "$C_ERR" "$C_RESET" "$q5" "$q7" "$min_pct"
+    printf "%s│%s  • คำแนะนำ : กด [c] เพื่อสลับตำแหน่งนี้ไปใช้ค่ายอื่นที่ยังมีโควต้าเหลือเยอะ แล้วสั่งรันลูปต่อได้ทันที\n" "$C_ERR" "$C_RESET"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+    return 1
+  fi
+  return 0
+}
+
+get_learned_skills_count() {
+  local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
+  if [ ! -f "$skill_file" ]; then
+    echo "0"
+    return
+  fi
+  local cnt
+  cnt="$(grep -cE '^[[:space:]]*-[[:space:]]+' "$skill_file" 2>/dev/null || echo "0")"
+  echo "${cnt:-0}"
+}
+
+get_learned_skills_prompt_note() {
+  local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
+  if [ -f "$skill_file" ]; then
+    printf " และกรุณาอ่านไฟล์บทเรียนสะสมเฉพาะโครงการที่ .relay/skills/project-learned/SKILL.md เพื่อปฏิบัติตามกฎและข้อควรระวังที่ได้เรียนรู้จากใบงานก่อนหน้าอย่างเคร่งครัด"
+  fi
+}
+
 format_cli_summary_badge() {
   local provider="$1"
   local label="$provider"
@@ -935,16 +982,16 @@ compute_stage3_next_step() {
     STAGE3_FOCUS_TEXT="กด Enter ที่ข้อ [1] เพื่อให้ @po ซักถามความต้องการและสร้างเอกสาร SPEC.md"
   elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ]; then
     RECOMMENDED_STEP=2
-    STAGE3_FOCUS_TEXT="มี SPEC.md แล้ว — กด Enter ที่ข้อ [2] เพื่อให้ @arch/@pm สร้าง ARCH.md & PLAN.md"
+    STAGE3_FOCUS_TEXT="มี SPEC.md แล้ว — กด [2] ให้ @arch วางแผน หรือกด [a] ⚡ รัน Auto-Relay Loop (2➔3⇄4) อัตโนมัติ"
+  elif [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ]; then
+    RECOMMENDED_STEP=5
+    STAGE3_FOCUS_TEXT="ผ่าน QA_REPORT.md แล้ว — กด Enter ที่ข้อ [5] เพื่อสกัดบทเรียน ผสานโค้ดเข้า main และเก็บเข้า Archive"
   elif [ ! -d "$RELAY_DIR/worktrees/$ACTIVE_TASK" ] && [ "${LAST_COMPLETED_PHASE:-0}" -lt 3 ]; then
     RECOMMENDED_STEP=3
-    STAGE3_FOCUS_TEXT="มี PLAN.md แล้ว — กด Enter ที่ข้อ [3] เพื่อให้ @dev แยก Worktree และเขียนโค้ด"
-  elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ]; then
-    RECOMMENDED_STEP=4
-    STAGE3_FOCUS_TEXT="เขียนโค้ดใน Worktree แล้ว — กด Enter ที่ข้อ [4] เพื่อให้ @qa/@sec ตรวจรับงาน"
+    STAGE3_FOCUS_TEXT="มี PLAN.md แล้ว — กด [3] ให้ @dev เขียนโค้ด หรือกด [a] ⚡ รัน Auto-Relay Loop (3⇄4) อัตโนมัติ"
   else
-    RECOMMENDED_STEP=5
-    STAGE3_FOCUS_TEXT="ผ่าน QA_REPORT.md แล้ว — กด Enter ที่ข้อ [5] เพื่อผสานโค้ดเข้า main และเก็บเข้า Archive"
+    RECOMMENDED_STEP=4
+    STAGE3_FOCUS_TEXT="เขียนโค้ดใน Worktree แล้ว — กด [4] ให้ @qa/@sec ตรวจรับงาน หรือกด [a] ⚡ รันลูปตรวจและแก้ไขอัตโนมัติ"
   fi
 }
 
@@ -1085,6 +1132,13 @@ print_dashboard_header() {
   local state_badge="${C_WARN}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
   [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && state_badge="${C_OK}● PROJECT_STATE.md พร้อมใช้งาน${C_RESET}"
 
+  local learned_cnt
+  learned_cnt="$(get_learned_skills_count)"
+  local learned_badge="${C_MUTED}○ Learned Skills (รอสกัดเมื่อปิดใบงาน [5]/[l])${C_RESET}"
+  if [ "${learned_cnt:-0}" -gt 0 ]; then
+    learned_badge="${C_OK}● Learned Skills (${learned_cnt} กฎสะสม)${C_RESET}"
+  fi
+
   local spec_m="${C_MUTED}[ ] SPEC.md${C_RESET}"
   local plan_m="${C_MUTED}[ ] ARCH & PLAN${C_RESET}"
   local qa_m="${C_MUTED}[ ] QA_REPORT.md${C_RESET}"
@@ -1179,7 +1233,7 @@ print_dashboard_header() {
       printf "%s│%s โฟลเดอร์ : %s~ (%s)%s  •  %s▲ เป็นโฟลเดอร์ Home ส่วนตัว (ไม่ใช่โฟลเดอร์โปรเจกต์)%s\n" \
         "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_DIR" "$C_RESET" "$C_WARN" "$C_RESET"
     else
-      printf "%s│%s โครงการ : %s%s%s [%s]  •  %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_NAME" "$C_RESET" "$git_branch" "$state_badge"
+      printf "%s│%s โครงการ : %s%s%s [%s]  •  %b  •  %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_NAME" "$C_RESET" "$git_branch" "$state_badge" "$learned_badge"
     fi
 
     if [ "$UX_STAGE" -eq 3 ]; then
@@ -1976,7 +2030,9 @@ run_phase_1_po() {
 run_phase_2_arch() {
   require_all_roles_ready || return 0
   ensure_or_create_task
-  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md"
+  local learned_note
+  learned_note="$(get_learned_skills_prompt_note)"
+  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (Architect & Planner)" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
 }
@@ -1998,11 +2054,17 @@ run_phase_3_dev() {
       mkdir -p "$worktree_dir/.relay/tasks"
       cp -R "$RELAY_DIR/tasks/$ACTIVE_TASK" "$worktree_dir/.relay/tasks/" 2>/dev/null || true
       [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && cp "$RELAY_DIR/PROJECT_STATE.md" "$worktree_dir/.relay/PROJECT_STATE.md" 2>/dev/null || true
+      if [ -d "$RELAY_DIR/skills" ]; then
+        mkdir -p "$worktree_dir/.relay/skills"
+        cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
+      fi
       target_work_dir="$worktree_dir"
     fi
   fi
 
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้"
+  local learned_note
+  learned_note="$(get_learned_skills_prompt_note)"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (Full-Stack Developer ใน Git Worktree)" "$target_work_dir" "$prompt"
   LAST_COMPLETED_PHASE=3
 }
@@ -2014,7 +2076,9 @@ run_phase_4_qa() {
   local target_work_dir="$PROJECT_DIR"
   [ -d "$worktree_dir" ] && target_work_dir="$worktree_dir"
 
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal (0 Token) 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. หากมีส่วนติดต่อผู้ใช้บนเว็บ ให้ใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และอัปเดตไฟล์ .relay/PROJECT_STATE.md ให้เป็นปัจจุบัน"
+  local learned_note
+  learned_note="$(get_learned_skills_prompt_note)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal (0 Token) 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. หากมีส่วนติดต่อผู้ใช้บนเว็บ ให้ใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน) และอัปเดตไฟล์ .relay/PROJECT_STATE.md ให้เป็นปัจจุบัน"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
@@ -2022,6 +2086,395 @@ run_phase_4_qa() {
     [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
   fi
   LAST_COMPLETED_PHASE=4
+}
+
+# ─── 13.5 ระบบสกัดบทเรียนสะสมเฉพาะโปรเจกต์อัตโนมัติ (Self-Learning Project Skills) ─
+distill_project_learned_skills() {
+  local target_task="${1:-$ACTIVE_TASK}"
+  local mode="${2:-interactive}"
+  refresh_project_paths
+
+  if [ -z "$target_task" ]; then
+    get_active_task
+    target_task="$ACTIVE_TASK"
+  fi
+
+  local task_dir=""
+  if [ -n "$target_task" ] && [ -d "$RELAY_DIR/tasks/$target_task" ]; then
+    task_dir="$RELAY_DIR/tasks/$target_task"
+  elif [ -n "$target_task" ] && [ -d "$RELAY_DIR/archive/$target_task" ]; then
+    task_dir="$RELAY_DIR/archive/$target_task"
+  else
+    local latest_arch
+    latest_arch="$(ls -1 "$RELAY_DIR/archive" 2>/dev/null | grep -v '^\.' | tail -n 1 || true)"
+    if [ -n "$latest_arch" ] && [ -d "$RELAY_DIR/archive/$latest_arch" ]; then
+      target_task="$latest_arch"
+      task_dir="$RELAY_DIR/archive/$latest_arch"
+    fi
+  fi
+
+  if [ -z "$task_dir" ] || [ ! -d "$task_dir" ]; then
+    [ "$mode" != "auto" ] && printf "%s▲ ยังไม่มีใบงานที่พร้อมสกัดบทเรียนใน .relay/tasks/ หรือ .relay/archive/%s\n" "$C_WARN" "$C_RESET"
+    return 1
+  fi
+
+  mkdir -p "$RELAY_DIR/skills/project-learned"
+  local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
+  local ledger_file="$RELAY_DIR/skills/project-learned/LEDGER.md"
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s🧠 [Self-Learning Engine] กำลังสกัดบทเรียนและกฎป้องกันบั๊กจากใบงาน %s...%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$target_task" "$C_RESET"
+  printf "%s│%s  • ขอบเขตปลอดภัย : เขียนเฉพาะใน .relay/skills/project-learned/ (ไม่แตะต้องกฎส่วนกลาง)\n" "$C_ACCENT" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  python3 - "$PROJECT_DIR" "$PROJECT_NAME" "$target_task" "$task_dir" "$skill_file" "$ledger_file" <<'PYEOF'
+import os, re, sys, datetime
+
+project_dir, project_name, task_id, task_dir, skill_file, ledger_file = sys.argv[1:7]
+
+def read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+spec_txt = read_text(os.path.join(task_dir, "SPEC.md"))
+arch_txt = read_text(os.path.join(task_dir, "ARCH.md"))
+qa_txt = read_text(os.path.join(task_dir, "QA_REPORT.md"))
+existing_skill = read_text(skill_file)
+
+# ดึงรายการกฎเดิมที่มีอยู่แล้วใน SKILL.md เพื่อควบรวมโดยไม่ซ้ำ (Deduplication)
+existing_rules = []
+for line in existing_skill.splitlines():
+    s = line.strip()
+    if s.startswith("- "):
+        existing_rules.append(s[2:].strip())
+
+# สกัดหัวข้อหลักและข้อควรระวังทางสถาปัตยกรรม/QA จากเอกสารของใบงานจริง
+new_candidates = []
+for src_label, content in [("QA", qa_txt), ("ARCH", arch_txt), ("SPEC", spec_txt)]:
+    for line in content.splitlines():
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        item = s[2:].strip()
+        # ข้ามหัวข้อย่อยที่ลงท้ายด้วย : หรือรายการ Checkbox
+        if len(item) < 30 or len(item) > 220 or item.endswith(":") or item.endswith("：**"):
+            continue
+        if item.startswith("[ ]") or item.startswith("[x]"):
+            continue
+        if any(k in item.lower() for k in [
+            "circuit breaker", "quota", "worktree", "skill", "security", "qa",
+            "timeout", "non-tty", "pipe", "guard", "โควต้า", "ความปลอดภัย",
+            "ห้าม", "ต้อง", "มาตรฐาน", "ป้องกัน", "แยกอิสระ", "fallback", "verdict", "tsv"
+        ]):
+            clean_item = re.sub(r"\s+", " ", item)
+            new_candidates.append(clean_item)
+
+if not new_candidates:
+    title_match = re.search(r"^#\s+(.+)$", spec_txt, re.M)
+    t_str = title_match.group(1).strip() if title_match else task_id
+    new_candidates.append(f"[{task_id}] ตรวจสอบความสอดคล้องของ SPEC.md, ARCH.md และผลลัพธ์ใน QA_REPORT.md ก่อนผสานโค้ด ({t_str})")
+
+added_rules = []
+norm_existing = {re.sub(r"\W+", "", r.lower())[:60] for r in existing_rules}
+for cand in new_candidates:
+    key = re.sub(r"\W+", "", cand.lower())[:60]
+    if key and key not in norm_existing:
+        existing_rules.append(cand)
+        added_rules.append(cand)
+        norm_existing.add(key)
+        if len(added_rules) >= 5:
+            break
+
+# จำกัดเพดานสูงสุดไม่เกิน 25 กฎที่คมที่สุด (Bounded Context Window)
+final_rules = existing_rules[-25:]
+now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+skill_md = f"""---
+name: project-learned-{project_name.lower()}
+description: บทเรียนสะสม กฎสถาปัตยกรรม และข้อควรระวังป้องกันบั๊กเฉพาะโครงการ {project_name} (สร้างและดูแลอัตโนมัติโดย RELAY Self-Learning Engine)
+---
+
+# บทเรียนสะสมและมาตรฐานเฉพาะโครงการ ({project_name})
+
+> เอกสารนี้ถูกสกัดและควบรวมอัตโนมัติจากใบงานที่ผ่านการตรวจรับแล้ว (อัปเดตล่าสุด: `{now_str}` จากใบงาน `{task_id}`)
+> ตัวแทน AI ทุกตำแหน่ง (`@arch`, `@dev`, `@qa`) ต้องยึดถือปฏิบัติตามกฎด้านล่างนี้ควบคู่กับ `.relay/PROJECT_STATE.md`
+
+## กฎสถาปัตยกรรมและการป้องกันข้อผิดพลาดซ้ำ (Distilled Project Guardrails)
+"""
+for r in final_rules:
+    skill_md += f"- {r}\n"
+
+with open(skill_file, "w", encoding="utf-8") as f:
+    f.write(skill_md)
+
+# บันทึกสมุดบัญชีประวัติการเรียนรู้ (Append-Only Audit Ledger)
+if not os.path.exists(ledger_file):
+    with open(ledger_file, "w", encoding="utf-8") as f:
+        f.write(f"# สมุดบัญชีประวัติการสกัดบทเรียนของโปรเจกต์ (RELAY Self-Learning Ledger — {project_name})\n\n")
+
+with open(ledger_file, "a", encoding="utf-8") as f:
+    f.write(f"## [{now_str}] ใบงาน `{task_id}`\n")
+    f.write(f"- จำนวนกฎสะสมทั้งหมดหลังควบรวม: **{len(final_rules)}/25 ข้อ** (เพิ่มใหม่ {len(added_rules)} ข้อ)\n")
+    for ar in added_rules:
+        f.write(f"  - `+` {ar}\n")
+    f.write("\n")
+
+print(f"● สกัดและควบรวมบทเรียนสำเร็จ: ปัจจุบันมีกฎสะสม {len(final_rules)} ข้อ (เพิ่มใหม่ {len(added_rules)} ข้อ)")
+PYEOF
+
+  printf "%s● บันทึกไฟล์ทักษะเฉพาะโปรเจกต์ที่: .relay/skills/project-learned/SKILL.md%s\n" "$C_OK" "$C_RESET"
+  printf "%s● บันทึกสมุดบัญชีประวัติการเรียนรู้ที่: .relay/skills/project-learned/LEDGER.md%s\n" "$C_MUTED" "$C_RESET"
+}
+
+run_learned_skills_menu() {
+  local mode="${1:-interactive}"
+  refresh_project_paths
+  if [ "$mode" = "--auto" ] || [ "$mode" = "auto" ]; then
+    distill_project_learned_skills "$ACTIVE_TASK" "auto"
+    return 0
+  fi
+
+  local skill_file="$RELAY_DIR/skills/project-learned/SKILL.md"
+  local ledger_file="$RELAY_DIR/skills/project-learned/LEDGER.md"
+  local cnt
+  cnt="$(get_learned_skills_count)"
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s🧠 ศูนย์จัดการบทเรียนสะสมเฉพาะโปรเจกต์ (RELAY Self-Learning Project Skills)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s  • โปรเจกต์ปัจจุบัน : %s (%s กฎสะสมใน .relay/skills/project-learned/SKILL.md)\n" "$C_ACCENT" "$C_RESET" "$PROJECT_NAME" "$cnt"
+  printf "%s│%s  • ขอบเขตปลอดภัย : แก้ไขเฉพาะไฟล์ที่ RELAY สร้างเองในโปรเจกต์ ไม่แตะต้อง GLOBAL_AGENTS.md\n" "$C_ACCENT" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  if [ -f "$skill_file" ]; then
+    sed 's/^/│  /' "$skill_file" | head -n 30
+  else
+    printf "%s│%s  %s(ยังไม่มีไฟล์ .relay/skills/project-learned/SKILL.md ในโปรเจกต์นี้)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
+  fi
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  interactive_menu "เลือกคำสั่งจัดการบทเรียนสะสมเฉพาะโปรเจกต์ (/learn)" 0 \
+    "1|★ สกัดและควบรวมบทเรียนจากใบงานปัจจุบัน/ใบงานล่าสุดทันที (Distill Now)" \
+    "2|ดูสมุดบัญชีประวัติการเรียนรู้ทั้งหมด (View LEDGER.md)" \
+    "b|กลับสู่หน้าจอหลัก"
+
+  case "$MENU_RESULT" in
+    1)
+      distill_project_learned_skills "$ACTIVE_TASK" "interactive" || true
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+      ;;
+    2)
+      echo ""
+      if [ -f "$ledger_file" ]; then
+        cat "$ledger_file"
+      else
+        printf "%sยังไม่มีประวัติใน .relay/skills/project-learned/LEDGER.md%s\n" "$C_MUTED" "$C_RESET"
+      fi
+      echo ""
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+      ;;
+  esac
+}
+
+# ─── 13.6 ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย 3 ชั้น (Bounded Auto-Relay Loop) ──
+exec_provider_autonomous() {
+  local provider="$1"
+  local configured_model="$2"
+  local role_name="$3"
+  local work_dir="$4"
+  local prompt="$5"
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s ⚡ [Auto-Relay Loop] กำลังรัน %s%s%s แบบอัตโนมัติ\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_name" "$C_RESET"
+  printf "%s│%s  • ค่ายผู้ให้บริการ : %s (%s) │ โฟลเดอร์: %s\n" "$C_ACCENT" "$C_RESET" "$provider" "$configured_model" "$work_dir"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  local exit_code=0
+  (
+    cd "$work_dir"
+    case "$provider" in
+      agy)
+        agy --model "$configured_model" -p "$prompt" || exit_code=$?
+        ;;
+      claude)
+        claude --model "$configured_model" -p "$prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || exit_code=$?
+        ;;
+      codex)
+        codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt" || exit_code=$?
+        ;;
+      gemini)
+        gemini -m "$configured_model" -p "$prompt" || exit_code=$?
+        ;;
+    esac
+    exit "$exit_code"
+  ) || exit_code=$?
+
+  refresh_quota_cache --quiet
+  return "$exit_code"
+}
+
+run_auto_relay_loop() {
+  require_all_roles_ready || return 0
+  refresh_project_paths
+  get_active_task
+
+  if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+    printf "%s│%s %s▲ ต้องมีเอกสาร SPEC.md จากขั้นตอนที่ 1 (@po) ก่อนเริ่มรัน Auto-Relay Loop!%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s  • เหตุผล : เพื่อให้มนุษย์เป็นผู้กำหนดทิศทางและขอบเขตงาน (Human-Anchored SPEC.md)\n" "$C_WARN" "$C_RESET"
+    printf "%s│%s  • คำแนะนำ: กรุณากด [1] เพื่อสร้าง SPEC.md ร่วมกับ @po ก่อน แล้วจึงกด [a] รันลูปอัตโนมัติ\n" "$C_WARN" "$C_RESET"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+    if [ -t 0 ]; then
+      read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+    fi
+    return 1
+  fi
+
+  local max_rounds=3
+  local min_quota_pct=20
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
+  local loop_log="$task_dir/LOOP_LOG.md"
+  local learned_note
+  learned_note="$(get_learned_skills_prompt_note)"
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s⚡ ยืนยันการเริ่มทำงานโหมด Bounded Auto-Relay Loop (ขั้นตอนที่ 2 ➔ 3 ⇄ 4)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s  • ใบงานเป้าหมาย          : %s%s%s (มี SPEC.md พร้อมแล้ว)\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ACTIVE_TASK" "$C_RESET"
+  printf "%s│%s  • ขั้นที่ 2 (@arch/@pm)    : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$MODEL_ARCH"
+  printf "%s│%s  • ขั้นที่ 3 (@dev Worktree): %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$MODEL_DEV"
+  printf "%s│%s  • ขั้นที่ 4 (@qa Verifier) : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$MODEL_QA"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s  %sระบบเบรกนิรภัย 3 ชั้น (3-Tier Circuit Breakers):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s   1. Quota Guard        : หยุดลูปทันทีหากโควต้า 5h หรือ 7d ของตำแหน่งถัดไปต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
+  printf "%s│%s   2. Max Loop Cap       : จำกัดการวนซ้ำแก้บั๊ก (@dev ⇄ @qa) สูงสุดไม่เกิน %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
+  printf "%s│%s   3. Cross-Provider QA  : ตัดสินผลผ่าน VERDICT: PASS / FAIL ใน QA_REPORT.md\n" "$C_ACCENT" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  if [ "${1:-interactive}" != "--yes" ]; then
+    interactive_menu "ต้องการเริ่มรัน Bounded Auto-Relay Loop สำหรับใบงาน '${ACTIVE_TASK}' เลยหรือไม่?" 0 \
+      "y|★ เริ่มรันลูปอัตโนมัติทันที (2 ➔ 3 ⇄ 4 พร้อมเบรกโควต้า 20% และจำกัด 3 รอบ)" \
+      "n|ยกเลิก — กลับสู่หน้าจอหลัก"
+    [ "$MENU_RESULT" != "y" ] && return 0
+  fi
+
+  printf "%sกำลังดึงข้อมูลโควต้าสดล่าสุดก่อนเริ่มลูป...%s\n" "$C_MUTED" "$C_RESET"
+  refresh_quota_cache
+
+  {
+    echo "# บันทึกการทำงานอัตโนมัติ (Bounded Auto-Relay Loop Log — $ACTIVE_TASK)"
+    echo ""
+    echo "- เริ่มต้นลูปเมื่อ: \`$(date '+%Y-%m-%d %H:%M:%S')\`"
+    echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\`"
+    echo ""
+  } > "$loop_log"
+
+  # 1. รันขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
+  if [ ! -f "$task_dir/PLAN.md" ]; then
+    if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct"; then
+      echo "- [STOP] หยุดลูปที่ขั้นตอนที่ 2 (@arch) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      return 1
+    fi
+    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md ให้เสร็จสมบูรณ์โดยไม่ต้องรอถามโต้ตอบ"
+    exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || true
+    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): สร้าง ARCH.md & PLAN.md เรียบร้อย (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
+    LAST_COMPLETED_PHASE=2
+  else
+    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): พบไฟล์ PLAN.md อยู่แล้ว ข้ามไปยังขั้นตอนที่ 3" >> "$loop_log"
+  fi
+
+  # เตรียม Git Worktree สำหรับ @dev และ @qa
+  local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
+  local branch_name="feat/$ACTIVE_TASK"
+  local target_work_dir="$PROJECT_DIR"
+
+  if [ -d "$PROJECT_DIR/.git" ]; then
+    mkdir -p "$RELAY_DIR/worktrees"
+    if [ ! -d "$worktree_dir" ]; then
+      git worktree add "$worktree_dir" -b "$branch_name" 2>/dev/null || git worktree add "$worktree_dir" "$branch_name" 2>/dev/null || true
+    fi
+    if [ -d "$worktree_dir" ]; then
+      mkdir -p "$worktree_dir/.relay/tasks"
+      cp -R "$task_dir" "$worktree_dir/.relay/tasks/" 2>/dev/null || true
+      [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && cp "$RELAY_DIR/PROJECT_STATE.md" "$worktree_dir/.relay/PROJECT_STATE.md" 2>/dev/null || true
+      if [ -d "$RELAY_DIR/skills" ]; then
+        mkdir -p "$worktree_dir/.relay/skills"
+        cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
+      fi
+      target_work_dir="$worktree_dir"
+    fi
+  fi
+
+  # 2. วนลูป @dev ⇄ @qa สูงสุดไม่เกิน max_rounds รอบ
+  local round=1
+  local loop_passed=0
+  while [ "$round" -le "$max_rounds" ]; do
+    echo ""
+    printf "%s═══ ⚡ [Auto-Relay Loop] รอบที่ %d/%d : ขั้นตอนที่ 3 (@dev) ⇄ ขั้นตอนที่ 4 (@qa) ═══%s\n" "$C_SEL" "$round" "$max_rounds" "$C_RESET"
+
+    if ! check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "@dev (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
+      echo "- [STOP] หยุดลูปที่รอบ $round (@dev) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      return 1
+    fi
+
+    local dev_prompt=""
+    if [ "$round" -eq 1 ]; then
+      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ"
+    else
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ"
+    fi
+
+    exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds)" "$target_work_dir" "$dev_prompt" || true
+    LAST_COMPLETED_PHASE=3
+
+    if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
+      echo "- [STOP] หยุดลูปที่รอบ $round (@qa) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      return 1
+    fi
+
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องระบุบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน"
+    exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$target_work_dir" "$qa_prompt" || true
+
+    if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
+      cp -R "$worktree_dir/.relay/tasks/$ACTIVE_TASK/"* "$task_dir/" 2>/dev/null || true
+      [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
+    fi
+    LAST_COMPLETED_PHASE=4
+
+    if [ -f "$task_dir/QA_REPORT.md" ] && ! grep -qiE "VERDICT:[[:space:]]*FAIL|สถานะ:[[:space:]]*ไม่ผ่าน" "$task_dir/QA_REPORT.md"; then
+      echo "- [PASS] รอบที่ $round/$max_rounds: ผ่านการตรวจรับจาก @qa เรียบร้อย (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
+      loop_passed=1
+      break
+    else
+      echo "- [RETRY] รอบที่ $round/$max_rounds: @qa พบจุดที่ต้องแก้ไขใน QA_REPORT.md (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
+    fi
+
+    round=$((round + 1))
+  done
+
+  echo ""
+  if [ "$loop_passed" -eq 1 ]; then
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_OK" "$C_RESET"
+    printf "%s│%s %s● [Auto-Relay Loop สำเร็จ!] ผ่านการตรวจรับ QA_REPORT.md ในรอบที่ %d/%d%s\n" "$C_OK" "$C_RESET" "$C_BOLD" "$round" "$max_rounds" "$C_RESET"
+    printf "%s│%s  • บันทึกลูปการทำงาน : .relay/tasks/%s/LOOP_LOG.md\n" "$C_OK" "$C_RESET" "$ACTIVE_TASK"
+    printf "%s│%s  • ขั้นตอนถัดไป     : กด [5] เพื่อสกัดบทเรียน ผสานโค้ดเข้า main และเก็บเข้า Archive\n" "$C_OK" "$C_RESET"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_OK" "$C_RESET"
+  else
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+    printf "%s│%s %s▲ [Circuit Breaker: ครบเพดาน %d รอบ] หยุดลูปอัตโนมัติเพื่อให้คุณตรวจสอบร่วมตัดสินใจ%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$max_rounds" "$C_RESET"
+    printf "%s│%s  • กรุณาตรวจสอบรายละเอียดใน .relay/tasks/%s/QA_REPORT.md และ LOOP_LOG.md\n" "$C_WARN" "$C_RESET" "$ACTIVE_TASK"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+  fi
+
+  if [ -t 0 ]; then
+    read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+  fi
 }
 
 run_phase_5_merge() {
@@ -2034,11 +2487,12 @@ run_phase_5_merge() {
   local branch_name="feat/$ACTIVE_TASK"
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
 
-  interactive_menu "ยืนยันการผสานโค้ดกิ่ง ${branch_name} เข้าสู่ main และจัดเก็บใบงาน ${ACTIVE_TASK}" 0 \
-    "y|ยืนยัน — ผสานโค้ดเข้ากิ่งหลัก ลบ Worktree และย้ายเข้า .relay/archive/" \
+  interactive_menu "ยืนยันการสกัดบทเรียน ผสานโค้ดกิ่ง ${branch_name} เข้าสู่ main และจัดเก็บใบงาน ${ACTIVE_TASK}" 0 \
+    "y|ยืนยัน — สกัดบทเรียนสะสม (Self-Learn) + ผสานโค้ดเข้ากิ่งหลัก + ย้ายเข้า .relay/archive/" \
     "n|ยกเลิก — กลับสู่หน้าจอหลัก"
 
   if [ "$MENU_RESULT" = "y" ]; then
+    distill_project_learned_skills "$ACTIVE_TASK" "auto" || true
     if [ -d "$PROJECT_DIR/.git" ] && git show-ref --verify --quiet "refs/heads/$branch_name"; then
       git merge "$branch_name" || true
       [ -d "$worktree_dir" ] && { git worktree remove "$worktree_dir" --force 2>/dev/null || rm -rf "$worktree_dir"; }
@@ -2048,7 +2502,7 @@ run_phase_5_merge() {
     mv "$RELAY_DIR/tasks/$ACTIVE_TASK" "$RELAY_DIR/archive/$ACTIVE_TASK"
     CURRENT_TASK=""
     LAST_COMPLETED_PHASE=0
-    printf "%s● ผสานโค้ดและย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
+    printf "%s● สกัดบทเรียน ผสานโค้ด และย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
   fi
 }
 
@@ -2114,6 +2568,14 @@ case "$SUBCOMMAND" in
     ;;
   quota|usage)
     run_quota_dashboard "${2:-interactive}"
+    exit 0
+    ;;
+  loop|auto)
+    run_auto_relay_loop "${2:-interactive}"
+    exit 0
+    ;;
+  learn|distill)
+    run_learned_skills_menu "${2:-interactive}"
     exit 0
     ;;
   config|model)
@@ -2227,7 +2689,9 @@ while true; do
     p2_label="ขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})"
     p3_label="ขั้นตอนที่ 3 (@dev)      — แยก Git Worktree และเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})"
     p4_label="ขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})"
-    p5_label="ขั้นตอนที่ 5 (Merge)     — ผสานโค้ดเข้า main และเก็บเข้า .relay/archive/"
+    p5_label="ขั้นตอนที่ 5 (Merge)     — สกัดบทเรียน + ผสานโค้ดเข้า main + เก็บเข้า .relay/archive/"
+    pa_label="⚡ รัน Auto-Relay Loop: ขั้นที่ 2 ➔ 3 ⇄ 4 อัตโนมัติพร้อมเบรกโควต้า 20% (/loop)"
+    pl_label="🧠 จัดการและสกัดบทเรียนสะสมเฉพาะโปรเจกต์ (Self-Learning Skills) (/learn)"
 
     case "$RECOMMENDED_STEP" in
       1) p1_label="★ [แนะนำให้เริ่มที่นี่] ${p1_label}" ;;
@@ -2245,6 +2709,8 @@ while true; do
       "3|${p3_label}" \
       "4|${p4_label}" \
       "5|${p5_label}" \
+      "a|${pa_label}" \
+      "l|${pl_label}" \
       "n|สร้างใบงานใหม่ (New Task) (/new)" \
       "f|สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)" \
       "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
@@ -2260,6 +2726,8 @@ while true; do
       3|/dev|/3)            run_phase_3_dev ;;
       4|/qa|/sec|/4)        run_phase_4_qa ;;
       5|/merge|/5)          run_phase_5_merge ;;
+      a|A|/loop|/auto)      run_auto_relay_loop ;;
+      l|L|/learn|/distill)  run_learned_skills_menu ;;
       n|N|/new)             create_new_task ;;
       f|F)                  select_or_create_project_dir ;;
       i|I|/init)            run_init_project ;;

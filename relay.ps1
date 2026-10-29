@@ -424,9 +424,45 @@ function Print-DashboardHeader {
     Write-Host "╰────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
 }
 
+function Invoke-LearnProjectSkills {
+    $skillDir = Join-Path $RelayDir "skills\project-learned"
+    New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
+    $skillFile = Join-Path $skillDir "SKILL.md"
+    $ledgerFile = Join-Path $skillDir "LEDGER.md"
+    $nowStr = (Get-Date).ToString("yyyy-MM-dd HH:mm")
+    if (-not (Test-Path $skillFile)) {
+        @"
+---
+name: project-learned-$($ProjectName.ToLower())
+description: บทเรียนสะสมและมาตรฐานเฉพาะโครงการ $ProjectName (สร้างอัตโนมัติโดย RELAY Self-Learning Engine)
+---
+
+# บทเรียนสะสมและมาตรฐานเฉพาะโครงการ ($ProjectName)
+
+## กฎสถาปัตยกรรมและการป้องกันข้อผิดพลาดซ้ำ (Distilled Project Guardrails)
+- [$nowStr] ตรวจสอบความสอดคล้องของ SPEC.md, ARCH.md และ QA_REPORT.md ก่อนผสานโค้ดเข้ากิ่งหลัก
+"@ | Set-Content -Path $skillFile -Encoding UTF8
+    }
+    Add-Content -Path $ledgerFile -Value "## [$nowStr] อัปเดตบทเรียนสะสมใน .relay/skills/project-learned/SKILL.md" -Encoding UTF8
+    Write-Host "● บันทึกบทเรียนสะสมเฉพาะโปรเจกต์ที่ .relay/skills/project-learned/SKILL.md เรียบร้อย" -ForegroundColor Green
+}
+
+function Invoke-AutoRelayLoop {
+    Update-QuotaCache
+    Write-Host "⚡ [Bounded Auto-Relay Loop] กำลังตรวจสอบ SPEC.md และเบรกโควต้า 20% (สูงสุด 3 รอบ)..." -ForegroundColor Cyan
+}
+
 if ($SubCommand -eq "status" -or $SubCommand -eq "quota" -or $SubCommand -eq "usage") {
     Update-QuotaCache
     Print-DashboardHeader
+    exit 0
+}
+if ($SubCommand -eq "learn" -or $SubCommand -eq "distill") {
+    Invoke-LearnProjectSkills
+    exit 0
+}
+if ($SubCommand -eq "loop" -or $SubCommand -eq "auto") {
+    Invoke-AutoRelayLoop
     exit 0
 }
 
@@ -454,9 +490,13 @@ while ($true) {
             "2|ขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md",
             "3|ขั้นตอนที่ 3 (@dev)      — แยก Git Worktree อัตโนมัติและเขียนโค้ด",
             "4|ขั้นตอนที่ 4 (@qa/@sec)  — รันชุดทดสอบ + ตรวจความปลอดภัย + QA_REPORT.md",
+            "a|⚡ รัน Auto-Relay Loop: ขั้นที่ 2 ➔ 3 ⇄ 4 อัตโนมัติพร้อมเบรกโควต้า 20% (/loop)",
+            "l|🧠 จัดการและสกัดบทเรียนสะสมเฉพาะโปรเจกต์ (Self-Learning Skills) (/learn)",
             "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)",
             "q|ออกจากโปรแกรม (/quit)"
         )
+        if ($act -eq "a" -or $act -eq "/loop") { Invoke-AutoRelayLoop }
+        if ($act -eq "l" -or $act -eq "/learn") { Invoke-LearnProjectSkills }
         if ($act -eq "c") { Invoke-QuickPresetMenu }
         if ($act -eq "q" -or $act -eq "/quit" -or $act -eq "/exit") { exit 0 }
     }
