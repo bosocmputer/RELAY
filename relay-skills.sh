@@ -39,11 +39,14 @@ sync_manifest_skills() {
     fi
   done < "$MANIFEST_FILE"
 
-  # คัดลอกสกิล playwright-qa ของ RELAY ให้เป็นเวอร์ชันล่าสุดเสมอ
-  mkdir -p ~/.agents/skills/playwright-qa
+  # คัดลอกสกิล playwright-qa และสกิลมาตรฐานไอคอน (lucide-icons, simple-icons) ของ RELAY ให้เป็นเวอร์ชันล่าสุดเสมอ
+  mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons
   if [ -f "$QA_TEMPLATE" ] && [ "$QA_TEMPLATE" != "$HOME/.agents/skills/playwright-qa/SKILL.md" ]; then
     cp "$QA_TEMPLATE" ~/.agents/skills/playwright-qa/SKILL.md
   fi
+  [ -f "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ~/.agents/skills/lucide-icons/SKILL.md || true
+  [ -f "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ~/.agents/skills/simple-icons/SKILL.md || true
+  [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
 
   # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
   if command -v claude >/dev/null 2>&1; then

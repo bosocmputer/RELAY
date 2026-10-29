@@ -1740,7 +1740,7 @@ check_role_skills_status() {
   local skills_list="$1"
   local output=""
   for sk in $skills_list; do
-    if [ -d "$GLOBAL_DIR/skills/$sk" ]; then
+    if [ -d "$GLOBAL_DIR/skills/$sk" ] || { [ "$sk" = "founder-skill" ] && [ -d "$GLOBAL_DIR/skills/founder-plan" ]; }; then
       output="${output}${C_OK}[✓] ${sk}${C_RESET}  "
     else
       output="${output}${C_MUTED}[•] ${sk}${C_RESET}  "
@@ -1790,7 +1790,7 @@ ping_single_role_agent() {
   fi
 
   local self_check_prompt="นี่คือการทดสอบความพร้อมของระบบ RELAY v1.0 กรุณารายงานตัวสั้นๆ ไม่เกิน 4 บรรทัด (ห้ามรันคำสั่งแก้ไขไฟล์ใดๆ) โดยระบุข้อมูลดังนี้:
-1. ยืนยันบทบาทของคุณคือ '$role_title' (ทำงานผ่านค่าย $provider โมเดล $configured_model)
+1. รายงานบทบาทของคุณคือ '$role_title' (เรียกใช้งานผ่าน CLI ค่าย $provider)
 2. สรุปหน้าที่หลักของคุณในระบบ RELAY ($expected_duty)
 3. ยืนยันชุดทักษะ (Skills) ประจำตำแหน่งของคุณ ได้แก่: $expected_skills
 4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน 100%'"
