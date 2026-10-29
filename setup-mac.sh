@@ -17,6 +17,11 @@ cp "$SCRIPT_DIR/relay-init.sh" ~/.agents/bin/relay-init
 cp "$SCRIPT_DIR/relay-skills.sh" ~/.agents/bin/relay-skills
 cp "$SCRIPT_DIR/relay.sh" ~/.agents/bin/relay
 
+# เชื่อม Symlink คำสั่ง agy (Google AI Ultra / Antigravity CLI) เข้าสู่ ~/.agents/bin หากมีอยู่ใน ~/.gemini/bin/agy
+if [ -x "$HOME/.gemini/bin/agy" ]; then
+  ln -sf "$HOME/.gemini/bin/agy" ~/.agents/bin/agy
+fi
+
 # สร้างหรืออัปเดตไฟล์ตั้งค่าการจับคู่ค่าย AI และโมเดลเริ่มต้น
 if [ ! -f ~/.agents/relay-roles.conf ] || ! grep -Fq "MODEL_PO=" ~/.agents/relay-roles.conf 2>/dev/null; then
   cp "$SCRIPT_DIR/templates/relay-roles.conf" ~/.agents/relay-roles.conf

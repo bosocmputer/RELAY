@@ -4,12 +4,16 @@
 # 🎛️ RELAY Central Terminal Hub (v1.0) — Guided 3-Stage Progressive UX
 # • โทนสี Minimalist 3-Tier (รองรับทั้ง Terminal พื้นหลังสีขาว Light Mode และพื้นดำ Dark Mode)
 # • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด (คลุมครบ 100% ไม่แหว่งสระไทย)
+# • รองรับโควตา Google AI Ultra เต็มรูปแบบผ่าน Antigravity CLI (~/.gemini/bin/agy):
+#   ใช้ได้ทั้ง Gemini 4 Argon, Gemini 3.8 Flash, Claude Opus 5.5, Claude Sonnet 5.5
 # • ตรวจสอบความพร้อมจริง 3 ชั้น: ติดตั้ง CLI แล้ว + Login บัญชีแล้ว + เลือก Model แล้ว
-# • ดึงรายชื่อ Model จาก CLI ที่ติดตั้งในเครื่องโดยตรง (Codex Cache / Gemini Bundle / Claude Binary)
 # ==============================================================================
+
+export PATH="$HOME/.gemini/bin:$HOME/.local/bin:$HOME/.agents/bin:$PATH"
 
 GLOBAL_DIR="$HOME/.agents"
 GLOBAL_ROLES_CONF="$GLOBAL_DIR/relay-roles.conf"
+AGY_MODELS_CACHE="$GLOBAL_DIR/agy-models.cache"
 PROJECT_DIR="$(pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 RELAY_DIR="$PROJECT_DIR/.relay"
@@ -56,18 +60,30 @@ get_provider_version() {
   echo "${ver:-installed}"
 }
 
-# แคชสถานะการ Login ของทั้ง 3 ค่ายต่อรอบการแสดงผล เพื่อความรวดเร็วสูงสุด
+# แคชสถานะการ Login ของทุกค่ายต่อรอบการแสดงผล เพื่อความรวดเร็วสูงสุด
+CLI_AUTH_AGY=0
 CLI_AUTH_CLAUDE=0
 CLI_AUTH_GEMINI=0
 CLI_AUTH_CODEX=0
+CLI_AUTH_DETAIL_AGY="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_CLAUDE="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_GEMINI="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_CODEX="ยังไม่ได้ Login"
 
 refresh_cli_auth_cache() {
-  # 1. ตรวจสถานะ Login ของ Claude Code CLI
+  # 1. ตรวจสถานะ Login ของ agy (Google AI Ultra / Antigravity CLI)
+  CLI_AUTH_AGY=0
+  CLI_AUTH_DETAIL_AGY="ยังไม่ได้ Login (รัน agy เพื่อเข้าสู่ระบบ Google AI Ultra)"
+  if is_provider_installed "agy"; then
+    if [ -s "$HOME/.gemini/jetski-standalone-oauth-token" ] || [ -s "$HOME/.gemini/config/config.json" ] || [ -d "$HOME/.gemini/antigravity-cli" ]; then
+      CLI_AUTH_AGY=1
+      CLI_AUTH_DETAIL_AGY="Login แล้ว (Google AI Ultra • Gemini 4 + Claude 5.5)"
+    fi
+  fi
+
+  # 2. ตรวจสถานะ Login ของ Claude Code CLI
   CLI_AUTH_CLAUDE=0
-  CLI_AUTH_DETAIL_CLAUDE="ยังไม่ได้ Login (รัน claude auth login)"
+  CLI_AUTH_DETAIL_CLAUDE="ยังไม่ได้ Login (รัน claude auth login หรือใช้ค่าย agy แทน)"
   if is_provider_installed "claude"; then
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       CLI_AUTH_CLAUDE=1
@@ -84,27 +100,24 @@ refresh_cli_auth_cache() {
     fi
   fi
 
-  # 2. ตรวจสถานะ Login ของ Google Gemini CLI
+  # 3. ตรวจสถานะ Login ของ Google Gemini CLI (Legacy API Key)
   CLI_AUTH_GEMINI=0
-  CLI_AUTH_DETAIL_GEMINI="ยังไม่ได้ Login (เปิด gemini เพื่อตั้งค่า Auth)"
+  CLI_AUTH_DETAIL_GEMINI="ยังไม่ได้ตั้งค่า API Key (แนะนำให้ใช้ค่าย agy สำหรับ Google AI Ultra)"
   if is_provider_installed "gemini"; then
     if [ -n "${GEMINI_API_KEY:-}" ] || [ -n "${GOOGLE_GENAI_USE_VERTEXAI:-}" ] || [ -n "${GOOGLE_GENAI_USE_GCA:-}" ]; then
       CLI_AUTH_GEMINI=1
       CLI_AUTH_DETAIL_GEMINI="Login แล้ว (Environment API Key)"
-    elif [ -s "$HOME/.gemini/oauth_creds.json" ]; then
-      CLI_AUTH_GEMINI=1
-      CLI_AUTH_DETAIL_GEMINI="Login แล้ว (Google OAuth)"
     elif [ -r "$HOME/.gemini/settings.json" ]; then
       local g_type
       g_type="$(grep -Eo '"selectedType"[[:space:]]*:[[:space:]]*"[^"]+"' "$HOME/.gemini/settings.json" 2>/dev/null | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
-      if [ -n "$g_type" ]; then
+      if [ -n "$g_type" ] && [ "$g_type" != "oauth-personal" ]; then
         CLI_AUTH_GEMINI=1
         CLI_AUTH_DETAIL_GEMINI="Login แล้ว (${g_type})"
       fi
     fi
   fi
 
-  # 3. ตรวจสถานะ Login ของ OpenAI Codex CLI
+  # 4. ตรวจสถานะ Login ของ OpenAI Codex CLI
   CLI_AUTH_CODEX=0
   CLI_AUTH_DETAIL_CODEX="ยังไม่ได้ Login (รัน codex login)"
   if is_provider_installed "codex"; then
@@ -128,6 +141,7 @@ refresh_cli_auth_cache() {
 is_provider_logged_in() {
   local provider="$1"
   case "$provider" in
+    agy)    [ "$CLI_AUTH_AGY" -eq 1 ] ;;
     claude) [ "$CLI_AUTH_CLAUDE" -eq 1 ] ;;
     gemini) [ "$CLI_AUTH_GEMINI" -eq 1 ] ;;
     codex)  [ "$CLI_AUTH_CODEX" -eq 1 ] ;;
@@ -138,6 +152,7 @@ is_provider_logged_in() {
 get_provider_auth_detail() {
   local provider="$1"
   case "$provider" in
+    agy)    echo "$CLI_AUTH_DETAIL_AGY" ;;
     claude) echo "$CLI_AUTH_DETAIL_CLAUDE" ;;
     gemini) echo "$CLI_AUTH_DETAIL_GEMINI" ;;
     codex)  echo "$CLI_AUTH_DETAIL_CODEX" ;;
@@ -148,6 +163,9 @@ get_provider_auth_detail() {
 get_cli_default_model() {
   local provider="$1"
   case "$provider" in
+    agy)
+      echo "gemini-4-argon-high"
+      ;;
     claude)
       if [ -r "$HOME/.claude/settings.json" ]; then
         local cm
@@ -177,7 +195,7 @@ except Exception:
 ' 2>/dev/null || true)"
         [ -n "$first_codex" ] && { echo "$first_codex"; return; }
       fi
-      echo "o3"
+      echo "gpt-6.1-terra"
       ;;
     gemini)
       if [ -r "$HOME/.gemini/settings.json" ]; then
@@ -198,6 +216,29 @@ get_cli_live_models() {
   local provider="$1"
   local cli_def
   cli_def="$(get_cli_default_model "$provider")"
+
+  if [ "$provider" = "agy" ]; then
+    if [ -s "$AGY_MODELS_CACHE" ]; then
+      cat "$AGY_MODELS_CACHE"
+      return
+    fi
+    cat << 'EOF'
+gemini-4-argon-high|Gemini 4 Argon (High) — โควตา Google AI Ultra (แนะนำสำหรับ @po / วิเคราะห์ลึก)
+gemini-4-argon-medium|Gemini 4 Argon (Medium) — โควตา Google AI Ultra (สมดุลความเร็วและคุณภาพ)
+gemini-4-argon-low|Gemini 4 Argon (Low) — โควตา Google AI Ultra (ประหยัดโควตาสูงสุด)
+gemini-3.8-flash-high|Gemini 3.8 Flash (High) — โควตา Google AI Ultra (ความเร็วสูง คุณภาพสูง)
+gemini-3.8-flash-medium|Gemini 3.8 Flash (Medium) — โควตา Google AI Ultra (รวดเร็วสำหรับงานทั่วไป)
+gemini-3.8-flash-low|Gemini 3.8 Flash (Low) — โควตา Google AI Ultra (เบาและเร็วที่สุด)
+claude-opus-5-5-high|Claude Opus 5.5 (High) — โควตา Google AI Ultra (แนะนำสำหรับ @arch/@pm)
+claude-opus-5-5-medium|Claude Opus 5.5 (Medium) — โควตา Google AI Ultra (สถาปัตยกรรมและวางแผน)
+claude-opus-5-5-low|Claude Opus 5.5 (Low) — โควตา Google AI Ultra (ประหยัดโควตา Claude Opus)
+claude-sonnet-5-5-high|Claude Sonnet 5.5 (High) — โควตา Google AI Ultra (แนะนำสำหรับ @dev เขียนโค้ด)
+claude-sonnet-5-5-medium|Claude Sonnet 5.5 (Medium) — โควตา Google AI Ultra (เขียนโค้ดรวดเร็ว)
+claude-sonnet-5-5-low|Claude Sonnet 5.5 (Low) — โควตา Google AI Ultra (ประหยัดโควตา Claude Sonnet)
+gpt-oss-120b-medium|GPT-OSS 120B (Medium) — โควตา Google AI Ultra (โมเดล GPT บน Antigravity)
+EOF
+    return
+  fi
 
   if command -v python3 >/dev/null 2>&1; then
     python3 - "$provider" "$cli_def" << 'PYEOF'
@@ -231,42 +272,21 @@ if provider == "codex":
         except Exception:
             pass
     if not results:
-        add_item("o3", "OpenAI o3 Reasoning Model")
-        add_item("o4-mini", "OpenAI o4-mini Fast Model")
-        add_item("gpt-5", "OpenAI GPT-5 Model")
+        add_item("gpt-6.1-terra", "GPT-6.1 Terra Codex Model")
+        add_item("gpt-6.1-sol", "GPT-6.1 Sol Workhorse Model")
 
 elif provider == "gemini":
     if cli_def and cli_def != "default":
-        add_item(cli_def, "ค่าเริ่มต้นปัจจุบันจาก Gemini CLI")
-    gemini_bin = shutil.which("gemini")
-    found = set()
-    if gemini_bin:
-        real_bin = os.path.realpath(gemini_bin)
-        pkg_dir = os.path.dirname(real_bin)
-        for root, _, files in os.walk(pkg_dir):
-            for f in files:
-                if f.endswith(".js"):
-                    try:
-                        t = open(os.path.join(root, f), errors="ignore").read()
-                        for m in re.findall(r'["\x27]((?:auto-)?gemini-[0-9]+\.[0-9]+(?:-[a-z0-9-]+)?)["\x27]', t):
-                            if "embedding" not in m and "image" not in m and "live" not in m and "computer-use" not in m and "customtools" not in m and "base" not in m:
-                                found.add(m)
-                    except Exception:
-                        pass
+        add_item(cli_def, "ค่าเริ่มต้นปัจจุบันจาก Gemini CLI (ต้องใช้ Gemini API Key)")
     preferred = [
-        ("gemini-2.5-pro", "โมเดลวิเคราะห์เชิงลึกและเขียนโค้ดหลัก (ดึงจาก Gemini CLI)"),
-        ("gemini-2.5-flash", "โมเดลความเร็วสูง ประหยัดโควตา (ดึงจาก Gemini CLI)"),
-        ("gemini-2.5-flash-lite", "โมเดลขนาดเบา ตอบสนองไว (ดึงจาก Gemini CLI)"),
-        ("auto-gemini-2.5", "ให้ Gemini CLI เลือกโมเดล 2.5 อัตโนมัติ (ดึงจาก Gemini CLI)"),
-        ("gemini-3.1-pro", "Gemini 3.1 Pro รุ่นใหม่ใน CLI (ดึงจาก Gemini CLI)"),
-        ("gemini-3.5-flash", "Gemini 3.5 Flash รุ่นใหม่ใน CLI (ดึงจาก Gemini CLI)"),
-        ("gemini-2.0-flash", "Gemini 2.0 Flash (ดึงจาก Gemini CLI)"),
+        ("gemini-2.5-pro", "โมเดลวิเคราะห์เชิงลึก (ต้องใช้ Gemini API Key)"),
+        ("gemini-2.5-flash", "โมเดลความเร็วสูง (ต้องใช้ Gemini API Key)"),
+        ("gemini-2.5-flash-lite", "โมเดลขนาดเบา (ต้องใช้ Gemini API Key)"),
+        ("gemini-3.1-pro", "Gemini 3.1 Pro (ต้องใช้ Gemini API Key)"),
+        ("gemini-3.5-flash", "Gemini 3.5 Flash (ต้องใช้ Gemini API Key)"),
     ]
     for m, d in preferred:
-        if m in found or not found:
-            add_item(m, d)
-    for m in sorted(found):
-        add_item(m, "โมเดลที่ตรวจพบในชุดติดตั้ง @google/gemini-cli")
+        add_item(m, d)
 
 elif provider == "claude":
     if cli_def and cli_def != "default":
@@ -285,7 +305,7 @@ elif provider == "claude":
         except Exception:
             pass
 
-for mid, desc in results[:10]:
+for mid, desc in results[:12]:
     print(f"{mid}|{desc}")
 PYEOF
   else
@@ -294,7 +314,7 @@ PYEOF
         printf "sonnet|Claude Sonnet (Alias มาตรฐานจาก CLI)\nopus|Claude Opus (Alias มาตรฐานจาก CLI)\nhaiku|Claude Haiku (Alias มาตรฐานจาก CLI)\n"
         ;;
       gemini)
-        printf "gemini-2.5-pro|Gemini 2.5 Pro (ค่าเริ่มต้นจาก CLI)\ngemini-2.5-flash|Gemini 2.5 Flash (จาก CLI)\n"
+        printf "gemini-2.5-pro|Gemini 2.5 Pro (ต้องใช้ Gemini API Key)\ngemini-2.5-flash|Gemini 2.5 Flash\n"
         ;;
       codex)
         printf "%s|ค่าเริ่มต้นจาก ~/.codex/config.toml\n" "$cli_def"
@@ -303,13 +323,37 @@ PYEOF
   fi
 }
 
+refresh_agy_models_live() {
+  if ! is_provider_installed "agy"; then
+    printf "%s✖ ไม่พบคำสั่ง agy ในเครื่อง%s\n" "$C_ERR" "$C_RESET"
+    return 1
+  fi
+  printf "\n%sกำลังดึงรายชื่อโมเดลล่าสุดของแพ็กเกจ Google AI Ultra จาก 'agy models'...%s\n" "$C_ACCENT" "$C_RESET"
+  local raw_out
+  raw_out="$(agy models 2>/dev/null | tr -d '\r' | grep -E '^[a-z0-9][a-z0-9._-]+[[:space:]]+' || true)"
+  if [ -n "$raw_out" ]; then
+    mkdir -p "$GLOBAL_DIR"
+    : > "$AGY_MODELS_CACHE"
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      local mid mdesc
+      mid="$(printf "%s" "$line" | awk '{print $1}')"
+      mdesc="$(printf "%s" "$line" | sed -E 's/^[^[:space:]]+[[:space:]]+//')"
+      printf "%s|%s — โควตา Google AI Ultra (ดึงสดจาก agy models)\n" "$mid" "$mdesc" >> "$AGY_MODELS_CACHE"
+    done <<< "$raw_out"
+    printf "%s● อัปเดตรายชื่อโมเดลจาก agy models สำเร็จแล้ว!%s\n" "$C_OK" "$C_RESET"
+  else
+    printf "%s▲ ไม่สามารถดึงรายการใหม่ได้ ใช้รายการมาตรฐานของ Google AI Ultra ต่อไป%s\n" "$C_WARN" "$C_RESET"
+  fi
+}
+
 # ─── 2. โหลดและบันทึกการตั้งค่า Role & Model ─────────────────────────────────
 load_role_config() {
   refresh_project_paths
-  ROLE_PO="gemini";   MODEL_PO="default"
-  ROLE_ARCH="claude"; MODEL_ARCH="default"
-  ROLE_DEV="claude";  MODEL_DEV="default"
-  ROLE_QA="codex";    MODEL_QA="default"
+  ROLE_PO="agy";     MODEL_PO="gemini-4-argon-high"
+  ROLE_ARCH="agy";   MODEL_ARCH="claude-opus-5-5-high"
+  ROLE_DEV="agy";    MODEL_DEV="claude-sonnet-5-5-high"
+  ROLE_QA="codex";   MODEL_QA="gpt-6.1-terra"
   CONFIG_SOURCE="Global (~/.agents/relay-roles.conf)"
 
   if [ -r "$GLOBAL_ROLES_CONF" ]; then
@@ -322,7 +366,7 @@ load_role_config() {
     CONFIG_SOURCE="Project (.relay/roles.conf)"
   fi
 
-  # หากค่าเดิมของ Codex เคยถูกตั้งเป็น o3 จากค่าตายตัวรุ่นเก่า แต่ในเครื่องมีโมเดลจริงใน config.toml ให้สลับมาใช้โมเดลจริงของ CLI ทันที
+  # หากค่าเดิมของ Codex เคยถูกตั้งเป็น o3 แต่ในเครื่องมีโมเดลจริงใน config.toml ให้สลับมาใช้โมเดลจริงทันที
   if [ "$ROLE_QA" = "codex" ] && [ "$MODEL_QA" = "o3" ] && [ -r "$HOME/.codex/config.toml" ]; then
     local real_codex_def
     real_codex_def="$(get_cli_default_model codex)"
@@ -441,6 +485,8 @@ format_role_status_cell() {
     printf "%s▲ ยังไม่ Login บัญชี (กด [3])%s" "$C_WARN" "$C_RESET"
   elif ! is_model_explicitly_set "$model"; then
     printf "%s▲ รอเลือกโมเดล (กด [1]/[2])%s" "$C_WARN" "$C_RESET"
+  elif [ "$provider" = "agy" ]; then
+    printf "%s● พร้อมใช้งาน (Google AI Ultra)%s" "$C_OK" "$C_RESET"
   else
     printf "%s● พร้อมใช้งาน (Login แล้ว)%s" "$C_OK" "$C_RESET"
   fi
@@ -448,12 +494,14 @@ format_role_status_cell() {
 
 format_cli_summary_badge() {
   local provider="$1"
+  local label="$provider"
+  [ "$provider" = "agy" ] && label="agy (Google AI Ultra)"
   if ! is_provider_installed "$provider"; then
-    printf "%s○ %s (ยังไม่ติดตั้ง)%s" "$C_ERR" "$provider" "$C_RESET"
+    printf "%s○ %s (ยังไม่ติดตั้ง)%s" "$C_ERR" "$label" "$C_RESET"
   elif ! is_provider_logged_in "$provider"; then
-    printf "%s▲ %s (ยังไม่ Login)%s" "$C_WARN" "$provider" "$C_RESET"
+    printf "%s▲ %s (ยังไม่ Login)%s" "$C_WARN" "$label" "$C_RESET"
   else
-    printf "%s● %s (Login แล้ว)%s" "$C_OK" "$provider" "$C_RESET"
+    printf "%s● %s (Login แล้ว)%s" "$C_OK" "$label" "$C_RESET"
   fi
 }
 
@@ -461,11 +509,11 @@ format_role_model_text() {
   local provider="$1"
   local model="$2"
   if is_model_explicitly_set "$model"; then
-    printf "%-18s" "$model"
+    printf "%-22s" "$model"
   else
     local cli_def
     cli_def="$(get_cli_default_model "$provider")"
-    printf "%-18s" "ยังไม่เลือก ($cli_def)"
+    printf "%-22s" "ยังไม่เลือก ($cli_def)"
   fi
 }
 
@@ -680,10 +728,10 @@ print_dashboard_header() {
     [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] && qa_m="${C_OK}[✓] QA_REPORT.md${C_RESET}"
   fi
 
-  local claude_b gemini_b codex_b
-  claude_b="$(format_cli_summary_badge "claude")"
-  gemini_b="$(format_cli_summary_badge "gemini")"
+  local agy_b codex_b claude_b
+  agy_b="$(format_cli_summary_badge "agy")"
   codex_b="$(format_cli_summary_badge "codex")"
+  claude_b="$(format_cli_summary_badge "claude")"
 
   local m_po m_arch m_dev m_qa
   m_po="$(format_role_model_text "$ROLE_PO" "$MODEL_PO")"
@@ -732,14 +780,14 @@ print_dashboard_header() {
   printf "%s│%s %sลำดับงาน :%s %b %s──➔%s %b %s──➔%s %b\n" \
     "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$step1_badge" "$C_MUTED" "$C_RESET" "$step2_badge" "$C_MUTED" "$C_RESET" "$step3_badge"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %sตำแหน่ง (Roles)       ค่าย      โมเดลปัจจุบัน (จาก CLI) สถานะความพร้อมจริง%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %sตำแหน่ง (Roles)       ค่าย      โมเดลปัจจุบัน (จาก CLI)     สถานะความพร้อมจริง%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s 1. @po (Product)    ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_PO" "$m_po" "$s_po"
   printf "%s│%s 2. @arch & @pm      ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$m_arch" "$s_arch"
   printf "%s│%s 3. @dev (Worktree)  ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$m_dev" "$s_dev"
   printf "%s│%s 4. @qa & @sec       ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$m_qa" "$s_qa"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %sสถานะ CLI:%s %b   %b   %b\n" \
-    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$claude_b" "$gemini_b" "$codex_b"
+    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$agy_b" "$codex_b" "$claude_b"
 
   # แสดงข้อมูลโฟลเดอร์โปรเจกต์เฉพาะเมื่อผ่านขั้นที่ 1 แล้ว
   if [ "$UX_STAGE" -ge 2 ]; then
@@ -764,8 +812,8 @@ print_dashboard_header() {
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   if [ "$UX_STAGE" -eq 1 ]; then
     if [ -n "$UNLOGGED_ACTIVE_PROVIDERS" ] && [ "$MODELS_SET_COUNT" -eq 4 ]; then
-      printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3):%s ค่าย [%s] ยังไม่ได้ Login — กด Enter ที่ข้อ %s[3]%s เพื่อ Login (หรือกด %s[1]%s ใช้ค่ายที่ Login แล้ว)\n" \
-        "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$UNLOGGED_ACTIVE_PROVIDERS" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET"
+      printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3):%s กดข้อ %s[1]%s เพื่อใช้โควตา Google AI Ultra (agy) ที่ Login แล้ว หรือกด %s[3]%s เพื่อ Login [%s]\n" \
+        "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET" "$UNLOGGED_ACTIVE_PROVIDERS"
     else
       printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3):%s ตั้งค่าและ Login AI ให้ครบ 4 ตำแหน่ง (กด Enter ที่ข้อ %s[1]%s เพื่อตั้งค่าด่วน)\n" \
         "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET"
@@ -803,8 +851,8 @@ require_all_roles_ready() {
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
 
   interactive_menu "เลือกขั้นตอนเพื่อตั้งค่าและ Login ให้พร้อมใช้งาน" 0 \
-    "d|★ ไปที่หน้า Login บัญชี CLI (claude auth login / gemini / codex login)" \
-    "1|ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup)" \
+    "1|★ ตั้งค่าด่วนด้วยโควตา Google AI Ultra (agy) + Codex พร้อมใช้ทันที" \
+    "d|ไปที่หน้า Login บัญชี CLI (agy / codex / claude)" \
     "c|ตั้งค่าค่าย AI & เลือก Model แยกทีละตำแหน่ง" \
     "b|กลับสู่หน้าจอหลัก"
 
@@ -816,75 +864,63 @@ require_all_roles_ready() {
   return 1
 }
 
-# ─── 6. เมนูตั้งค่าด่วนคลิกเดียวครบ 4 ตำแหน่ง (ดึง Model เริ่มต้นจริงจาก CLI) ───
+# ─── 6. เมนูตั้งค่าด่วนคลิกเดียวครบ 4 ตำแหน่ง (รองรับ Google AI Ultra เต็มรูปแบบ) ───
 run_quick_preset_menu() {
   load_role_config
   refresh_cli_auth_cache
   local target_conf="$GLOBAL_ROLES_CONF"
   [ -f "$PROJECT_ROLES_CONF" ] && target_conf="$PROJECT_ROLES_CONF"
 
-  local codex_def gemini_def
+  local codex_def
   codex_def="$(get_cli_default_model codex)"
-  gemini_def="$(get_cli_default_model gemini)"
 
-  local c_tag="ยังไม่ Login" g_tag="ยังไม่ Login" x_tag="ยังไม่ Login"
-  is_provider_logged_in claude && c_tag="● Login แล้ว พร้อมใช้ทันที"
-  is_provider_logged_in gemini && g_tag="● Login แล้ว พร้อมใช้ทันที"
-  is_provider_logged_in codex  && x_tag="● Login แล้ว พร้อมใช้ทันที"
-
-  local m_tag="ต้อง Login ให้ครบทั้ง 3 ค่าย"
-  if is_provider_logged_in claude && is_provider_logged_in gemini && is_provider_logged_in codex; then
-    m_tag="● Login ครบทั้ง 3 ค่ายแล้ว พร้อมใช้ทันที"
+  local u_tag="ต้องมี agy + codex" a_tag="ต้องมี agy" x_tag="ยังไม่ Login" c_tag="ยังไม่ Login"
+  if is_provider_logged_in agy && is_provider_logged_in codex; then
+    u_tag="● พร้อมใช้ทันที 100%"
   fi
+  is_provider_logged_in agy    && a_tag="● พร้อมใช้ทันที 100%"
+  is_provider_logged_in codex  && x_tag="● พร้อมใช้ทันที"
+  is_provider_logged_in claude && c_tag="● พร้อมใช้ทันที"
 
-  local def_preset_idx=0
-  if is_provider_logged_in codex && ! is_provider_logged_in claude; then
-    def_preset_idx=3
-  elif is_provider_logged_in claude && ! is_provider_logged_in gemini; then
-    def_preset_idx=1
-  elif is_provider_logged_in gemini && ! is_provider_logged_in claude; then
-    def_preset_idx=2
-  fi
-
-  interactive_menu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก CLI ในเครื่องโดยตรง)" "$def_preset_idx" \
-    "1|Multi-Vendor แนะนำ — @po=gemini(${gemini_def}), @arch=claude(opus), @dev=claude(sonnet), @qa=codex(${codex_def}) [${m_tag}]" \
-    "2|All-Claude Preset  — ใช้ claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus) [${c_tag}]" \
-    "3|All-Gemini Preset  — ใช้ gemini ทั้ง 4 ตำแหน่ง (${gemini_def} ทั้ง 4 ตำแหน่ง) [${g_tag}]" \
-    "4|All-Codex Preset   — ใช้ codex ทั้ง 4 ตำแหน่ง (${codex_def} จาก CLI ทั้ง 4 ตำแหน่ง) [${x_tag}]" \
+  interactive_menu "เลือกชุดการตั้งค่าด่วน (รองรับโควตา Google AI Ultra ผ่าน agy + Codex)" 0 \
+    "1|★ แนะนำสูงสุด (Google AI Ultra + Codex) — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex(${codex_def}) [${u_tag}]" \
+    "2|All-Google-AI-Ultra (agy ล้วนทั้ง 4 ตำแหน่ง) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gemini-3.8-flash-high [${a_tag}]" \
+    "3|All-Codex Preset  — ใช้ codex (${codex_def}) ทั้ง 4 ตำแหน่ง [${x_tag}]" \
+    "4|All-Claude Preset — ใช้ claude CLI แยกต่างหากทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus) [${c_tag}]" \
     "b|ย้อนกลับ"
 
   case "$MENU_RESULT" in
     1)
-      ROLE_PO="gemini";   MODEL_PO="$gemini_def"
-      ROLE_ARCH="claude"; MODEL_ARCH="opus"
-      ROLE_DEV="claude";  MODEL_DEV="sonnet"
-      ROLE_QA="codex";    MODEL_QA="$codex_def"
+      ROLE_PO="agy";     MODEL_PO="gemini-4-argon-high"
+      ROLE_ARCH="agy";   MODEL_ARCH="claude-opus-5-5-high"
+      ROLE_DEV="agy";    MODEL_DEV="claude-sonnet-5-5-high"
+      ROLE_QA="codex";   MODEL_QA="$codex_def"
       save_role_config "$target_conf"
-      printf "\n%s● บันทึกชุด Multi-Vendor (Codex=%s, Gemini=%s) เรียบร้อยแล้ว!%s\n" "$C_OK" "$codex_def" "$gemini_def" "$C_RESET"
+      printf "\n%s● บันทึกชุด Google AI Ultra (agy) + Codex (%s) ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$codex_def" "$C_RESET"
       ;;
     2)
-      ROLE_PO="claude";   MODEL_PO="sonnet"
-      ROLE_ARCH="claude"; MODEL_ARCH="opus"
-      ROLE_DEV="claude";  MODEL_DEV="sonnet"
-      ROLE_QA="claude";   MODEL_QA="opus"
+      ROLE_PO="agy";     MODEL_PO="gemini-4-argon-high"
+      ROLE_ARCH="agy";   MODEL_ARCH="claude-opus-5-5-high"
+      ROLE_DEV="agy";    MODEL_DEV="claude-sonnet-5-5-high"
+      ROLE_QA="agy";     MODEL_QA="gemini-3.8-flash-high"
       save_role_config "$target_conf"
-      printf "\n%s● บันทึกชุด All-Claude ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
+      printf "\n%s● บันทึกชุด All-Google-AI-Ultra (agy) ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
       ;;
     3)
-      ROLE_PO="gemini";   MODEL_PO="$gemini_def"
-      ROLE_ARCH="gemini"; MODEL_ARCH="$gemini_def"
-      ROLE_DEV="gemini";  MODEL_DEV="$gemini_def"
-      ROLE_QA="gemini";   MODEL_QA="$gemini_def"
-      save_role_config "$target_conf"
-      printf "\n%s● บันทึกชุด All-Gemini (%s) ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$gemini_def" "$C_RESET"
-      ;;
-    4)
       ROLE_PO="codex";   MODEL_PO="$codex_def"
       ROLE_ARCH="codex"; MODEL_ARCH="$codex_def"
       ROLE_DEV="codex";  MODEL_DEV="$codex_def"
       ROLE_QA="codex";   MODEL_QA="$codex_def"
       save_role_config "$target_conf"
       printf "\n%s● บันทึกชุด All-Codex (%s) ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$codex_def" "$C_RESET"
+      ;;
+    4)
+      ROLE_PO="claude";   MODEL_PO="sonnet"
+      ROLE_ARCH="claude"; MODEL_ARCH="opus"
+      ROLE_DEV="claude";  MODEL_DEV="sonnet"
+      ROLE_QA="claude";   MODEL_QA="opus"
+      save_role_config "$target_conf"
+      printf "\n%s● บันทึกชุด All-Claude ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
       ;;
   esac
 }
@@ -970,22 +1006,25 @@ choose_provider_interactive() {
   local current_p="$2"
   refresh_cli_auth_cache
 
-  local c_stat g_stat x_stat
+  local a_stat x_stat c_stat g_stat
+  a_stat="$(get_provider_auth_detail agy)"
+  x_stat="$(get_provider_auth_detail codex)"
   c_stat="$(get_provider_auth_detail claude)"
   g_stat="$(get_provider_auth_detail gemini)"
-  x_stat="$(get_provider_auth_detail codex)"
 
   interactive_menu "เลือกค่าย AI สำหรับ ${role_label} (ปัจจุบัน: ${current_p})" 0 \
-    "1|claude — Anthropic Claude Code CLI [${c_stat}]" \
-    "2|gemini — Google Gemini CLI         [${g_stat}]" \
-    "3|codex  — OpenAI Codex CLI          [${x_stat}]" \
+    "1|agy    — Google AI Ultra / Antigravity CLI [${a_stat}]" \
+    "2|codex  — OpenAI Codex CLI                  [${x_stat}]" \
+    "3|claude — Anthropic Claude Code CLI         [${c_stat}]" \
+    "4|gemini — Google Gemini CLI (API Key)       [${g_stat}]" \
     "b|คงค่าเดิม (${current_p})"
 
   local chosen_p="$current_p"
   case "$MENU_RESULT" in
-    1) chosen_p="claude" ;;
-    2) chosen_p="gemini" ;;
-    3) chosen_p="codex" ;;
+    1) chosen_p="agy" ;;
+    2) chosen_p="codex" ;;
+    3) chosen_p="claude" ;;
+    4) chosen_p="gemini" ;;
     *) chosen_p="$current_p" ;;
   esac
 
@@ -1026,12 +1065,12 @@ choose_model_interactive() {
   local idx=1
   while IFS='|' read -r mid mdesc; do
     [ -z "$mid" ] && continue
-    menu_items+=("${idx}|$(printf "%-22s — %s" "$mid" "$mdesc")")
+    menu_items+=("${idx}|$(printf "%-24s — %s" "$mid" "$mdesc")")
     model_ids[$idx]="$mid"
     idx=$((idx + 1))
   done < <(get_cli_live_models "$provider")
 
-  menu_items+=("c|กำหนดชื่อโมเดลเอง          — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง")
+  menu_items+=("c|กำหนดชื่อโมเดลเอง            — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง")
 
   interactive_menu "เลือก Model ของค่าย [${provider}] สำหรับ ${role_label} (ดึงจาก CLI ในเครื่องโดยตรง)" 0 "${menu_items[@]}"
 
@@ -1048,6 +1087,14 @@ choose_model_interactive() {
 login_single_provider() {
   local provider="$1"
   case "$provider" in
+    agy)
+      if is_provider_installed agy; then
+        printf "\n%sกำลังเปิด Antigravity CLI (agy) เพื่อเชื่อมบัญชี Google AI Ultra (พิมพ์ /exit เมื่อเสร็จ)...%s\n" "$C_ACCENT" "$C_RESET"
+        agy || true
+      else
+        printf "%s✖ ไม่พบ ~/.gemini/bin/agy%s\n" "$C_ERR" "$C_RESET"
+      fi
+      ;;
     claude)
       if is_provider_installed claude; then
         printf "\n%sกำลังเปิดหน้า Login ของ Claude Code (claude auth login)...%s\n" "$C_ACCENT" "$C_RESET"
@@ -1058,7 +1105,7 @@ login_single_provider() {
       ;;
     gemini)
       if is_provider_installed gemini; then
-        printf "\n%sกำลังเปิด Gemini CLI เพื่อให้คุณเลือกวิธี Login (เช่น Login with Google แล้วพิมพ์ /quit เมื่อเสร็จ)...%s\n" "$C_ACCENT" "$C_RESET"
+        printf "\n%sกำลังเปิด Gemini CLI (เลือกข้อ 2. Use Gemini API Key แล้วพิมพ์ /quit เมื่อเสร็จ)...%s\n" "$C_ACCENT" "$C_RESET"
         gemini || true
       else
         printf "%s✖ ยังไม่ได้ติดตั้ง gemini%s\n" "$C_ERR" "$C_RESET"
@@ -1095,12 +1142,13 @@ configure_roles_menu() {
     if is_role_ready "$ROLE_QA" "$MODEL_QA"; then r4_stat="● พร้อมแล้ว"; elif ! is_provider_logged_in "$ROLE_QA"; then r4_stat="▲ ยังไม่ Login"; fi
 
     interactive_menu "ตั้งค่าค่าย AI & เลือก Model ให้ครบ 4 ตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
-      "p|★ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (ดึง Model จริงจาก CLI ในเครื่อง)" \
+      "p|★ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Google AI Ultra agy + Codex)" \
       "1|ขั้นตอนที่ 1 (@po)       ➔ ค่าย: ${ROLE_PO} | โมเดล: ${MODEL_PO} (${r1_stat})" \
       "2|ขั้นตอนที่ 2 (@arch/@pm) ➔ ค่าย: ${ROLE_ARCH} | โมเดล: ${MODEL_ARCH} (${r2_stat})" \
       "3|ขั้นตอนที่ 3 (@dev)      ➔ ค่าย: ${ROLE_DEV} | โมเดล: ${MODEL_DEV} (${r3_stat})" \
       "4|ขั้นตอนที่ 4 (@qa/@sec)  ➔ ค่าย: ${ROLE_QA} | โมเดล: ${MODEL_QA} (${r4_stat})" \
-      "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (claude auth login / gemini / codex login)" \
+      "r|อัปเดตรายชื่อโมเดล Google AI Ultra ล่าสุดจาก 'agy models'" \
+      "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (agy / codex / claude)" \
       "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่ายในไฟล์ระบบ CLI" \
       "s|สลับไฟล์บันทึกการตั้งค่า (Global ~/.agents/ ↔ Project .relay/roles.conf)" \
       "t|บันทึกและทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งทันที (/test)" \
@@ -1139,6 +1187,7 @@ configure_roles_menu() {
         run_quick_preset_menu
         load_role_config
         ;;
+      r|R) refresh_agy_models_live ;;
       m|M) configure_provider_defaults_menu ;;
       d|D) run_doctor_menu ;;
       s|S)
@@ -1202,11 +1251,12 @@ run_doctor_menu() {
     refresh_cli_auth_cache
     echo ""
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-    printf "%s│%s %sสถานะการติดตั้ง CLI, การ Login บัญชี และโมเดลเริ่มต้นของทั้ง 3 ค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-    for p in claude gemini codex; do
-      local pkg="@google/gemini-cli"
+    printf "%s│%s %sสถานะการติดตั้ง CLI, การ Login บัญชี และโมเดลเริ่มต้นของแต่ละค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+    for p in agy codex claude gemini; do
+      local pkg="Antigravity App (~/.gemini/bin/agy)"
       [ "$p" = "claude" ] && pkg="@anthropic-ai/claude-code"
       [ "$p" = "codex" ]  && pkg="@openai/codex"
+      [ "$p" = "gemini" ] && pkg="@google/gemini-cli"
       local def_m auth_d
       def_m="$(get_cli_default_model "$p")"
       auth_d="$(get_provider_auth_detail "$p")"
@@ -1216,7 +1266,7 @@ run_doctor_menu() {
       elif ! is_provider_logged_in "$p"; then
         local ver_s
         ver_s="$(get_provider_version "$p")"
-        printf "%s│%s  %s▲%s %-8s : ติดตั้งแล้ว (%s) • %s%s%s • Model: %s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET" "$p" "$ver_s" "$C_WARN" "$auth_d" "$C_RESET" "$def_m"
+        printf "%s│%s  %s▲%s %-8s : ติดตั้งแล้ว (%s) • %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET" "$p" "$ver_s" "$C_WARN" "$auth_d" "$C_RESET"
       else
         local ver_s
         ver_s="$(get_provider_version "$p")"
@@ -1225,38 +1275,21 @@ run_doctor_menu() {
     done
     printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-    local c_login_lbl="เข้าสู่ระบบ Claude Code (รัน claude auth login)"
-    local g_login_lbl="เข้าสู่ระบบ Gemini CLI (เปิด gemini เพื่อตั้งค่า Login with Google)"
-    local x_login_lbl="เข้าสู่ระบบ OpenAI Codex (รัน codex login)"
-    ! is_provider_logged_in claude && c_login_lbl="★ [แนะนำ] ${c_login_lbl} — ปัจจุบันยังไม่ Login"
-    ! is_provider_logged_in gemini && g_login_lbl="★ [แนะนำ] ${g_login_lbl} — ปัจจุบันยังไม่ Login"
-    ! is_provider_logged_in codex  && x_login_lbl="★ [แนะนำ] ${x_login_lbl} — ปัจจุบันยังไม่ Login"
-
-    local def_doc_idx=0
-    if ! is_provider_logged_in claude; then def_doc_idx=0
-    elif ! is_provider_logged_in gemini; then def_doc_idx=1
-    elif ! is_provider_logged_in codex; then def_doc_idx=2
-    fi
-
-    interactive_menu "เลือกการจัดการ Login บัญชีผู้ใช้งาน หรือติดตั้ง/อัปเดต CLI" "$def_doc_idx" \
-      "1|${c_login_lbl}" \
-      "2|${g_login_lbl}" \
-      "3|${x_login_lbl}" \
-      "4|ติดตั้ง / อัปเดต Google Gemini CLI  (npm install -g @google/gemini-cli)" \
-      "5|ติดตั้ง / อัปเดต OpenAI Codex CLI   (npm install -g @openai/codex)" \
-      "6|ติดตั้ง / อัปเดต Claude Code CLI    (npm install -g @anthropic-ai/claude-code)" \
-      "7|ติดตั้ง / อัปเดตรวดเดียวครบทั้ง 3 ค่าย (claude + gemini + codex)" \
+    interactive_menu "เลือกการจัดการ Login บัญชีผู้ใช้งาน หรืออัปเดตโมเดล/CLI" 0 \
+      "1|อัปเดตรายชื่อโมเดล Google AI Ultra ล่าสุดจาก 'agy models'" \
+      "2|เข้าสู่ระบบ OpenAI Codex (รัน codex login)" \
+      "3|เข้าสู่ระบบ Claude Code แยกต่างหาก (รัน claude auth login)" \
+      "4|เปิด Gemini CLI เพื่อใส่ Gemini API Key (ข้อ 2. Use Gemini API Key)" \
+      "5|ติดตั้ง / อัปเดต CLI (codex + claude + gemini)" \
       "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่ายในไฟล์ระบบ CLI" \
       "b|กลับสู่หน้าจอหลัก"
 
     case "$MENU_RESULT" in
-      1) login_single_provider "claude" ;;
-      2) login_single_provider "gemini" ;;
-      3) login_single_provider "codex" ;;
-      4) npm install -g @google/gemini-cli ;;
-      5) npm install -g @openai/codex ;;
-      6) npm install -g @anthropic-ai/claude-code ;;
-      7) npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex ;;
+      1) refresh_agy_models_live ;;
+      2) login_single_provider "codex" ;;
+      3) login_single_provider "claude" ;;
+      4) login_single_provider "gemini" ;;
+      5) npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex ;;
       m|M) configure_provider_defaults_menu ;;
       *) break ;;
     esac
@@ -1280,6 +1313,7 @@ check_role_skills_status() {
 get_provider_rules_status() {
   local provider="$1"
   case "$provider" in
+    agy)    [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s● เชื่อม ~/.gemini/GEMINI.md (Google AI Ultra) แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_ERR" "$C_RESET" ;;
     claude) [ -e "$HOME/.claude/CLAUDE.md" ] && printf "%s● เชื่อม ~/.claude/CLAUDE.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.claude/CLAUDE.md%s" "$C_ERR" "$C_RESET" ;;
     codex)  [ -e "$HOME/.codex/AGENTS.md" ]  && printf "%s● เชื่อม ~/.codex/AGENTS.md แล้ว%s" "$C_OK" "$C_RESET"  || printf "%s○ ไม่พบ ~/.codex/AGENTS.md%s" "$C_ERR" "$C_RESET" ;;
     gemini) [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s● เชื่อม ~/.gemini/GEMINI.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_ERR" "$C_RESET" ;;
@@ -1308,7 +1342,7 @@ ping_single_role_agent() {
   fi
 
   if ! is_provider_logged_in "$provider"; then
-    printf "%s✖ ข้ามการยิงทดสอบ %s เนื่องจากค่าย '%s' ยังไม่ได้เข้าสู่ระบบ (Not logged in — กดเมนู [3] หรือ [d] เพื่อ Login ก่อน)%s\n" "$C_WARN" "$role_code" "$provider" "$C_RESET"
+    printf "%s✖ ข้ามการยิงทดสอบ %s เนื่องจากค่าย '%s' ยังไม่ได้เข้าสู่ระบบ (Not logged in)%s\n" "$C_WARN" "$role_code" "$provider" "$C_RESET"
     return 1
   fi
 
@@ -1326,15 +1360,16 @@ ping_single_role_agent() {
   printf "%sกำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_MUTED" "$provider" "$configured_model" "$C_RESET"
   local exit_code=0
   case "$provider" in
+    agy)
+      agy --model "$configured_model" -p "$self_check_prompt" || exit_code=$?
+      ;;
     claude)
-      # กรองข้อความเตือน Permission allow rule (.claude/settings.json) เก่าจากโปรเจกต์อื่นออกเพื่อความสะอาดตา
       claude --model "$configured_model" -p "$self_check_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || exit_code=$?
       ;;
     gemini)
       gemini -m "$configured_model" -p "$self_check_prompt" || exit_code=$?
       ;;
     codex)
-      # ใช้ --skip-git-repo-check เพื่อให้รันทดสอบได้แม้เปิดจากโฟลเดอร์ Home (~) ที่ไม่ใช่ Git repository
       codex exec --skip-git-repo-check -m "$configured_model" "$self_check_prompt" || exit_code=$?
       ;;
   esac
@@ -1342,7 +1377,7 @@ ping_single_role_agent() {
   if [ "$exit_code" -eq 0 ]; then
     printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งาน 100%%!%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
   else
-    printf "%s✖ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้ (ตรวจสอบการ Login หรือสิทธิ์โมเดลในเมนู [d]/[c])%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s✖ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
   fi
 }
 
@@ -1378,18 +1413,13 @@ run_agent_readiness_test() {
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$qa_skills")"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  if [ "$ALL_ROLES_READY" -eq 0 ]; then
-    printf "\n%s▲ พบตำแหน่งที่ยังไม่ได้ Login หรือยังไม่ได้เลือก Model (พร้อมใช้งานจริง %d/4 ตำแหน่ง)%s\n" "$C_WARN" "$READY_ROLE_COUNT" "$C_RESET"
-  fi
-
-  interactive_menu "เลือกการทดสอบ Live Handshake หรือไปหน้า Login บัญชี" 0 \
-    "1|ทดสอบเฉพาะตำแหน่งที่ Login พร้อมแล้ว (ข้ามค่ายที่ยังไม่ Login อัตโนมัติ)" \
-    "d|★ ไปที่หน้า Login บัญชี CLI (claude auth login / gemini / codex login)" \
-    "c|ไปที่หน้าตั้งค่าค่าย AI & เปลี่ยน Model (เช่น สลับมาใช้ค่ายที่ Login แล้ว)" \
+  interactive_menu "เลือกตำแหน่งที่ต้องการยิงทดสอบให้ AI รายงานบทบาทและ Skills จริง" 0 \
+    "1|★ ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec)" \
     "2|ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po        ➔ ${ROLE_PO} / ${MODEL_PO})" \
     "3|ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm  ➔ ${ROLE_ARCH} / ${MODEL_ARCH})" \
     "4|ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev       ➔ ${ROLE_DEV} / ${MODEL_DEV})" \
     "5|ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec   ➔ ${ROLE_QA} / ${MODEL_QA})" \
+    "c|ไปที่หน้าตั้งค่าค่าย AI & เปลี่ยน Model" \
     "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
@@ -1400,8 +1430,6 @@ run_agent_readiness_test() {
       ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
-    d|D) run_doctor_menu ;;
-    c|C) configure_roles_menu ;;
     2)
       ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po (Product Owner)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
@@ -1418,6 +1446,7 @@ run_agent_readiness_test() {
       ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
+    c|C) configure_roles_menu ;;
   esac
 }
 
@@ -1448,6 +1477,7 @@ launch_provider_cli() {
   (
     cd "$work_dir"
     case "$provider" in
+      agy)    agy --model "$configured_model" -i "$initial_prompt" || agy --model "$configured_model" || true ;;
       claude) claude --model "$configured_model" "$initial_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || true ;;
       codex)  codex -m "$configured_model" "$initial_prompt" || true ;;
       gemini) gemini -m "$configured_model" -i "$initial_prompt" 2>/dev/null || gemini -m "$configured_model" || true ;;
@@ -1659,23 +1689,10 @@ while true; do
     # ═══════════════════════════════════════════════════════════════════════════
     # ขั้นที่ 1/3: ตั้งค่า AI & Login บัญชีให้ครบ 4 ตำแหน่ง
     # ═══════════════════════════════════════════════════════════════════════════
-    s1_opt1="ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — ดึง Model จริงจาก CLI)"
-    s1_opt2="เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)"
-    s1_opt3="จัดการการเชื่อมต่อ CLI & Login บัญชี (claude auth login / gemini / codex login)"
-    s1_def_idx=0
-
-    if [ -n "$UNLOGGED_ACTIVE_PROVIDERS" ] && [ "$MODELS_SET_COUNT" -eq 4 ]; then
-      s1_opt3="★ [ต้องทำตอนนี้] Login บัญชีค่ายที่ยังไม่ได้เข้าสู่ระบบ (${UNLOGGED_ACTIVE_PROVIDERS})"
-      s1_def_idx=2
-    else
-      s1_opt1="★ [แนะนำ] ${s1_opt1}"
-      s1_def_idx=0
-    fi
-
-    interactive_menu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และ Login ให้ครบ 4 ตำแหน่ง (พร้อมใช้งานจริง ${READY_ROLE_COUNT}/4)" "$s1_def_idx" \
-      "1|${s1_opt1}" \
-      "2|${s1_opt2}" \
-      "3|${s1_opt3}" \
+    interactive_menu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และ Login ให้ครบ 4 ตำแหน่ง (พร้อมใช้งานจริง ${READY_ROLE_COUNT}/4)" 0 \
+      "1|★ [แนะนำ] ตั้งค่าด่วนด้วยโควตา Google AI Ultra (agy) + Codex พร้อมใช้ทันที" \
+      "2|เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)" \
+      "3|จัดการการเชื่อมต่อ CLI & Login บัญชี (agy / codex / claude)" \
       "t|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
       "q|ออกจากโปรแกรม (/quit)"
 
@@ -1698,9 +1715,9 @@ while true; do
     if [ "$IN_HOME_DIR" -eq 1 ]; then
       interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ที่จะทำงาน (ปัจจุบันคุณอยู่ใน Home ~)" 0 \
         "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที (แนะนำ)" \
+        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งด้วยโควตา Google AI Ultra + Codex (/test)" \
         "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
         "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
-        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
         "q|ออกจากโปรแกรม (เพื่อพิมพ์ cd เข้าโฟลเดอร์โปรเจกต์เอง)"
 
       case "$MENU_RESULT" in
@@ -1719,8 +1736,8 @@ while true; do
         "1|★ เริ่มโปรเจกต์ใหม่ตั้งแต่ศูนย์ในโฟลเดอร์นี้ (Greenfield — สร้าง .relay/ ทันที)" \
         "2|นำ RELAY มาใช้กับโปรเจกต์เดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนสร้าง PROJECT_STATE.md)" \
         "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
-        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
         "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
+        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
         "q|ออกจากโปรแกรม (/quit)"
 
       case "$MENU_RESULT" in
