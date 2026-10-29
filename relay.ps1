@@ -4,8 +4,9 @@
 .DESCRIPTION
     • โทนสี Minimalist High-Contrast (Monochrome Blue + Status Dots)
     • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินตัวหนาทั้งบรรทัด
+    • รองรับ Google AI Ultra ผ่าน Antigravity CLI (agy) พร้อมทั้ง Gemini 4 Argon, Claude Opus 5.5, Claude Sonnet 5.5 และ GPT-OSS 120B
     • ตรวจสอบความพร้อมจริง 3 ชั้น: ติดตั้ง CLI แล้ว + Login บัญชีแล้ว + เลือก Model แล้ว
-    • ดึงรายชื่อ Model จาก CLI ที่ติดตั้งในเครื่องโดยตรง (Codex models_cache.json / Gemini / Claude)
+    • ดึงรายชื่อ Model จาก CLI ที่ติดตั้งในเครื่องโดยตรง (agy models / Codex models_cache.json / Gemini / Claude)
 #>
 param(
     [Parameter(Position=0)]
@@ -23,9 +24,9 @@ $ProjectName = Split-Path -Leaf $ProjectDir
 $RelayDir = Join-Path $ProjectDir ".relay"
 $ProjectRolesConf = Join-Path $RelayDir "roles.conf"
 
-$Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
-$Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
-$Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
+$Script:ROLE_PO = "agy";      $Script:MODEL_PO = "default"
+$Script:ROLE_ARCH = "agy";    $Script:MODEL_ARCH = "default"
+$Script:ROLE_DEV = "agy";     $Script:MODEL_DEV = "default"
 $Script:ROLE_QA = "codex";    $Script:MODEL_QA = "default"
 $Script:CONFIG_SOURCE = "Global (~/.agents/relay-roles.conf)"
 $Script:ACTIVE_TASK = ""
@@ -33,13 +34,35 @@ $Script:READY_COUNT = 0
 $Script:ALL_READY = $false
 $Script:UX_STAGE = 1
 
+function Get-ProviderBin([string]$Provider) {
+    if ($Provider -eq "agy") {
+        $cmd = Get-Command "agy" -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+        $gemBin = Join-Path $HOME ".gemini\bin\agy.exe"
+        if (Test-Path $gemBin) { return $gemBin }
+        $gemBinNoExt = Join-Path $HOME ".gemini\bin\agy"
+        if (Test-Path $gemBinNoExt) { return $gemBinNoExt }
+        return ""
+    }
+    $c = Get-Command $Provider -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    return ""
+}
+
 function Test-ProviderInstalled([string]$Provider) {
-    return [bool](Get-Command $Provider -ErrorAction SilentlyContinue)
+    return (-not [string]::IsNullOrWhiteSpace((Get-ProviderBin $Provider)))
 }
 
 function Test-ProviderLoggedIn([string]$Provider) {
     if (-not (Test-ProviderInstalled $Provider)) { return $false }
     switch ($Provider) {
+        "agy" {
+            $tokenFile = Join-Path $HOME ".gemini\jetski-standalone-oauth-token"
+            if (Test-Path $tokenFile) { return $true }
+            $agyBin = Get-ProviderBin "agy"
+            $out = (& $agyBin models 2>$null) -join " "
+            return ($out -match "Available models")
+        }
         "claude" {
             if ($env:ANTHROPIC_API_KEY) { return $true }
             $out = (& claude auth status 2>$null) -join " "
@@ -47,12 +70,10 @@ function Test-ProviderLoggedIn([string]$Provider) {
         }
         "gemini" {
             if ($env:GEMINI_API_KEY -or $env:GOOGLE_GENAI_USE_VERTEXAI) { return $true }
-            $oauthFile = Join-Path $HOME ".gemini\oauth_creds.json"
-            if (Test-Path $oauthFile) { return $true }
             $settingsFile = Join-Path $HOME ".gemini\settings.json"
             if (Test-Path $settingsFile) {
                 $raw = Get-Content $settingsFile -Raw -ErrorAction SilentlyContinue
-                return ($raw -match '"selectedType"\s*:\s*"[^"]+"')
+                return ($raw -match '"selectedType"\s*:\s*"(gemini-api-key|vertex-ai)"')
             }
             return $false
         }
@@ -68,6 +89,9 @@ function Test-ProviderLoggedIn([string]$Provider) {
 
 function Get-CliDefaultModel([string]$Provider) {
     switch ($Provider) {
+        "agy" {
+            return "gemini-4-argon-high"
+        }
         "claude" {
             $sf = Join-Path $HOME ".claude\settings.json"
             if (Test-Path $sf) {
@@ -108,9 +132,15 @@ function Get-CliDefaultModel([string]$Provider) {
 }
 
 function Load-RoleConfig {
-    $Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
-    $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
-    $Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
+    if (Test-ProviderInstalled "agy") {
+        $Script:ROLE_PO = "agy";   $Script:MODEL_PO = "default"
+        $Script:ROLE_ARCH = "agy"; $Script:MODEL_ARCH = "default"
+        $Script:ROLE_DEV = "agy";  $Script:MODEL_DEV = "default"
+    } else {
+        $Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
+        $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
+        $Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
+    }
     $Script:ROLE_QA = "codex";    $Script:MODEL_QA = "default"
     $Script:CONFIG_SOURCE = "Global (~/.agents/relay-roles.conf)"
 
@@ -186,44 +216,56 @@ function Update-ReadinessState {
 
 function Get-RoleStatusText([string]$Provider, [string]$Model) {
     if (-not (Test-ProviderInstalled $Provider)) { return "✖ ยังไม่ติดตั้ง CLI (กด [3])" }
-    if (-not (Test-ProviderLoggedIn $Provider))  { return "▲ ยังไม่ Login บัญชี (กด [3])" }
+    if (-not (Test-ProviderLoggedIn $Provider)) {
+        if ($Provider -eq "gemini") { return "▲ ต้องใช้ API Key หรือเปลี่ยนเป็น agy (Ultra)" }
+        return "▲ ยังไม่ Login บัญชี (กด [3])"
+    }
     if (-not (Test-ModelExplicitlySet $Model))    { return "▲ รอเลือกโมเดล (กด [1]/[2])" }
+    if ($Provider -eq "agy") { return "● พร้อมใช้งาน (Google AI Ultra)" }
     return "● พร้อมใช้งาน (Login แล้ว)"
 }
 
 function Invoke-QuickPresetMenu {
     $codexDef = Get-CliDefaultModel "codex"
     $geminiDef = Get-CliDefaultModel "gemini"
-    $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก CLI ในเครื่องโดยตรง)" 0 @(
-        "1|★ ชุดแนะนำ Multi-Vendor — @po=gemini($geminiDef), @arch=claude(opus), @dev=claude(sonnet), @qa=codex($codexDef)",
-        "2|All-Claude Preset       — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)",
-        "3|All-Gemini Preset       — ใช้ Gemini ทั้ง 4 ตำแหน่ง ($geminiDef ทั้ง 4 ตำแหน่ง)",
-        "4|All-Codex Preset        — ใช้ Codex ทั้ง 4 ตำแหน่ง ($codexDef จาก CLI ทั้ง 4 ตำแหน่ง)",
+    $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก Google AI Ultra / CLI ในเครื่องโดยตรง)" 0 @(
+        "1|★ ชุดแนะนำ Google AI Ultra + Codex — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex($codexDef)",
+        "2|All-Google AI Ultra (100% agy) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gpt-oss-120b-medium",
+        "3|Multi-Vendor แยกค่ายอิสระ      — @po=agy(gemini-4-argon-high), @arch=claude(opus), @dev=claude(sonnet), @qa=codex($codexDef)",
+        "4|All-Claude CLI Preset          — ใช้ Claude CLI ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)",
+        "5|All-Codex CLI Preset           — ใช้ Codex CLI ทั้ง 4 ตำแหน่ง ($codexDef จาก CLI ทั้ง 4 ตำแหน่ง)",
         "b|ย้อนกลับ"
     )
     switch ($choice) {
         "1" {
-            $Script:ROLE_PO="gemini";   $Script:MODEL_PO=$geminiDef
+            $Script:ROLE_PO="agy";      $Script:MODEL_PO="gemini-4-argon-high"
+            $Script:ROLE_ARCH="agy";    $Script:MODEL_ARCH="claude-opus-5-5-high"
+            $Script:ROLE_DEV="agy";     $Script:MODEL_DEV="claude-sonnet-5-5-high"
+            $Script:ROLE_QA="codex";    $Script:MODEL_QA=$codexDef
+            Save-RoleConfig $GlobalRolesConf
+        }
+        "2" {
+            $Script:ROLE_PO="agy";      $Script:MODEL_PO="gemini-4-argon-high"
+            $Script:ROLE_ARCH="agy";    $Script:MODEL_ARCH="claude-opus-5-5-high"
+            $Script:ROLE_DEV="agy";     $Script:MODEL_DEV="claude-sonnet-5-5-high"
+            $Script:ROLE_QA="agy";      $Script:MODEL_QA="gpt-oss-120b-medium"
+            Save-RoleConfig $GlobalRolesConf
+        }
+        "3" {
+            $Script:ROLE_PO="agy";      $Script:MODEL_PO="gemini-4-argon-high"
             $Script:ROLE_ARCH="claude"; $Script:MODEL_ARCH="opus"
             $Script:ROLE_DEV="claude";  $Script:MODEL_DEV="sonnet"
             $Script:ROLE_QA="codex";    $Script:MODEL_QA=$codexDef
             Save-RoleConfig $GlobalRolesConf
         }
-        "2" {
+        "4" {
             $Script:ROLE_PO="claude";   $Script:MODEL_PO="sonnet"
             $Script:ROLE_ARCH="claude"; $Script:MODEL_ARCH="opus"
             $Script:ROLE_DEV="claude";  $Script:MODEL_DEV="sonnet"
             $Script:ROLE_QA="claude";   $Script:MODEL_QA="opus"
             Save-RoleConfig $GlobalRolesConf
         }
-        "3" {
-            $Script:ROLE_PO="gemini";   $Script:MODEL_PO=$geminiDef
-            $Script:ROLE_ARCH="gemini"; $Script:MODEL_ARCH=$geminiDef
-            $Script:ROLE_DEV="gemini";  $Script:MODEL_DEV=$geminiDef
-            $Script:ROLE_QA="gemini";   $Script:MODEL_QA=$geminiDef
-            Save-RoleConfig $GlobalRolesConf
-        }
-        "4" {
+        "5" {
             $Script:ROLE_PO="codex";   $Script:MODEL_PO=$codexDef
             $Script:ROLE_ARCH="codex"; $Script:MODEL_ARCH=$codexDef
             $Script:ROLE_DEV="codex";  $Script:MODEL_DEV=$codexDef
@@ -299,10 +341,10 @@ function Print-DashboardHeader {
         Write-Host "│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า & Login AI (4/4) ──➔ ✓ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ● [ขั้นที่ 3: เริ่มสั่งงาน]" -ForegroundColor Blue
     }
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
-    Write-Host ("│ 1. @po (Product)    ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_PO, $Script:MODEL_PO, (Get-RoleStatusText $Script:ROLE_PO $Script:MODEL_PO))
-    Write-Host ("│ 2. @arch & @pm      ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_ARCH, $Script:MODEL_ARCH, (Get-RoleStatusText $Script:ROLE_ARCH $Script:MODEL_ARCH))
-    Write-Host ("│ 3. @dev (Worktree)  ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_DEV, $Script:MODEL_DEV, (Get-RoleStatusText $Script:ROLE_DEV $Script:MODEL_DEV))
-    Write-Host ("│ 4. @qa & @sec       ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_QA, $Script:MODEL_QA, (Get-RoleStatusText $Script:ROLE_QA $Script:MODEL_QA))
+    Write-Host ("│ 1. @po (Product)    ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_PO, $Script:MODEL_PO, (Get-RoleStatusText $Script:ROLE_PO $Script:MODEL_PO))
+    Write-Host ("│ 2. @arch & @pm      ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_ARCH, $Script:MODEL_ARCH, (Get-RoleStatusText $Script:ROLE_ARCH $Script:MODEL_ARCH))
+    Write-Host ("│ 3. @dev (Worktree)  ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_DEV, $Script:MODEL_DEV, (Get-RoleStatusText $Script:ROLE_DEV $Script:MODEL_DEV))
+    Write-Host ("│ 4. @qa & @sec       ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_QA, $Script:MODEL_QA, (Get-RoleStatusText $Script:ROLE_QA $Script:MODEL_QA))
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
     if ($Script:UX_STAGE -eq 1) {
         Write-Host "│ 👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3): ตั้งค่าและ Login บัญชี CLI ให้ครบ 4 ตำแหน่ง" -ForegroundColor Blue
@@ -320,8 +362,8 @@ while ($true) {
     Print-DashboardHeader
     if ($Script:UX_STAGE -eq 1) {
         $act = Invoke-InteractiveMenu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และ Login ให้ครบ 4 ตำแหน่ง (พร้อม $($Script:READY_COUNT)/4)" 0 @(
-            "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — ดึง Model จริงจาก CLI)",
-            "3|เข้าสู่ระบบ (Login) ค่ายที่ยังไม่ได้เชื่อมบัญชี (claude auth login / gemini / codex login)",
+            "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — Google AI Ultra + Codex)",
+            "3|เข้าสู่ระบบ (Login) ค่ายที่ยังไม่ได้เชื่อมบัญชี (agy auth login / claude auth login / codex login)",
             "q|ออกจากโปรแกรม (/quit)"
         )
         if ($act -eq "1") { Invoke-QuickPresetMenu }
