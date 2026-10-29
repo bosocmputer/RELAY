@@ -64,11 +64,9 @@ get_provider_version() {
 # แคชสถานะการ Login ของทุกค่ายต่อรอบการแสดงผล เพื่อความรวดเร็วสูงสุด
 CLI_AUTH_AGY=0
 CLI_AUTH_CLAUDE=0
-CLI_AUTH_GEMINI=0
 CLI_AUTH_CODEX=0
 CLI_AUTH_DETAIL_AGY="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_CLAUDE="ยังไม่ได้ Login"
-CLI_AUTH_DETAIL_GEMINI="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_CODEX="ยังไม่ได้ Login"
 
 refresh_cli_auth_cache() {
@@ -101,24 +99,7 @@ refresh_cli_auth_cache() {
     fi
   fi
 
-  # 3. ตรวจสถานะ Login ของ Google Gemini CLI (Legacy API Key)
-  CLI_AUTH_GEMINI=0
-  CLI_AUTH_DETAIL_GEMINI="ยังไม่ได้ตั้งค่า API Key (แนะนำให้ใช้ค่าย agy สำหรับ Google AI Ultra)"
-  if is_provider_installed "gemini"; then
-    if [ -n "${GEMINI_API_KEY:-}" ] || [ -n "${GOOGLE_GENAI_USE_VERTEXAI:-}" ] || [ -n "${GOOGLE_GENAI_USE_GCA:-}" ]; then
-      CLI_AUTH_GEMINI=1
-      CLI_AUTH_DETAIL_GEMINI="Login แล้ว (Environment API Key)"
-    elif [ -r "$HOME/.gemini/settings.json" ]; then
-      local g_type
-      g_type="$(grep -Eo '"selectedType"[[:space:]]*:[[:space:]]*"[^"]+"' "$HOME/.gemini/settings.json" 2>/dev/null | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
-      if [ -n "$g_type" ] && [ "$g_type" != "oauth-personal" ]; then
-        CLI_AUTH_GEMINI=1
-        CLI_AUTH_DETAIL_GEMINI="Login แล้ว (${g_type})"
-      fi
-    fi
-  fi
-
-  # 4. ตรวจสถานะ Login ของ OpenAI Codex CLI
+  # 3. ตรวจสถานะ Login ของ OpenAI Codex CLI
   CLI_AUTH_CODEX=0
   CLI_AUTH_DETAIL_CODEX="ยังไม่ได้ Login (รัน codex login)"
   if is_provider_installed "codex"; then
@@ -144,7 +125,6 @@ is_provider_logged_in() {
   case "$provider" in
     agy)    [ "$CLI_AUTH_AGY" -eq 1 ] ;;
     claude) [ "$CLI_AUTH_CLAUDE" -eq 1 ] ;;
-    gemini) [ "$CLI_AUTH_GEMINI" -eq 1 ] ;;
     codex)  [ "$CLI_AUTH_CODEX" -eq 1 ] ;;
     *) return 1 ;;
   esac
@@ -155,7 +135,6 @@ get_provider_auth_detail() {
   case "$provider" in
     agy)    echo "$CLI_AUTH_DETAIL_AGY" ;;
     claude) echo "$CLI_AUTH_DETAIL_CLAUDE" ;;
-    gemini) echo "$CLI_AUTH_DETAIL_GEMINI" ;;
     codex)  echo "$CLI_AUTH_DETAIL_CODEX" ;;
     *) echo "ไม่ทราบสถานะ" ;;
   esac
@@ -197,14 +176,6 @@ except Exception:
         [ -n "$first_codex" ] && { echo "$first_codex"; return; }
       fi
       echo "gpt-6.1-terra"
-      ;;
-    gemini)
-      if [ -r "$HOME/.gemini/settings.json" ]; then
-        local gm
-        gm="$(grep -Eo '"model"[[:space:]]*:[[:space:]]*"[^"]+"' "$HOME/.gemini/settings.json" 2>/dev/null | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
-        [ -n "$gm" ] && { echo "$gm"; return; }
-      fi
-      echo "gemini-2.5-pro"
       ;;
     *)
       echo "default"
@@ -276,19 +247,6 @@ if provider == "codex":
         add_item("gpt-6.1-terra", "GPT-6.1 Terra Codex Model")
         add_item("gpt-6.1-sol", "GPT-6.1 Sol Workhorse Model")
 
-elif provider == "gemini":
-    if cli_def and cli_def != "default":
-        add_item(cli_def, "ค่าเริ่มต้นปัจจุบันจาก Gemini CLI (ต้องใช้ Gemini API Key)")
-    preferred = [
-        ("gemini-2.5-pro", "โมเดลวิเคราะห์เชิงลึก (ต้องใช้ Gemini API Key)"),
-        ("gemini-2.5-flash", "โมเดลความเร็วสูง (ต้องใช้ Gemini API Key)"),
-        ("gemini-2.5-flash-lite", "โมเดลขนาดเบา (ต้องใช้ Gemini API Key)"),
-        ("gemini-3.1-pro", "Gemini 3.1 Pro (ต้องใช้ Gemini API Key)"),
-        ("gemini-3.5-flash", "Gemini 3.5 Flash (ต้องใช้ Gemini API Key)"),
-    ]
-    for m, d in preferred:
-        add_item(m, d)
-
 elif provider == "claude":
     if cli_def and cli_def != "default":
         add_item(cli_def, "ค่าเริ่มต้นปัจจุบันจาก Claude Code CLI")
@@ -313,9 +271,6 @@ PYEOF
     case "$provider" in
       claude)
         printf "sonnet|Claude Sonnet (Alias มาตรฐานจาก CLI)\nopus|Claude Opus (Alias มาตรฐานจาก CLI)\nhaiku|Claude Haiku (Alias มาตรฐานจาก CLI)\n"
-        ;;
-      gemini)
-        printf "gemini-2.5-pro|Gemini 2.5 Pro (ต้องใช้ Gemini API Key)\ngemini-2.5-flash|Gemini 2.5 Flash\n"
         ;;
       codex)
         printf "%s|ค่าเริ่มต้นจาก ~/.codex/config.toml\n" "$cli_def"
@@ -367,6 +322,12 @@ load_role_config() {
     CONFIG_SOURCE="Project (.relay/roles.conf)"
   fi
 
+  # หากไฟล์ตั้งค่าเดิมเคยมีค่าย gemini ที่ยกเลิกการรองรับแล้ว ให้เปลี่ยนเป็น agy (Google AI Ultra) อัตโนมัติ
+  [ "$ROLE_PO" = "gemini" ]   && { ROLE_PO="agy";   MODEL_PO="gemini-4-argon-high"; }
+  [ "$ROLE_ARCH" = "gemini" ] && { ROLE_ARCH="agy"; MODEL_ARCH="claude-opus-5-5-high"; }
+  [ "$ROLE_DEV" = "gemini" ]  && { ROLE_DEV="agy";  MODEL_DEV="claude-sonnet-5-5-high"; }
+  [ "$ROLE_QA" = "gemini" ]   && { ROLE_QA="agy";   MODEL_QA="gemini-3.8-flash-high"; }
+
   # หากค่าเดิมของ Codex เคยถูกตั้งเป็น o3 แต่ในเครื่องมีโมเดลจริงใน config.toml ให้สลับมาใช้โมเดลจริงทันที
   if [ "$ROLE_QA" = "codex" ] && [ "$MODEL_QA" = "o3" ] && [ -r "$HOME/.codex/config.toml" ]; then
     local real_codex_def
@@ -405,14 +366,6 @@ set_cli_default_model() {
         sed -i.bak -E "s/\"model\"[[:space:]]*:[[:space:]]*\"[^\"]+\"/\"model\": \"$new_model\"/" "$HOME/.claude/settings.json" && rm -f "$HOME/.claude/settings.json.bak"
       elif [ ! -f "$HOME/.claude/settings.json" ]; then
         printf '{\n  "model": "%s"\n}\n' "$new_model" > "$HOME/.claude/settings.json"
-      fi
-      ;;
-    gemini)
-      mkdir -p "$HOME/.gemini"
-      if [ -f "$HOME/.gemini/settings.json" ] && grep -q '"model"' "$HOME/.gemini/settings.json" 2>/dev/null; then
-        sed -i.bak -E "s/\"model\"[[:space:]]*:[[:space:]]*\"[^\"]+\"/\"model\": \"$new_model\"/" "$HOME/.gemini/settings.json" && rm -f "$HOME/.gemini/settings.json.bak"
-      elif [ ! -f "$HOME/.gemini/settings.json" ]; then
-        printf '{\n  "model": "%s"\n}\n' "$new_model" > "$HOME/.gemini/settings.json"
       fi
       ;;
     codex)
@@ -1451,7 +1404,7 @@ select_or_create_project_dir() {
         [[ "$dname" == .* ]] && continue
         local r_stat="ยังไม่มี .relay/"
         [ -f "$d/.relay/PROJECT_STATE.md" ] && r_stat="● มี .relay/ พร้อมทำงาน"
-        folder_items+=("${idx}|เปิดโปรเจกต์: ${d/#$HOME/\~} (${r_stat})")
+        folder_items+=("${idx}|เปิดโปรเจกต์: ~${d#$HOME} (${r_stat})")
         folder_paths[$idx]="$d"
         idx=$((idx + 1))
         [ "$idx" -gt 7 ] && break 2
@@ -1513,17 +1466,15 @@ choose_provider_interactive() {
   local current_p="$2"
   refresh_cli_auth_cache
 
-  local a_stat x_stat c_stat g_stat
+  local a_stat x_stat c_stat
   a_stat="$(get_provider_auth_detail agy)"
   x_stat="$(get_provider_auth_detail codex)"
   c_stat="$(get_provider_auth_detail claude)"
-  g_stat="$(get_provider_auth_detail gemini)"
 
   interactive_menu "เลือกค่าย AI สำหรับ ${role_label} (ปัจจุบัน: ${current_p})" 0 \
     "1|agy    — Google AI Ultra / Antigravity CLI [${a_stat}]" \
     "2|codex  — OpenAI Codex CLI                  [${x_stat}]" \
     "3|claude — Anthropic Claude Code CLI         [${c_stat}]" \
-    "4|gemini — Google Gemini CLI (API Key)       [${g_stat}]" \
     "b|คงค่าเดิม (${current_p})"
 
   local chosen_p="$current_p"
@@ -1531,14 +1482,12 @@ choose_provider_interactive() {
     1) chosen_p="agy" ;;
     2) chosen_p="codex" ;;
     3) chosen_p="claude" ;;
-    4) chosen_p="gemini" ;;
     *) chosen_p="$current_p" ;;
   esac
 
   if ! is_provider_installed "$chosen_p"; then
-    local pkg="@google/gemini-cli"
+    local pkg="@openai/codex"
     [ "$chosen_p" = "claude" ] && pkg="@anthropic-ai/claude-code"
-    [ "$chosen_p" = "codex" ]  && pkg="@openai/codex"
 
     interactive_menu "ค่าย '${chosen_p}' ยังไม่ได้ติดตั้งในเครื่อง ต้องการติดตั้งเลยหรือไม่?" 0 \
       "1|ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ (npm install -g ${pkg}) และเปิดหน้า Login" \
@@ -1608,14 +1557,6 @@ login_single_provider() {
         claude auth login || claude || true
       else
         printf "%s✖ ยังไม่ได้ติดตั้ง claude%s\n" "$C_ERR" "$C_RESET"
-      fi
-      ;;
-    gemini)
-      if is_provider_installed gemini; then
-        printf "\n%sกำลังเปิด Gemini CLI (เลือกข้อ 2. Use Gemini API Key แล้วพิมพ์ /quit เมื่อเสร็จ)...%s\n" "$C_ACCENT" "$C_RESET"
-        gemini || true
-      else
-        printf "%s✖ ยังไม่ได้ติดตั้ง gemini%s\n" "$C_ERR" "$C_RESET"
       fi
       ;;
     codex)
@@ -1720,18 +1661,16 @@ configure_roles_menu() {
   done
 }
 
-# ─── 10. ตั้งค่า Default Model ของแต่ละค่ายโดยตรง (Claude / Gemini / Codex) ────
+# ─── 10. ตั้งค่า Default Model ของแต่ละค่ายโดยตรง (Claude / Codex) ────────────
 configure_provider_defaults_menu() {
   while true; do
-    local cm gm xm
+    local cm xm
     cm="$(get_cli_default_model claude)"
-    gm="$(get_cli_default_model gemini)"
     xm="$(get_cli_default_model codex)"
 
     interactive_menu "ตั้งค่า Default Model เริ่มต้นในไฟล์ระบบของแต่ละค่าย" 0 \
       "1|Claude Code CLI (~/.claude/settings.json) — ค่าเริ่มต้นปัจจุบัน: ${cm}" \
-      "2|Google Gemini CLI (~/.gemini/settings.json) — ค่าเริ่มต้นปัจจุบัน: ${gm}" \
-      "3|OpenAI Codex CLI (~/.codex/config.toml)   — ค่าเริ่มต้นปัจจุบัน: ${xm}" \
+      "2|OpenAI Codex CLI (~/.codex/config.toml)   — ค่าเริ่มต้นปัจจุบัน: ${xm}" \
       "b|ย้อนกลับ"
 
     case "$MENU_RESULT" in
@@ -1740,10 +1679,6 @@ configure_provider_defaults_menu() {
         set_cli_default_model "claude" "$SELECTED_MODEL"
         ;;
       2)
-        choose_model_interactive "gemini" "ค่าเริ่มต้นของ Gemini CLI"
-        set_cli_default_model "gemini" "$SELECTED_MODEL"
-        ;;
-      3)
         choose_model_interactive "codex" "ค่าเริ่มต้นของ OpenAI Codex CLI"
         set_cli_default_model "codex" "$SELECTED_MODEL"
         ;;
@@ -1759,11 +1694,10 @@ run_doctor_menu() {
     echo ""
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
     printf "%s│%s %sสถานะการติดตั้ง CLI, การ Login บัญชี และโมเดลเริ่มต้นของแต่ละค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-    for p in agy codex claude gemini; do
+    for p in agy codex claude; do
       local pkg="Antigravity App (~/.gemini/bin/agy)"
       [ "$p" = "claude" ] && pkg="@anthropic-ai/claude-code"
       [ "$p" = "codex" ]  && pkg="@openai/codex"
-      [ "$p" = "gemini" ] && pkg="@google/gemini-cli"
       local def_m auth_d
       def_m="$(get_cli_default_model "$p")"
       auth_d="$(get_provider_auth_detail "$p")"
@@ -1786,8 +1720,7 @@ run_doctor_menu() {
       "1|อัปเดตรายชื่อโมเดล Google AI Ultra ล่าสุดจาก 'agy models'" \
       "2|เข้าสู่ระบบ OpenAI Codex (รัน codex login)" \
       "3|เข้าสู่ระบบ Claude Code แยกต่างหาก (รัน claude auth login)" \
-      "4|เปิด Gemini CLI เพื่อใส่ Gemini API Key (ข้อ 2. Use Gemini API Key)" \
-      "5|ติดตั้ง / อัปเดต CLI (codex + claude + gemini)" \
+      "4|ติดตั้ง / อัปเดต CLI (codex + claude)" \
       "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่ายในไฟล์ระบบ CLI" \
       "b|กลับสู่หน้าจอหลัก"
 
@@ -1795,8 +1728,7 @@ run_doctor_menu() {
       1) refresh_agy_models_live ;;
       2) login_single_provider "codex" ;;
       3) login_single_provider "claude" ;;
-      4) login_single_provider "gemini" ;;
-      5) npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex ;;
+      4) npm install -g @anthropic-ai/claude-code @openai/codex ;;
       m|M) configure_provider_defaults_menu ;;
       *) break ;;
     esac
@@ -1823,7 +1755,6 @@ get_provider_rules_status() {
     agy)    [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s● เชื่อม ~/.gemini/GEMINI.md (Google AI Ultra) แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_ERR" "$C_RESET" ;;
     claude) [ -e "$HOME/.claude/CLAUDE.md" ] && printf "%s● เชื่อม ~/.claude/CLAUDE.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.claude/CLAUDE.md%s" "$C_ERR" "$C_RESET" ;;
     codex)  [ -e "$HOME/.codex/AGENTS.md" ]  && printf "%s● เชื่อม ~/.codex/AGENTS.md แล้ว%s" "$C_OK" "$C_RESET"  || printf "%s○ ไม่พบ ~/.codex/AGENTS.md%s" "$C_ERR" "$C_RESET" ;;
-    gemini) [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s● เชื่อม ~/.gemini/GEMINI.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_ERR" "$C_RESET" ;;
     *) printf "ไม่ทราบค่าย" ;;
   esac
 }
@@ -1872,9 +1803,6 @@ ping_single_role_agent() {
       ;;
     claude)
       claude --model "$configured_model" -p "$self_check_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || exit_code=$?
-      ;;
-    gemini)
-      gemini -m "$configured_model" -p "$self_check_prompt" || exit_code=$?
       ;;
     codex)
       codex exec --skip-git-repo-check -m "$configured_model" "$self_check_prompt" || exit_code=$?
@@ -1987,10 +1915,19 @@ launch_provider_cli() {
       agy)    agy --model "$configured_model" -i "$initial_prompt" || agy --model "$configured_model" || true ;;
       claude) claude --model "$configured_model" "$initial_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || true ;;
       codex)  codex -m "$configured_model" "$initial_prompt" || true ;;
-      gemini) gemini -m "$configured_model" -i "$initial_prompt" 2>/dev/null || gemini -m "$configured_model" || true ;;
     esac
   )
   refresh_quota_cache --quiet
+}
+
+ensure_git_repo_ready_for_worktree() {
+  if [ ! -d "$PROJECT_DIR/.git" ]; then
+    printf "%sกำลังเตรียม Git Repository (git init -b main) สำหรับโครงการ %s...%s\n" "$C_ACCENT" "$PROJECT_NAME" "$C_RESET"
+    git -C "$PROJECT_DIR" init -b main >/dev/null 2>&1 || git -C "$PROJECT_DIR" init >/dev/null 2>&1 || true
+  fi
+  if [ -d "$PROJECT_DIR/.git" ] && ! git -C "$PROJECT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+    git -C "$PROJECT_DIR" commit --allow-empty -m "chore: initial commit for RELAY" >/dev/null 2>&1 || true
+  fi
 }
 
 ensure_or_create_task() {
@@ -2005,9 +1942,14 @@ ensure_or_create_task() {
 create_new_task() {
   refresh_project_paths
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
-  echo ""
-  read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ payment-api): " slug
-  slug="$(echo "${slug:-feature}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g')"
+  local raw_input="${1:-}"
+  if [ -z "$raw_input" ]; then
+    echo ""
+    read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ pos-cafe): " raw_input
+  fi
+  local slug
+  slug="$(printf "%s" "${raw_input:-feature}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed -E 's/^-+|-+$//g' | cut -c1-24 | sed -E 's/-+$//')"
+  [ -z "$slug" ] && slug="task-$( ($(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | wc -l) + 1) )"
   local today
   today="$(date +%Y%m%d)"
   CURRENT_TASK="${today}-${slug}"
@@ -2019,9 +1961,14 @@ create_new_task() {
 
 run_phase_1_po() {
   require_all_roles_ready || return 0
-  ensure_or_create_task
+  refresh_project_paths
+  mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
+  get_active_task
   echo ""
   read -r -p "อธิบายฟีเจอร์หรือความต้องการคร่าวๆ ที่ต้องการให้ @po วิเคราะห์: " user_goal
+  if [ -z "$ACTIVE_TASK" ]; then
+    create_new_task "${user_goal:-feature}"
+  fi
   local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po (Product Owner)" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=1
@@ -2040,6 +1987,7 @@ run_phase_2_arch() {
 run_phase_3_dev() {
   require_all_roles_ready || return 0
   ensure_or_create_task
+  ensure_git_repo_ready_for_worktree
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
   local branch_name="feat/$ACTIVE_TASK"
   local target_work_dir="$PROJECT_DIR"
@@ -2306,9 +2254,6 @@ exec_provider_autonomous() {
       codex)
         codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt" || exit_code=$?
         ;;
-      gemini)
-        gemini -m "$configured_model" -p "$prompt" || exit_code=$?
-        ;;
     esac
     exit "$exit_code"
   ) || exit_code=$?
@@ -2390,6 +2335,7 @@ run_auto_relay_loop() {
   fi
 
   # เตรียม Git Worktree สำหรับ @dev และ @qa
+  ensure_git_repo_ready_for_worktree
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
   local branch_name="feat/$ACTIVE_TASK"
   local target_work_dir="$PROJECT_DIR"

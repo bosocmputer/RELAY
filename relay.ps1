@@ -129,15 +129,6 @@ function Test-ProviderLoggedIn([string]$Provider) {
             $out = (& claude auth status 2>$null) -join " "
             return ($out -match '"loggedIn"\s*:\s*true')
         }
-        "gemini" {
-            if ($env:GEMINI_API_KEY -or $env:GOOGLE_GENAI_USE_VERTEXAI) { return $true }
-            $settingsFile = Join-Path $HOME ".gemini\settings.json"
-            if (Test-Path $settingsFile) {
-                $raw = Get-Content $settingsFile -Raw -ErrorAction SilentlyContinue
-                return ($raw -match '"selectedType"\s*:\s*"(gemini-api-key|vertex-ai)"')
-            }
-            return $false
-        }
         "codex" {
             if ($env:OPENAI_API_KEY) { return $true }
             $out = (& codex login status 2>&1) -join " "
@@ -180,29 +171,15 @@ function Get-CliDefaultModel([string]$Provider) {
             }
             return "o3"
         }
-        "gemini" {
-            $gf = Join-Path $HOME ".gemini\settings.json"
-            if (Test-Path $gf) {
-                $raw = Get-Content $gf -Raw -ErrorAction SilentlyContinue
-                if ($raw -match '"model"\s*:\s*"([^"]+)"') { return $Matches[1] }
-            }
-            return "gemini-2.5-pro"
-        }
     }
     return "default"
 }
 
 function Load-RoleConfig {
-    if (Test-ProviderInstalled "agy") {
-        $Script:ROLE_PO = "agy";   $Script:MODEL_PO = "default"
-        $Script:ROLE_ARCH = "agy"; $Script:MODEL_ARCH = "default"
-        $Script:ROLE_DEV = "agy";  $Script:MODEL_DEV = "default"
-    } else {
-        $Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
-        $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
-        $Script:ROLE_DEV = "claude";  $Script:MODEL_DEV = "default"
-    }
-    $Script:ROLE_QA = "codex";    $Script:MODEL_QA = "default"
+    $Script:ROLE_PO = "agy";   $Script:MODEL_PO = "gemini-4-argon-high"
+    $Script:ROLE_ARCH = "agy"; $Script:MODEL_ARCH = "claude-opus-5-5-high"
+    $Script:ROLE_DEV = "agy";  $Script:MODEL_DEV = "claude-sonnet-5-5-high"
+    $Script:ROLE_QA = "codex"; $Script:MODEL_QA = "default"
     $Script:CONFIG_SOURCE = "Global (~/.agents/relay-roles.conf)"
 
     foreach ($confFile in @($GlobalRolesConf, $ProjectRolesConf)) {
@@ -278,7 +255,6 @@ function Update-ReadinessState {
 function Get-RoleStatusText([string]$Provider, [string]$Model) {
     if (-not (Test-ProviderInstalled $Provider)) { return "✖ ยังไม่ติดตั้ง CLI (กด [3])" }
     if (-not (Test-ProviderLoggedIn $Provider)) {
-        if ($Provider -eq "gemini") { return "▲ ต้องใช้ API Key หรือเปลี่ยนเป็น agy (Ultra)" }
         return "▲ ยังไม่ Login บัญชี (กด [3])"
     }
     if (-not (Test-ModelExplicitlySet $Model))    { return "▲ รอเลือกโมเดล (กด [1]/[2])" }
@@ -288,7 +264,6 @@ function Get-RoleStatusText([string]$Provider, [string]$Model) {
 
 function Invoke-QuickPresetMenu {
     $codexDef = Get-CliDefaultModel "codex"
-    $geminiDef = Get-CliDefaultModel "gemini"
     $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก Google AI Ultra / CLI ในเครื่องโดยตรง)" 0 @(
         "1|★ ชุดแนะนำ Google AI Ultra + Codex — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex($codexDef)",
         "2|All-Google AI Ultra (100% agy) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gpt-oss-120b-medium",

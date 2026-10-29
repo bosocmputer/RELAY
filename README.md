@@ -1,6 +1,6 @@
 # RELAY (`.relay/`): มาตรฐานสถาปัตยกรรมการทำงานร่วมกับตัวแทน AI หลายค่ายผ่านหน้าจอควบคุมกลางและเอกสารกำหนดข้อตกลง (v1.0 Official Edition)
 
-**ระบบจัดการกระบวนการพัฒนาซอฟต์แวร์ร่วมกับตัวแทน AI (`Google AI Ultra (agy)`, `Claude`, `Codex`, `Gemini`) ผ่านหน้าจอควบคุม Terminal กลาง (`relay`) แบบนำทาง 3 ขั้นตอนอัตโนมัติ (Guided 3-Stage Progressive UX) และเอกสารส่งมอบงานในโฟลเดอร์ `.relay/`**  
+**ระบบจัดการกระบวนการพัฒนาซอฟต์แวร์ร่วมกับตัวแทน AI (`Google AI Ultra (agy)`, `Claude`, `Codex`) ผ่านหน้าจอควบคุม Terminal กลาง (`relay`) แบบนำทาง 3 ขั้นตอนอัตโนมัติ (Guided 3-Stage Progressive UX) และเอกสารส่งมอบงานในโฟลเดอร์ `.relay/`**  
 *รองรับทั้งระบบปฏิบัติการ **Windows** และ **macOS** • ควบคุมทุกขั้นตอนในหน้าต่าง Terminal เดียว • รองรับโควต้า **Google AI Ultra (`agy`)** ทั้งโมเดล Gemini 4 Argon และ Claude 5.5 • ตรวจสอบการ Login และดึงรายชื่อโมเดลสดจาก CLI จริง • ลดการใช้ Token 85–90% • ปลอดภัยตามเงื่อนไขการใช้งานแพ็กเกจรายเดือน (Subscription) 100%*
 
 ---
@@ -17,9 +17,9 @@
    - **ขั้นที่ 1 (`ตั้งค่า & Login AI ให้ครบ 4 ตำแหน่ง`):** ตรวจเช็ก 3 ชั้นจริง (ติดตั้ง CLI แล้ว + Login บัญชีแล้ว + เลือก Model แล้ว) หากยังไม่ครบจะแสดงเฉพาะเมนูตั้งค่าด่วนและเมนู Login
    - **ขั้นที่ 2 (`เตรียมโฟลเดอร์โปรเจกต์`):** แจ้งเตือนทันทีหากเผลอรันในโฟลเดอร์ Home (`~`) พร้อมตัวช่วยสร้าง/เลือกโฟลเดอร์โปรเจกต์และสร้างโครงสร้าง `.relay/`
    - **ขั้นที่ 3 (`เริ่มสั่งงานตามใบงาน 1–5`):** เลื่อนตัวชี้ `❯` และป้าย `★ [ขั้นตอนถัดไป]` ไปยังขั้นตอนที่ต้องทำต่อให้อัตโนมัติตามไฟล์เอกสารที่มีในใบงาน
-2. **รองรับโควต้า Google AI Ultra (`agy`) เต็มรูปแบบควบคู่กับ `claude`, `codex`, และ `gemini`:**
+2. **รองรับโควต้า Google AI Ultra (`agy`) เต็มรูปแบบควบคู่กับ `claude` และ `codex`:**
    - เชื่อมต่อกับ **Antigravity CLI (`~/.gemini/bin/agy`)** เพื่อใช้โควต้าแพ็กเกจ **Google AI Ultra** ได้โดยตรงทั้งก้อน **Gemini Models** (`gemini-4-argon-high`, `gemini-3.8-flash-high`) และก้อน **Claude & GPT Models** (`claude-opus-5-5-high`, `claude-sonnet-5-5-high`, `gpt-oss-120b-medium`)
-   - ดึงรายชื่อโมเดลสดจาก CLI ที่ติดตั้งในเครื่องโดยตรง (`agy models`, `~/.codex/models_cache.json`, `claude`, `gemini`)
+   - ดึงรายชื่อโมเดลสดจาก CLI ที่ติดตั้งในเครื่องโดยตรง (`agy models`, `~/.codex/models_cache.json`, `claude`)
 
 ---
 
@@ -29,7 +29,7 @@
 | :--- | :--- | :--- |
 | **1. หน้าจอควบคุมกลางแบบนำทาง 3 ขั้นตอน** | คำสั่ง **`relay`** (`relay.sh` / `relay.ps1`) + ไฟล์ **`relay-roles.conf`** | ศูนย์กลางการสั่งงานในหน้าต่าง Terminal เดียว ตรวจสอบสถานะการ Login จริง ดึงรายชื่อโมเดลสดจาก CLI และนำทางผู้ใช้ตั้งแต่ตั้งค่า AI ➔ เตรียมโปรเจกต์ ➔ สั่งงาน 4 ขั้นตอน |
 | **2. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | **Obsidian** + โฟลเดอร์ **`.relay/`** | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`) และรายงานผลการตรวจสอบ (`QA_REPORT.md`) |
-| **3. บทบาทตัวแทน AI และสภาพแวดล้อมแยกอิสระ** | Official CLI (`agy`, `claude`, `codex`, `gemini`) + **`Git Worktree`** + ชุดทักษะ **`Skills`** | ดำเนินงานตามบทบาททั้ง 4 ขั้นตอน และแยกกิ่งการพัฒนา (`.relay/worktrees/<task-id>`) ออกจากกิ่งหลัก (`main`) อัตโนมัติในขั้นตอนที่ 3 |
+| **3. บทบาทตัวแทน AI และสภาพแวดล้อมแยกอิสระ** | Official CLI (`agy`, `claude`, `codex`) + **`Git Worktree`** + ชุดทักษะ **`Skills`** | ดำเนินงานตามบทบาททั้ง 4 ขั้นตอน และแยกกิ่งการพัฒนา (`.relay/worktrees/<task-id>`) ออกจากกิ่งหลัก (`main`) อัตโนมัติในขั้นตอนที่ 3 |
 | **4. ระบบตรวจสอบความปลอดภัยและการทดสอบส่วนติดต่อผู้ใช้** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ป้องกันการบันทึกไฟล์ความลับ (`.env`) ด้วย `pre-commit hook`, รันชุดทดสอบระบบด้วยสคริปต์ (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** ทดสอบส่วนติดต่อผู้ใช้บนเบราว์เซอร์จริงโดยไม่เสียค่าใช้จ่าย API เพิ่มเติม |
 
 ```mermaid
@@ -127,7 +127,6 @@ cd RELAY
   - โควต้า Claude & GPT: `claude-opus-5-5-high`, `claude-opus-5-5-medium`, `claude-opus-5-5-low`, `claude-sonnet-5-5-high`, `claude-sonnet-5-5-medium`, `claude-sonnet-5-5-low`, `gpt-oss-120b-medium`
 - **`codex` (OpenAI Codex CLI):** ดึงรายชื่อโมเดลสดจาก `~/.codex/models_cache.json` เช่น `gpt-6.1-terra`, `gpt-6.1-terra-mini`
 - **`claude` (Anthropic Claude Code CLI):** รองรับ `opus`, `sonnet`, `haiku`
-- **`gemini` (Google Gemini CLI ผ่าน API Key):** รองรับการใช้งานผ่าน `GEMINI_API_KEY` (`gemini-2.5-pro`, `gemini-2.5-flash`)
 
 ### 4.2 การเปิดหน้าจอควบคุมกลาง (`relay`)
 เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางแบบ **Guided 3-Stage Progressive UX** จะแสดงผลดังนี้:

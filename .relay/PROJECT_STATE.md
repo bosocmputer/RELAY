@@ -26,8 +26,8 @@
     - สกัดกฎสถาปัตยกรรมและการป้องกันบั๊กซ้ำจาก `SPEC.md`, `ARCH.md`, และ `QA_REPORT.md` ลงใน `.relay/skills/project-learned/SKILL.md` (ควบรวมไม่ให้ซ้ำและจำกัดไม่เกิน 25 ข้อ) พร้อมสมุดบัญชีประวัติแบบ Append-Only ที่ `.relay/skills/project-learned/LEDGER.md`
     - ทำงานอัตโนมัติเมื่อกด `[5] Merge & Archive` และแนบเข้าสู่ Prompt ของ `@arch`, `@dev`, `@qa` ในใบงานถัดไปโดยไม่แตะต้องไฟล์กฎส่วนกลาง `~/.agents/GLOBAL_AGENTS.md`
   - **ตรวจสอบความพร้อมจริง 3 ชั้น (3-Layer CLI Readiness Verification):**
-    1. ตรวจการติดตั้ง CLI (`agy`, `claude`, `codex`, `gemini`)
-    2. ตรวจสถานะการเข้าสู่ระบบจริง (`~/.gemini/jetski-standalone-oauth-token` สำหรับ `agy`, `claude auth status`, `codex login status`, และ `GEMINI_API_KEY` สำหรับ `gemini`)
+    1. ตรวจการติดตั้ง CLI (`agy`, `claude`, `codex`)
+    2. ตรวจสถานะการเข้าสู่ระบบจริง (`~/.gemini/jetski-standalone-oauth-token` สำหรับ `agy`, `claude auth status`, และ `codex login status`)
     3. ดึงรายชื่อ Model จาก CLI ในเครื่องโดยตรง
   - **ระบบนำทางทีละขั้น (Guided 3-Stage Progressive Disclosure UX):**
     1. **ขั้นที่ 1 (`ตั้งค่า & Login AI ให้ครบ 4 ตำแหน่ง`)**
