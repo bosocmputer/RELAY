@@ -16,15 +16,22 @@
       2. **`agy` (Claude & GPT Models):** ดึงผ่าน `agy -p "/usage"`
       3. **`codex` (OpenAI Codex CLI):** อ่านสดจาก `rate_limits` ใน `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
       4. **`claude` (Anthropic Claude Code CLI):** ดึงผ่าน Control Protocol `get_usage` ของ `claude -p --input-format stream-json`
-    - แสดงผลโควต้าคงเหลือทั้งในคอลัมน์สถานะของแต่ละตำแหน่ง (`@po`, `@arch`, `@dev`, `@qa`), ในส่วนสรุปบนหน้าแดชบอร์ดหลัก (`relay status`), และในหน้าจอหลอดโควต้าละเอียด (`relay quota` หรือกด `[u]` / `/quota`) พร้อมแจ้งเตือนอัตโนมัติหากค่ายใดเหลือโควต้าต่ำกว่า `20%`
-  - **ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย 3 ชั้น (`Bounded Auto-Relay Loop` — `[a]` / `/loop` / `relay loop`):**
-    - ให้มนุษย์ควบคุมขั้นตอนที่ 1 (`@po` สร้าง `SPEC.md`) และขั้นตอนที่ 5 (`Merge & Archive`) ขณะที่ขั้นตอน `2 (@arch) ➔ 3 (@dev ใน Worktree) ⇄ 4 (@qa ต่างค่าย)` สามารถรันอัตโนมัติภายใต้เบรกนิรภัย 3 ชั้น:
-      1. **Quota Circuit Breaker (`check_role_quota_safe`):** หยุดลูปทันทีหากโควต้า `5h` หรือ `7d` ของตำแหน่งถัดไปต่ำกว่า `20%`
-      2. **Max Remediation Cap (`3 รอบ`):** จำกัดการวนแก้บั๊ก `@dev ⇄ @qa` สูงสุดไม่เกิน 3 รอบ พร้อมบันทึก `.relay/tasks/<task-id>/LOOP_LOG.md`
-      3. **Cross-Provider QA Verifier:** ตัดสินผลผ่าน `VERDICT: PASS` หรือ `VERDICT: FAIL` ใน `QA_REPORT.md`
+    - แสดงผลในตารางโควต้าบนแดชบอร์ดหลัก (`relay status`) และหน้าหลอดโควต้าละเอียด (`relay quota` หรือกด `[u]` / `/quota`) พร้อมแจ้งเตือนเมื่อค่ายใดเหลือโควต้าต่ำกว่า `20%`
+    - แสดงผลเป็นตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์) พร้อม **นับถอยหลังเวลารีเซ็ต** (แคชเก็บ `*_RESET_EPOCH` และคำนวณตอนวาดหน้าจอ), แสดง `↻ รีเซ็ตแล้ว` และนับเป็น 100% เมื่อเลยเวลารีเซ็ต, บอกอายุข้อมูลและเตือนเมื่อเก่ากว่า 15 นาที; คอลัมน์สถานะตำแหน่งแสดงแค่ `● พร้อมใช้` / `▲ โควต้าต่ำ X%`
+  - **ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย (`Bounded Auto-Relay Loop` — `[a]` / `/loop` / `relay loop`):**
+    - ให้มนุษย์ควบคุมขั้นตอนที่ 1 (`@po` สร้าง `SPEC.md`) และขั้นตอนที่ 5 (`Merge & Archive`) ขณะที่ขั้นตอน `2 (@arch) ➔ 3 (@dev ใน Worktree) ⇄ 4 (@qa ต่างค่าย)` รันอัตโนมัติภายใต้เบรก 4 ชั้น:
+      1. **Quota Circuit Breaker (`check_role_quota_safe`):** หยุดหากโควต้า `5h` หรือ `7d` ของตำแหน่งถัดไปต่ำกว่า `20%`
+      2. **Max Remediation Cap (`3 รอบ`):** บันทึก `LOOP_LOG.md` และเก็บรายงานเก่าเป็น `QA_REPORT.before-round-N.md`
+      3. **Cross-Provider QA Verifier:** ผ่านเฉพาะเมื่อ `QA_REPORT.md` มี `VERDICT: PASS` ชัดเจน (`qa_verdict`)
+      4. **Step Guard:** หยุดเมื่อ agent error / ไม่สร้างไฟล์ผลลัพธ์ / เกินเพดานเวลา (`run_with_timeout`, `RELAY_STEP_TIMEOUT` ค่าเริ่มต้น 1800 วินาที)
+    - โหมดสิทธิ์: `agy --mode auto`, `claude --permission-mode acceptEdits`, `codex exec --full-auto`
+  - **Git Worktree และขั้นตอนที่ 5 ที่ไม่ทำให้โค้ดหาย:**
+    - `prepare_task_worktree` ใช้ร่วมกันในขั้นตอนที่ 3 และ Auto-Loop: หยุดพร้อม error จริงถ้าสร้างไม่ได้, เพิ่ม `.relay/worktrees/` ใน `.gitignore`; Prompt ของ `@dev` สั่งให้ commit ในกิ่ง `feat/<task>`
+    - `run_phase_5_merge`: ตรวจ commit/ไฟล์ค้าง ➔ commit อัตโนมัติ (ไม่รวม `.relay/`) ➔ `merge --no-ff` ➔ `merge --abort` เมื่อล้มเหลว ➔ ลบ Worktree/กิ่งและ archive เฉพาะหลังสำเร็จ
+  - **Windows (`relay.ps1`):** แดชบอร์ด/ตั้งค่า/โควต้าใช้ได้ แต่ `[a]` และ `[l]` ยังเป็นโครงเท่านั้น (งานค้าง C5)
   - **ระบบสกัดบทเรียนและสร้างทักษะเฉพาะโปรเจกต์อัตโนมัติ (`Self-Learning Project Skills` — `[l]` / `/learn` / `relay learn`):**
-    - สกัดกฎสถาปัตยกรรมและการป้องกันบั๊กซ้ำจาก `SPEC.md`, `ARCH.md`, และ `QA_REPORT.md` ลงใน `.relay/skills/project-learned/SKILL.md` (ควบรวมไม่ให้ซ้ำและจำกัดไม่เกิน 25 ข้อ) พร้อมสมุดบัญชีประวัติแบบ Append-Only ที่ `.relay/skills/project-learned/LEDGER.md`
-    - ทำงานอัตโนมัติเมื่อกด `[5] Merge & Archive` และแนบเข้าสู่ Prompt ของ `@arch`, `@dev`, `@qa` ในใบงานถัดไปโดยไม่แตะต้องไฟล์กฎส่วนกลาง `~/.agents/GLOBAL_AGENTS.md`
+    - สกัดกฎจาก `SPEC.md`, `ARCH.md`, และ `QA_REPORT.md` แบบจับคำสำคัญ (ยังไม่ใช้ AI สรุป — งานค้าง M2) ลงใน `.relay/skills/project-learned/SKILL.md` (ไม่เกิน 25 ข้อ) พร้อม `LEDGER.md`
+    - ทำงานอัตโนมัติหลังผสานสำเร็จในขั้นตอนที่ 5 และแนบเข้าสู่ Prompt ของ `@arch`, `@dev`, `@qa` โดยไม่แตะต้อง `~/.agents/GLOBAL_AGENTS.md`
   - **ตรวจสอบความพร้อมจริง 3 ชั้น (3-Layer CLI Readiness Verification):**
     1. ตรวจการติดตั้ง CLI (`agy`, `claude`, `codex`)
     2. ตรวจสถานะการเข้าสู่ระบบจริง (`~/.gemini/jetski-standalone-oauth-token` สำหรับ `agy`, `claude auth status`, และ `codex login status`)

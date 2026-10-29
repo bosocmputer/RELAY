@@ -453,6 +453,14 @@ CLAUDE_5H_REM="-"
 CLAUDE_5H_RESET="-"
 CLAUDE_7D_REM="-"
 CLAUDE_7D_RESET="-"
+AGY_GEMINI_5H_RESET_EPOCH="-"
+AGY_GEMINI_7D_RESET_EPOCH="-"
+AGY_CLAUDE_5H_RESET_EPOCH="-"
+AGY_CLAUDE_7D_RESET_EPOCH="-"
+CODEX_5H_RESET_EPOCH="-"
+CODEX_7D_RESET_EPOCH="-"
+CLAUDE_5H_RESET_EPOCH="-"
+CLAUDE_7D_RESET_EPOCH="-"
 
 refresh_quota_cache() {
   local mode="${1:-auto}"
@@ -505,7 +513,21 @@ vals = {
     "CLAUDE_5H_RESET": "-",
     "CLAUDE_7D_REM": "-",
     "CLAUDE_7D_RESET": "-",
+    "AGY_GEMINI_5H_RESET_EPOCH": "-",
+    "AGY_GEMINI_7D_RESET_EPOCH": "-",
+    "AGY_CLAUDE_5H_RESET_EPOCH": "-",
+    "AGY_CLAUDE_7D_RESET_EPOCH": "-",
+    "CODEX_5H_RESET_EPOCH": "-",
+    "CODEX_7D_RESET_EPOCH": "-",
+    "CLAUDE_5H_RESET_EPOCH": "-",
+    "CLAUDE_7D_RESET_EPOCH": "-",
 }
+
+def to_epoch(dt):
+    try:
+        return str(int(dt.timestamp())) if dt else "-"
+    except Exception:
+        return "-"
 
 if os.path.exists(cache_file):
     try:
@@ -590,6 +612,7 @@ if raw_agy:
                 win_key = "7D" if is_wk else "5H"
                 vals[f"{prefix}_{win_key}_REM"] = pct
                 vals[f"{prefix}_{win_key}_RESET"] = fmt_dt_short(dt_obj, is_weekly=is_wk)
+                vals[f"{prefix}_{win_key}_RESET_EPOCH"] = to_epoch(dt_obj)
     except Exception:
         pass
 
@@ -609,11 +632,13 @@ try:
                     vals["CODEX_5H_REM"] = str(rem5)
                     if prim.get("resets_at"):
                         vals["CODEX_5H_RESET"] = fmt_dt_short(datetime.fromtimestamp(int(prim["resets_at"])), is_weekly=False)
+                        vals["CODEX_5H_RESET_EPOCH"] = str(int(prim["resets_at"]))
                 if sec.get("used_percent") is not None:
                     rem7 = max(0, min(100, int(round(100.0 - float(sec["used_percent"])))))
                     vals["CODEX_7D_REM"] = str(rem7)
                     if sec.get("resets_at"):
                         vals["CODEX_7D_RESET"] = fmt_dt_short(datetime.fromtimestamp(int(sec["resets_at"])), is_weekly=True)
+                        vals["CODEX_7D_RESET_EPOCH"] = str(int(sec["resets_at"]))
                 pt = rl.get("plan_type")
                 if pt:
                     vals["CODEX_PLAN"] = str(pt).capitalize()
@@ -644,14 +669,17 @@ if raw_claude:
                         if fh.get("resets_at"):
                             dt5 = datetime.fromisoformat(str(fh["resets_at"]).replace("Z", "+00:00")).astimezone()
                             vals["CLAUDE_5H_RESET"] = fmt_dt_short(dt5, is_weekly=False)
+                            vals["CLAUDE_5H_RESET_EPOCH"] = to_epoch(dt5)
                         else:
                             vals["CLAUDE_5H_RESET"] = "พร้อมใช้"
+                            vals["CLAUDE_5H_RESET_EPOCH"] = "-"
                     if sd.get("utilization") is not None:
                         rem7 = max(0, min(100, int(round(100.0 - float(sd["utilization"])))))
                         vals["CLAUDE_7D_REM"] = str(rem7)
                         if sd.get("resets_at"):
                             dt7 = datetime.fromisoformat(str(sd["resets_at"]).replace("Z", "+00:00")).astimezone()
                             vals["CLAUDE_7D_RESET"] = fmt_dt_short(dt7, is_weekly=True)
+                            vals["CLAUDE_7D_RESET_EPOCH"] = to_epoch(dt7)
                 break
     except Exception:
         pass
@@ -689,11 +717,13 @@ for cf in reversed(files[-5:]):
             dt7_o = datetime.fromtimestamp(int(s["resets_at"])) if s.get("resets_at") else None
             dt7 = f"{dt7_o.day:02d} {TH_MONTHS[dt7_o.month]} {dt7_o.strftime(\"%H:%M\")}" if dt7_o else "-"
             pt = str(rl.get("plan_type") or "plus").capitalize()
-            print(f"{pt}|{r5}|{dt5}|{r7}|{dt7}")
+            e5 = str(int(p["resets_at"])) if p.get("resets_at") else "-"
+            e7 = str(int(s["resets_at"])) if s.get("resets_at") else "-"
+            print(f"{pt}|{r5}|{dt5}|{r7}|{dt7}|{e5}|{e7}")
             raise SystemExit(0)
 ' 2>/dev/null || true)"
   if [ -n "$cx_out" ]; then
-    IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET <<<"$cx_out"
+    IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET CODEX_5H_RESET_EPOCH CODEX_7D_RESET_EPOCH <<<"$cx_out"
   fi
 }
 
@@ -751,6 +781,157 @@ format_quota_bar() {
   printf "%s[%s] %3d%%%s" "$col" "$bar" "$pct" "$C_RESET"
 }
 
+# ─── นับถอยหลังเวลารีเซ็ตโควต้า (คำนวณตอนวาดหน้าจอทุกครั้ง จึงเดินถูกเสมอแม้แคชจะเก่า) ───
+RENDER_NOW=""
+now_epoch() {
+  if [ -n "$RENDER_NOW" ]; then
+    echo "$RENDER_NOW"
+  else
+    date +%s
+  fi
+}
+
+format_countdown() {
+  local ep="$1"
+  [[ "$ep" =~ ^[0-9]+$ ]] || return 0
+  local diff=$(( ep - $(now_epoch) ))
+  if [ "$diff" -le 0 ]; then
+    printf "↻ รีเซ็ตแล้ว"
+    return 0
+  fi
+  local d=$(( diff / 86400 ))
+  local h=$(( (diff % 86400) / 3600 ))
+  local m=$(( (diff % 3600) / 60 ))
+  if [ "$d" -gt 0 ]; then
+    printf "อีก %dวัน %dชม." "$d" "$h"
+  elif [ "$h" -gt 0 ]; then
+    printf "อีก %dชม.%02dน." "$h" "$m"
+  else
+    [ "$m" -lt 1 ] && m=1
+    printf "อีก %dน." "$m"
+  fi
+}
+
+# เมื่อเลยเวลารีเซ็ตแล้ว โควต้ารอบนั้นกลับมาเต็ม 100% (ใช้ทั้งการแสดงผลและ Quota Circuit Breaker)
+effective_quota_pct() {
+  local pct="$1"
+  local ep="$2"
+  if [[ "$ep" =~ ^[0-9]+$ ]] && [ "$ep" -le "$(now_epoch)" ]; then
+    echo "100"
+  else
+    echo "$pct"
+  fi
+}
+
+format_reset_detail() {
+  local ep="$1"
+  local txt="$2"
+  local cd
+  cd="$(format_countdown "$ep")"
+  if [ -z "$cd" ]; then
+    case "$txt" in
+      ""|"-") printf "-" ;;
+      "พร้อมใช้") printf "ยังไม่เริ่มนับรอบ" ;;
+      *) printf "รีเซ็ต %s" "$txt" ;;
+    esac
+  elif [ "$cd" = "↻ รีเซ็ตแล้ว" ]; then
+    printf "↻ รีเซ็ตแล้ว — กด [u] เพื่อดึงค่าล่าสุด"
+  else
+    printf "รีเซ็ตใน%s • %s" "${cd#อีก}" "$txt"
+  fi
+}
+
+# ตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์) — ใช้ Python คำนวณความกว้างตัวอักษรไทย
+# (สระบน/ล่างและวรรณยุกต์ไม่กินพื้นที่) เพื่อให้คอลัมน์ตรงแนว
+render_quota_table() {
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$(now_epoch)" "${QUOTA_UPDATED_EPOCH:-0}" "${QUOTA_UPDATED_AT:--}" \
+    "$C_OK" "$C_WARN" "$C_ERR" "$C_MUTED" "$C_ACCENT" "$C_RESET" "$C_BOLD" \
+    "agy (Gemini)" "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET" "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET" \
+    "agy (Claude/GPT)" "$AGY_CLAUDE_5H_REM" "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET" "$AGY_CLAUDE_7D_REM" "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET" \
+    "codex (${CODEX_PLAN:-Plus})" "$CODEX_5H_REM" "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET" "$CODEX_7D_REM" "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET" \
+    "claude (${CLAUDE_PLAN:-Pro})" "$CLAUDE_5H_REM" "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET" "$CLAUDE_7D_REM" "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET" \
+    <<'PYEOF'
+import sys, unicodedata
+
+a = sys.argv[1:]
+now = int(a[0])
+upd, upd_at = a[1], a[2]
+OK, WARN, ERR, MUTED, ACC, RST, BOLD = a[3:10]
+rest = a[10:]
+rows = [rest[i:i + 7] for i in range(0, len(rest), 7)]
+
+def width(s):
+    n = 0
+    for c in s:
+        if unicodedata.combining(c) or unicodedata.category(c) in ("Mn", "Me", "Cf"):
+            continue
+        n += 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+    return n
+
+def pad(s, w):
+    return s + " " * max(0, w - width(s))
+
+def countdown(diff):
+    d, r = divmod(diff, 86400)
+    h, r = divmod(r, 3600)
+    m = r // 60
+    if d > 0:
+        return f"อีก {d}วัน {h}ชม."
+    if h > 0:
+        return f"อีก {h}ชม.{m:02d}น."
+    return f"อีก {max(1, m)}น."
+
+def cell(p, e, t):
+    has_ep = e.isdigit()
+    passed = has_ep and int(e) <= now
+    if passed:
+        pv = 100
+    elif p.isdigit():
+        pv = int(p)
+    else:
+        return MUTED + "—" + RST, "—"
+    col = OK if pv >= 50 else (WARN if pv >= 20 else ERR)
+    head = pad(("●" if pv >= 50 else "▲") + f" {pv}%", 6)
+    if passed:
+        tail = "↻ รีเซ็ตแล้ว"
+    elif has_ep:
+        tail = countdown(int(e) - now) + (f" ({t})" if t not in ("", "-") else "")
+    elif t == "พร้อมใช้":
+        tail = "ยังไม่เริ่มนับรอบ"
+    else:
+        tail = f"รีเซ็ต {t}" if t not in ("", "-") else ""
+    return col + head + RST + " " + MUTED + tail + RST, head + " " + tail
+
+# หัวกล่อง: อายุข้อมูล
+age = None
+if upd.isdigit() and int(upd) > 0:
+    age = max(0, now - int(upd))
+if age is None:
+    age_s = "ยังไม่มีข้อมูล"
+elif age < 60:
+    age_s = "เมื่อสักครู่"
+elif age < 3600:
+    age_s = f"{age // 60} นาทีที่แล้ว"
+elif age < 86400:
+    age_s = f"{age // 3600} ชม. ที่แล้ว"
+else:
+    age_s = f"{age // 86400} วันที่แล้ว"
+stale = age is None or age > 900
+note = (WARN + f"▲ อัปเดต {upd_at} ({age_s}) — ข้อมูลอาจไม่ตรง กด [u] ดึงข้อมูลสด" + RST) if stale \
+    else (MUTED + f"อัปเดต {upd_at} ({age_s}) • กด [u] ดึงข้อมูลสด" + RST)
+print(f"{ACC}│{RST} {BOLD}โควต้าคงเหลือ (Real-Time Quota){RST}  {note}")
+
+cells = [(r[0], cell(r[1], r[2], r[3]), cell(r[4], r[5], r[6])) for r in rows]
+h_name, h5, h7 = "ค่าย / กระเป๋า", "5 ชั่วโมง", "รายสัปดาห์"
+nw = max([width(h_name)] + [width(n) for n, _, _ in cells])
+w5 = max([width(h5)] + [width(c5[1]) for _, c5, _ in cells])
+print(f"{ACC}│{RST}  {MUTED}{pad(h_name, nw)}  {pad(h5, w5)}  {h7}{RST}")
+for name, c5, c7 in cells:
+    print(f"{ACC}│{RST}  {pad(name, nw)}  {c5[0]}{' ' * max(0, w5 - width(c5[1]))}  {c7[0]}")
+PYEOF
+}
+
 get_role_quota_pair() {
   local provider="$1"
   local model="$2"
@@ -758,20 +939,20 @@ get_role_quota_pair() {
   case "$provider" in
     agy)
       if [[ "$model" == claude-* ]] || [[ "$model" == gpt-* ]]; then
-        q5="$AGY_CLAUDE_5H_REM"
-        q7="$AGY_CLAUDE_7D_REM"
+        q5="$(effective_quota_pct "$AGY_CLAUDE_5H_REM" "$AGY_CLAUDE_5H_RESET_EPOCH")"
+        q7="$(effective_quota_pct "$AGY_CLAUDE_7D_REM" "$AGY_CLAUDE_7D_RESET_EPOCH")"
       else
-        q5="$AGY_GEMINI_5H_REM"
-        q7="$AGY_GEMINI_7D_REM"
+        q5="$(effective_quota_pct "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH")"
+        q7="$(effective_quota_pct "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH")"
       fi
       ;;
     codex)
-      q5="$CODEX_5H_REM"
-      q7="$CODEX_7D_REM"
+      q5="$(effective_quota_pct "$CODEX_5H_REM" "$CODEX_5H_RESET_EPOCH")"
+      q7="$(effective_quota_pct "$CODEX_7D_REM" "$CODEX_7D_RESET_EPOCH")"
       ;;
     claude)
-      q5="$CLAUDE_5H_REM"
-      q7="$CLAUDE_7D_REM"
+      q5="$(effective_quota_pct "$CLAUDE_5H_REM" "$CLAUDE_5H_RESET_EPOCH")"
+      q7="$(effective_quota_pct "$CLAUDE_7D_REM" "$CLAUDE_7D_RESET_EPOCH")"
       ;;
   esac
   printf "%s|%s" "$q5" "$q7"
@@ -800,9 +981,9 @@ format_role_status_cell() {
     local min_q="$q5"
     [ "$q7" -lt "$min_q" ] && min_q="$q7"
     if [ "$min_q" -lt 20 ]; then
-      printf "%s▲ พร้อมใช้ • เหลือ 5h:%s%% │ 7d:%s%% (โควต้าต่ำ)%s" "$C_WARN" "$q5" "$q7" "$C_RESET"
+      printf "%s▲ พร้อมใช้ • โควต้าต่ำ (เหลือ %s%%)%s" "$C_WARN" "$min_q" "$C_RESET"
     else
-      printf "%s● พร้อมใช้ (เหลือ 5h:%s%% • 7d:%s%%)%s" "$C_OK" "$q5" "$q7" "$C_RESET"
+      printf "%s● พร้อมใช้%s" "$C_OK" "$C_RESET"
     fi
   elif [ "$provider" = "agy" ]; then
     printf "%s● พร้อมใช้งาน (Google AI Ultra)%s" "$C_OK" "$C_RESET"
@@ -1074,6 +1255,7 @@ print_dashboard_header() {
   if [ -t 1 ] && [ "${SUBCOMMAND:-hub}" = "hub" ]; then
     printf "\033[H\033[2J"
   fi
+  RENDER_NOW="$(date +%s)"
 
   determine_ux_stage
 
@@ -1162,22 +1344,14 @@ print_dashboard_header() {
   printf "%s│%s %sสถานะ CLI:%s %b   %b   %b\n" \
     "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$agy_b" "$codex_b" "$claude_b"
 
-  # ─── แถบโควต้าคงเหลือแบบเรียลไทม์ของแต่ละค่าย (Real-Time Multi-Provider Quota) ───
+  # ─── ตารางโควต้าคงเหลือแบบเรียลไทม์ + นับถอยหลังเวลารีเซ็ต (Real-Time Multi-Provider Quota) ───
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %sโควต้าคงเหลือแต่ละค่าย (Real-Time Quota)%s  %s[อัปเดตล่าสุด %s • กด [u] หรือ /quota เพื่อดึงข้อมูลสด]%s\n" \
-    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
-  printf "%s│%s  • agy (Gemini Models)  ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
-    "$C_ACCENT" "$C_RESET" "$(format_quota_pct_color "$AGY_GEMINI_5H_REM")" "$C_MUTED" "$AGY_GEMINI_5H_RESET" "$C_RESET" \
-    "$(format_quota_pct_color "$AGY_GEMINI_7D_REM")" "$C_MUTED" "$AGY_GEMINI_7D_RESET" "$C_RESET"
-  printf "%s│%s  • agy (Claude & GPT)   ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
-    "$C_ACCENT" "$C_RESET" "$(format_quota_pct_color "$AGY_CLAUDE_5H_REM")" "$C_MUTED" "$AGY_CLAUDE_5H_RESET" "$C_RESET" \
-    "$(format_quota_pct_color "$AGY_CLAUDE_7D_REM")" "$C_MUTED" "$AGY_CLAUDE_7D_RESET" "$C_RESET"
-  printf "%s│%s  • codex (OpenAI %-4s)  ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
-    "$C_ACCENT" "$C_RESET" "$CODEX_PLAN" "$(format_quota_pct_color "$CODEX_5H_REM")" "$C_MUTED" "$CODEX_5H_RESET" "$C_RESET" \
-    "$(format_quota_pct_color "$CODEX_7D_REM")" "$C_MUTED" "$CODEX_7D_RESET" "$C_RESET"
-  printf "%s│%s  • claude (Claude %-3s)  ➔ 5 ชม.: %b %s(%s)%s    │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
-    "$C_ACCENT" "$C_RESET" "$CLAUDE_PLAN" "$(format_quota_pct_color "$CLAUDE_5H_REM")" "$C_MUTED" "$CLAUDE_5H_RESET" "$C_RESET" \
-    "$(format_quota_pct_color "$CLAUDE_7D_REM")" "$C_MUTED" "$CLAUDE_7D_RESET" "$C_RESET"
+  if ! render_quota_table 2>/dev/null; then
+    printf "%s│%s %sโควต้าคงเหลือ (Real-Time Quota)%s  %s[อัปเดต %s • กด [u]]%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
+    printf "%s│%s  agy (Gemini)     5ชม. %b %s%s%s │ สัปดาห์ %b %s%s%s\n" "$C_ACCENT" "$C_RESET" \
+      "$(format_quota_pct_color "$(effective_quota_pct "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH")")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET")" "$C_RESET" \
+      "$(format_quota_pct_color "$(effective_quota_pct "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH")")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET")" "$C_RESET"
+  fi
 
   # แสดงข้อมูลโฟลเดอร์โปรเจกต์เฉพาะเมื่อผ่านขั้นที่ 1 แล้ว
   if [ "$UX_STAGE" -ge 2 ]; then
@@ -1221,39 +1395,52 @@ print_dashboard_header() {
       "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$STAGE3_FOCUS_TEXT"
   fi
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  RENDER_NOW=""
 }
 
 # ─── 4.5 ศูนย์ตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ ([u] / /quota / relay quota) ─────
 print_quota_report_box() {
+  RENDER_NOW="$(date +%s)"
+  local g5 g7 a5 a7 x5 x7 c5 c7
+  g5="$(effective_quota_pct "$AGY_GEMINI_5H_REM" "$AGY_GEMINI_5H_RESET_EPOCH")"
+  g7="$(effective_quota_pct "$AGY_GEMINI_7D_REM" "$AGY_GEMINI_7D_RESET_EPOCH")"
+  a5="$(effective_quota_pct "$AGY_CLAUDE_5H_REM" "$AGY_CLAUDE_5H_RESET_EPOCH")"
+  a7="$(effective_quota_pct "$AGY_CLAUDE_7D_REM" "$AGY_CLAUDE_7D_RESET_EPOCH")"
+  x5="$(effective_quota_pct "$CODEX_5H_REM" "$CODEX_5H_RESET_EPOCH")"
+  x7="$(effective_quota_pct "$CODEX_7D_REM" "$CODEX_7D_RESET_EPOCH")"
+  c5="$(effective_quota_pct "$CLAUDE_5H_REM" "$CLAUDE_5H_RESET_EPOCH")"
+  c7="$(effective_quota_pct "$CLAUDE_7D_REM" "$CLAUDE_7D_RESET_EPOCH")"
+
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %sรายงานโควต้าคงเหลือแบบเรียลไทม์ (RELAY Live Multi-Provider Quota Monitor)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (ดึงข้อมูลสดจาก CLI ทั้ง 3 ค่ายโดยตรง)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s1. Google AI Ultra — กระเป๋า Gemini Models (agy)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_GEMINI_5H_REM")" "$C_MUTED" "$AGY_GEMINI_5H_RESET" "$C_RESET"
-  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_GEMINI_7D_REM")" "$C_MUTED" "$AGY_GEMINI_7D_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$g5")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$g7")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s2. Google AI Ultra — กระเป๋า Claude & GPT Models (agy)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_CLAUDE_5H_REM")" "$C_MUTED" "$AGY_CLAUDE_5H_RESET" "$C_RESET"
-  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_CLAUDE_7D_REM")" "$C_MUTED" "$AGY_CLAUDE_7D_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$a5")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$a7")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s3. OpenAI Codex CLI — แพ็กเกจ %s (codex)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CODEX_PLAN" "$C_RESET"
-  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CODEX_5H_REM")" "$C_MUTED" "$CODEX_5H_RESET" "$C_RESET"
-  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CODEX_7D_REM")" "$C_MUTED" "$CODEX_7D_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$x5")" "$C_MUTED" "$(format_reset_detail "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$x7")" "$C_MUTED" "$(format_reset_detail "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %s4. Anthropic Claude Code CLI — แพ็กเกจ %s (claude)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CLAUDE_PLAN" "$C_RESET"
-  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CLAUDE_5H_REM")" "$C_MUTED" "$CLAUDE_5H_RESET" "$C_RESET"
-  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CLAUDE_7D_REM")" "$C_MUTED" "$CLAUDE_7D_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$c5")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$c7")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %sคำแนะนำการจัดสรรโควต้าปัจจุบัน:%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  if [[ "$CLAUDE_7D_REM" =~ ^[0-9]+$ ]] && [ "$CLAUDE_7D_REM" -lt 20 ]; then
-    printf "%s│%s  %s▲ โควต้ารายสัปดาห์ของค่าย claude เหลือเพียง %s%% — แนะนำให้ใช้ Claude Opus/Sonnet 5.5 ผ่านค่าย agy (Google AI Ultra เหลือ %s%%) แทน!%s\n" \
-      "$C_ACCENT" "$C_RESET" "$C_WARN" "$CLAUDE_7D_REM" "$AGY_CLAUDE_7D_REM" "$C_RESET"
+  if [[ "$c7" =~ ^[0-9]+$ ]] && [ "$c7" -lt 20 ]; then
+    printf "%s│%s  %s▲ โควต้ารายสัปดาห์ของค่าย claude เหลือ %s%% (%s) — แนะนำให้ใช้ Claude ผ่านค่าย agy (เหลือ %s%%) แทน%s\n" \
+      "$C_ACCENT" "$C_RESET" "$C_WARN" "$c7" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$a7" "$C_RESET"
   else
     printf "%s│%s  %s● โควต้าทุกตำแหน่งที่ตั้งค่าไว้พร้อมลุยงานต่อเนื่องได้อย่างเต็มประสิทธิภาพ%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
   fi
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  RENDER_NOW=""
 }
 
 run_quota_dashboard() {
@@ -1930,6 +2117,70 @@ ensure_git_repo_ready_for_worktree() {
   fi
 }
 
+# เพิ่ม .relay/worktrees/ ลงใน .gitignore ของโปรเจกต์ เพื่อไม่ให้ Worktree ของใบงานปะปนกับโค้ดในกิ่งหลัก
+ensure_relay_gitignore() {
+  local gi="$PROJECT_DIR/.gitignore"
+  if ! grep -qxF '.relay/worktrees/' "$gi" 2>/dev/null; then
+    printf '\n# RELAY: Git Worktree แยกอิสระของแต่ละใบงาน (ห้าม commit)\n.relay/worktrees/\n' >> "$gi"
+  fi
+}
+
+# รายการไฟล์โค้ดที่ยังไม่ commit ใน Worktree (ไม่นับเอกสารใน .relay/ ที่ RELAY คัดลอกเข้าไปเอง)
+worktree_dirty_files() {
+  local wt="$1"
+  [ -d "$wt" ] || return 0
+  git -C "$wt" status --porcelain -- . ':(exclude).relay' 2>/dev/null || true
+}
+
+# สร้างหรือใช้ Worktree ของใบงานปัจจุบัน แล้วตั้งค่า TASK_WORK_DIR
+# คืนค่า 1 พร้อมแสดงข้อความ error จริงเมื่อสร้างไม่ได้ (ห้ามทำงานต่อบนกิ่งหลักแบบเงียบๆ)
+TASK_WORK_DIR=""
+prepare_task_worktree() {
+  local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
+  local branch_name="feat/$ACTIVE_TASK"
+  TASK_WORK_DIR=""
+
+  ensure_git_repo_ready_for_worktree
+  if ! git -C "$PROJECT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo ""
+    printf "%s✖ ไม่สามารถเตรียม Git Repository ได้ (ยังไม่มี commit แรก — ตรวจสอบ git config user.name / user.email)%s\n" "$C_ERR" "$C_RESET"
+    return 1
+  fi
+  ensure_relay_gitignore
+  mkdir -p "$RELAY_DIR/worktrees"
+
+  if [ ! -d "$worktree_dir" ]; then
+    printf "%sกำลังสร้าง Git Worktree แยกอิสระที่ .relay/worktrees/%s (กิ่ง %s)...%s\n" "$C_ACCENT" "$ACTIVE_TASK" "$branch_name" "$C_RESET"
+    local wt_err=""
+    if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$branch_name"; then
+      wt_err="$(git -C "$PROJECT_DIR" worktree add "$worktree_dir" "$branch_name" 2>&1)" || {
+        printf "%s✖ สร้าง Worktree ไม่สำเร็จ (หยุดเพื่อไม่ให้แก้โค้ดบนกิ่งหลัก):%s\n%s\n" "$C_ERR" "$C_RESET" "$wt_err"
+        return 1
+      }
+    else
+      wt_err="$(git -C "$PROJECT_DIR" worktree add "$worktree_dir" -b "$branch_name" 2>&1)" || {
+        printf "%s✖ สร้าง Worktree ไม่สำเร็จ (หยุดเพื่อไม่ให้แก้โค้ดบนกิ่งหลัก):%s\n%s\n" "$C_ERR" "$C_RESET" "$wt_err"
+        return 1
+      }
+    fi
+  fi
+
+  mkdir -p "$worktree_dir/.relay/tasks"
+  cp -R "$RELAY_DIR/tasks/$ACTIVE_TASK" "$worktree_dir/.relay/tasks/" 2>/dev/null || true
+  [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && cp "$RELAY_DIR/PROJECT_STATE.md" "$worktree_dir/.relay/PROJECT_STATE.md" 2>/dev/null || true
+  if [ -d "$RELAY_DIR/skills" ]; then
+    mkdir -p "$worktree_dir/.relay/skills"
+    cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
+  fi
+  TASK_WORK_DIR="$worktree_dir"
+  return 0
+}
+
+# ข้อความกำชับ @dev ให้ commit งานในกิ่งของใบงาน (ป้องกันโค้ดหายตอนผสานในขั้นตอนที่ 5)
+get_dev_commit_note() {
+  printf " เมื่อเขียนโค้ดและรันชุดทดสอบผ่านแล้ว ให้ git add และ git commit งานทั้งหมดในกิ่ง feat/%s ของ Worktree นี้ (ห้าม commit โฟลเดอร์ .relay/)" "$ACTIVE_TASK"
+}
+
 ensure_or_create_task() {
   refresh_project_paths
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
@@ -1949,7 +2200,7 @@ create_new_task() {
   fi
   local slug
   slug="$(printf "%s" "${raw_input:-feature}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed -E 's/^-+|-+$//g' | cut -c1-24 | sed -E 's/-+$//')"
-  [ -z "$slug" ] && slug="task-$( ($(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | wc -l) + 1) )"
+  [ -z "$slug" ] && slug="task-$(( $(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | wc -l) + 1 ))"
   local today
   today="$(date +%Y%m%d)"
   CURRENT_TASK="${today}-${slug}"
@@ -1987,33 +2238,16 @@ run_phase_2_arch() {
 run_phase_3_dev() {
   require_all_roles_ready || return 0
   ensure_or_create_task
-  ensure_git_repo_ready_for_worktree
-  local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
-  local branch_name="feat/$ACTIVE_TASK"
-  local target_work_dir="$PROJECT_DIR"
-
-  if [ -d "$PROJECT_DIR/.git" ]; then
-    mkdir -p "$RELAY_DIR/worktrees"
-    if [ ! -d "$worktree_dir" ]; then
-      printf "%sกำลังสร้าง Git Worktree แยกอิสระที่ .relay/worktrees/%s (กิ่ง %s)...%s\n" "$C_ACCENT" "$ACTIVE_TASK" "$branch_name" "$C_RESET"
-      git worktree add "$worktree_dir" -b "$branch_name" 2>/dev/null || git worktree add "$worktree_dir" "$branch_name" 2>/dev/null || true
-    fi
-    if [ -d "$worktree_dir" ]; then
-      mkdir -p "$worktree_dir/.relay/tasks"
-      cp -R "$RELAY_DIR/tasks/$ACTIVE_TASK" "$worktree_dir/.relay/tasks/" 2>/dev/null || true
-      [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && cp "$RELAY_DIR/PROJECT_STATE.md" "$worktree_dir/.relay/PROJECT_STATE.md" 2>/dev/null || true
-      if [ -d "$RELAY_DIR/skills" ]; then
-        mkdir -p "$worktree_dir/.relay/skills"
-        cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
-      fi
-      target_work_dir="$worktree_dir"
-    fi
+  if ! prepare_task_worktree; then
+    [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
+    return 0
   fi
 
-  local learned_note
+  local learned_note commit_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้"
-  launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (Full-Stack Developer ใน Git Worktree)" "$target_work_dir" "$prompt"
+  commit_note="$(get_dev_commit_note)"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้${commit_note}"
+  launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (Full-Stack Developer ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   LAST_COMPLETED_PHASE=3
 }
 
@@ -2228,38 +2462,117 @@ run_learned_skills_menu() {
 }
 
 # ─── 13.6 ระบบรันลูปอัตโนมัติแบบมีเบรกนิรภัย 3 ชั้น (Bounded Auto-Relay Loop) ──
+# รันคำสั่งพร้อมเพดานเวลา (macOS ไม่มีคำสั่ง timeout มาให้) — คืนค่า 124 เมื่อหมดเวลา, 130 เมื่อผู้ใช้กด Ctrl+C
+run_with_timeout() {
+  local secs="$1"
+  shift
+  local marker
+  marker="$(mktemp -t relay-timeout.XXXXXX 2>/dev/null || echo "/tmp/relay-timeout.$$")"
+  rm -f "$marker" "$marker.int"
+
+  "$@" </dev/null &
+  local pid=$!
+  ( sleep "$secs"; touch "$marker"; kill -TERM "$pid" 2>/dev/null; sleep 5; kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  local wd=$!
+
+  trap 'touch "$marker.int"; kill -TERM "$pid" 2>/dev/null' INT TERM
+  local rc=0
+  wait "$pid" || rc=$?
+  if kill -0 "$pid" 2>/dev/null; then
+    wait "$pid" 2>/dev/null || true
+  fi
+  trap - INT TERM
+
+  pkill -P "$wd" 2>/dev/null || true
+  kill "$wd" 2>/dev/null || true
+  wait "$wd" 2>/dev/null || true
+
+  if [ -e "$marker.int" ]; then
+    rc=130
+  elif [ -e "$marker" ]; then
+    rc=124
+  fi
+  rm -f "$marker" "$marker.int"
+  return "$rc"
+}
+
 exec_provider_autonomous() {
   local provider="$1"
   local configured_model="$2"
   local role_name="$3"
   local work_dir="$4"
   local prompt="$5"
+  local step_timeout="${RELAY_STEP_TIMEOUT:-1800}"
+  [[ "$step_timeout" =~ ^[0-9]+$ ]] || step_timeout=1800
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s ⚡ [Auto-Relay Loop] กำลังรัน %s%s%s แบบอัตโนมัติ\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_name" "$C_RESET"
-  printf "%s│%s  • ค่ายผู้ให้บริการ : %s (%s) │ โฟลเดอร์: %s\n" "$C_ACCENT" "$C_RESET" "$provider" "$configured_model" "$work_dir"
+  printf "%s│%s  • ค่ายผู้ให้บริการ : %s (%s) │ เพดานเวลา: %s นาที\n" "$C_ACCENT" "$C_RESET" "$provider" "$configured_model" "$((step_timeout / 60))"
+  printf "%s│%s  • โฟลเดอร์ทำงาน  : %s\n" "$C_ACCENT" "$C_RESET" "$work_dir"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  local exit_code=0
-  (
-    cd "$work_dir"
-    case "$provider" in
-      agy)
-        agy --model "$configured_model" -p "$prompt" || exit_code=$?
-        ;;
-      claude)
-        claude --model "$configured_model" -p "$prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || exit_code=$?
-        ;;
-      codex)
-        codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt" || exit_code=$?
-        ;;
-    esac
-    exit "$exit_code"
-  ) || exit_code=$?
+  # โหมดสิทธิ์แบบไม่ต้องถามโต้ตอบ แต่ไม่ข้ามระบบสิทธิ์ทั้งหมด
+  local cmd=()
+  case "$provider" in
+    agy)    cmd=(agy --model "$configured_model" --mode auto -p "$prompt") ;;
+    claude) cmd=(claude --model "$configured_model" --permission-mode acceptEdits -p "$prompt") ;;
+    codex)  cmd=(codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt") ;;
+    *)
+      printf "%s✖ ไม่รู้จักค่าย '%s'%s\n" "$C_ERR" "$provider" "$C_RESET"
+      return 2
+      ;;
+  esac
+
+  local rc=0
+  ( cd "$work_dir" && run_with_timeout "$step_timeout" "${cmd[@]}" ) || rc=$?
 
   refresh_quota_cache --quiet
-  return "$exit_code"
+  return "$rc"
+}
+
+# ตัดสินผลจาก QA_REPORT.md: PASS เฉพาะเมื่อมี VERDICT: PASS ชัดเจนและไม่มี VERDICT: FAIL
+qa_verdict() {
+  local f="$1"
+  if [ ! -f "$f" ]; then
+    echo "MISSING"
+    return
+  fi
+  if grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}FAIL' "$f"; then
+    echo "FAIL"
+  elif grep -qiE 'VERDICT[^A-Za-z0-9]{0,6}PASS' "$f"; then
+    echo "PASS"
+  else
+    echo "NONE"
+  fi
+}
+
+LOOP_LOG_FILE=""
+loop_halt() {
+  local reason="$1"
+  [ -n "$LOOP_LOG_FILE" ] && echo "- [STOP] ${reason} (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+  printf "%s│%s %s🛑 หยุด Auto-Relay Loop:%s %s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$C_RESET" "$reason"
+  printf "%s│%s  • บันทึกลูป : .relay/tasks/%s/LOOP_LOG.md\n" "$C_ERR" "$C_RESET" "$ACTIVE_TASK"
+  printf "%s│%s  • งานที่ทำไปแล้วยังอยู่ครบใน Worktree — แก้ไขสาเหตุแล้วกด [a] เพื่อรันต่อ หรือทำทีละขั้นด้วย [2]/[3]/[4]\n" "$C_ERR" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+  if [ -t 0 ]; then
+    read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+  fi
+}
+
+# แปลง exit code ของ agent เป็นเหตุผลการหยุดลูป (คืนค่า 1 เมื่อต้องหยุด)
+loop_check_rc() {
+  local rc="$1"
+  local label="$2"
+  case "$rc" in
+    0) return 0 ;;
+    124) loop_halt "${label} ทำงานเกินเพดานเวลา (${RELAY_STEP_TIMEOUT:-1800} วินาที)" ;;
+    130) loop_halt "ผู้ใช้ยกเลิกระหว่าง ${label}" ;;
+    *) loop_halt "${label} จบการทำงานด้วยข้อผิดพลาด (exit ${rc}) — อาจเกิดจากโควต้าหมด เครือข่าย หรือสิทธิ์ไม่พอ" ;;
+  esac
+  return 1
 }
 
 run_auto_relay_loop() {
@@ -2282,10 +2595,12 @@ run_auto_relay_loop() {
 
   local max_rounds=3
   local min_quota_pct=20
+  local step_timeout="${RELAY_STEP_TIMEOUT:-1800}"
   local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
-  local loop_log="$task_dir/LOOP_LOG.md"
-  local learned_note
+  LOOP_LOG_FILE="$task_dir/LOOP_LOG.md"
+  local learned_note commit_note
   learned_note="$(get_learned_skills_prompt_note)"
+  commit_note="$(get_dev_commit_note)"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -2296,15 +2611,16 @@ run_auto_relay_loop() {
   printf "%s│%s  • ขั้นที่ 3 (@dev Worktree): %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$MODEL_DEV"
   printf "%s│%s  • ขั้นที่ 4 (@qa Verifier) : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$MODEL_QA"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s  %sระบบเบรกนิรภัย 3 ชั้น (3-Tier Circuit Breakers):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s   1. Quota Guard        : หยุดลูปทันทีหากโควต้า 5h หรือ 7d ของตำแหน่งถัดไปต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
-  printf "%s│%s   2. Max Loop Cap       : จำกัดการวนซ้ำแก้บั๊ก (@dev ⇄ @qa) สูงสุดไม่เกิน %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
-  printf "%s│%s   3. Cross-Provider QA  : ตัดสินผลผ่าน VERDICT: PASS / FAIL ใน QA_REPORT.md\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s  %sระบบเบรกนิรภัย (Circuit Breakers):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s   1. Quota Guard        : หยุดทันทีหากโควต้า 5h หรือ 7d ของตำแหน่งถัดไปต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
+  printf "%s│%s   2. Max Loop Cap       : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
+  printf "%s│%s   3. Cross-Provider QA  : ผ่านเฉพาะเมื่อ QA_REPORT.md มี VERDICT: PASS ชัดเจน\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s   4. Step Guard         : หยุดเมื่อ agent error / ไม่สร้างไฟล์ผลลัพธ์ / เกิน %s นาทีต่อขั้น\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if [ "${1:-interactive}" != "--yes" ]; then
     interactive_menu "ต้องการเริ่มรัน Bounded Auto-Relay Loop สำหรับใบงาน '${ACTIVE_TASK}' เลยหรือไม่?" 0 \
-      "y|★ เริ่มรันลูปอัตโนมัติทันที (2 ➔ 3 ⇄ 4 พร้อมเบรกโควต้า 20% และจำกัด 3 รอบ)" \
+      "y|★ เริ่มรันลูปอัตโนมัติทันที (2 ➔ 3 ⇄ 4 พร้อมเบรกนิรภัยครบทุกชั้น)" \
       "n|ยกเลิก — กลับสู่หน้าจอหลัก"
     [ "$MENU_RESULT" != "y" ] && return 0
   fi
@@ -2316,46 +2632,39 @@ run_auto_relay_loop() {
     echo "# บันทึกการทำงานอัตโนมัติ (Bounded Auto-Relay Loop Log — $ACTIVE_TASK)"
     echo ""
     echo "- เริ่มต้นลูปเมื่อ: \`$(date '+%Y-%m-%d %H:%M:%S')\`"
-    echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\`"
+    echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\` │ เพดานเวลาต่อขั้น: \`${step_timeout} วินาที\`"
     echo ""
-  } > "$loop_log"
+  } > "$LOOP_LOG_FILE"
 
-  # 1. รันขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
+  local rc=0
+
+  # 1. ขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
   if [ ! -f "$task_dir/PLAN.md" ]; then
     if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct"; then
-      echo "- [STOP] หยุดลูปที่ขั้นตอนที่ 2 (@arch) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
     local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md ให้เสร็จสมบูรณ์โดยไม่ต้องรอถามโต้ตอบ"
-    exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || true
-    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): สร้าง ARCH.md & PLAN.md เรียบร้อย (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
+    rc=0
+    exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
+    loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
+    if [ ! -f "$task_dir/PLAN.md" ]; then
+      loop_halt "@arch ทำงานจบแต่ไม่ได้สร้าง .relay/tasks/$ACTIVE_TASK/PLAN.md"
+      return 1
+    fi
+    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): สร้าง ARCH.md & PLAN.md เรียบร้อย (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
     LAST_COMPLETED_PHASE=2
   else
-    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): พบไฟล์ PLAN.md อยู่แล้ว ข้ามไปยังขั้นตอนที่ 3" >> "$loop_log"
+    echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): พบไฟล์ PLAN.md อยู่แล้ว ข้ามไปยังขั้นตอนที่ 3" >> "$LOOP_LOG_FILE"
   fi
 
-  # เตรียม Git Worktree สำหรับ @dev และ @qa
-  ensure_git_repo_ready_for_worktree
-  local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
-  local branch_name="feat/$ACTIVE_TASK"
-  local target_work_dir="$PROJECT_DIR"
-
-  if [ -d "$PROJECT_DIR/.git" ]; then
-    mkdir -p "$RELAY_DIR/worktrees"
-    if [ ! -d "$worktree_dir" ]; then
-      git worktree add "$worktree_dir" -b "$branch_name" 2>/dev/null || git worktree add "$worktree_dir" "$branch_name" 2>/dev/null || true
-    fi
-    if [ -d "$worktree_dir" ]; then
-      mkdir -p "$worktree_dir/.relay/tasks"
-      cp -R "$task_dir" "$worktree_dir/.relay/tasks/" 2>/dev/null || true
-      [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && cp "$RELAY_DIR/PROJECT_STATE.md" "$worktree_dir/.relay/PROJECT_STATE.md" 2>/dev/null || true
-      if [ -d "$RELAY_DIR/skills" ]; then
-        mkdir -p "$worktree_dir/.relay/skills"
-        cp -R "$RELAY_DIR/skills/"* "$worktree_dir/.relay/skills/" 2>/dev/null || true
-      fi
-      target_work_dir="$worktree_dir"
-    fi
+  # เตรียม Git Worktree (หยุดทันทีถ้าสร้างไม่ได้ — ห้ามแก้โค้ดบนกิ่งหลัก)
+  if ! prepare_task_worktree; then
+    loop_halt "สร้าง Git Worktree ไม่สำเร็จ"
+    return 1
   fi
+  local worktree_dir="$TASK_WORK_DIR"
+  local wt_task_dir="$worktree_dir/.relay/tasks/$ACTIVE_TASK"
 
   # 2. วนลูป @dev ⇄ @qa สูงสุดไม่เกิน max_rounds รอบ
   local round=1
@@ -2365,41 +2674,65 @@ run_auto_relay_loop() {
     printf "%s═══ ⚡ [Auto-Relay Loop] รอบที่ %d/%d : ขั้นตอนที่ 3 (@dev) ⇄ ขั้นตอนที่ 4 (@qa) ═══%s\n" "$C_SEL" "$round" "$max_rounds" "$C_RESET"
 
     if ! check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "@dev (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
-      echo "- [STOP] หยุดลูปที่รอบ $round (@dev) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      loop_halt "โควต้าของ @dev ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
     fi
 
     local dev_prompt=""
     if [ "$round" -eq 1 ]; then
-      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ"
+      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     else
-      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ"
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     fi
 
-    exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds)" "$target_work_dir" "$dev_prompt" || true
+    rc=0
+    exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds)" "$worktree_dir" "$dev_prompt" || rc=$?
+    loop_check_rc "$rc" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" || return 1
     LAST_COMPLETED_PHASE=3
 
     if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
-      echo "- [STOP] หยุดลูปที่รอบ $round (@qa) เนื่องจากโควต้าต่ำกว่า ${min_quota_pct}%" >> "$loop_log"
+      loop_halt "โควต้าของ @qa ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
     fi
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องระบุบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน"
-    exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$target_work_dir" "$qa_prompt" || true
+    # ย้ายรายงานเก่าออก เพื่อไม่ให้รายงานรอบก่อนถูกนับเป็นผลของรอบนี้
+    local d
+    for d in "$wt_task_dir" "$task_dir"; do
+      if [ -f "$d/QA_REPORT.md" ]; then
+        mv "$d/QA_REPORT.md" "$d/QA_REPORT.before-round-${round}.md"
+      fi
+    done
 
-    if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
-      cp -R "$worktree_dir/.relay/tasks/$ACTIVE_TASK/"* "$task_dir/" 2>/dev/null || true
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)"
+    rc=0
+    exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
+    loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1
+
+    if [ -d "$wt_task_dir" ]; then
+      cp -R "$wt_task_dir/"* "$task_dir/" 2>/dev/null || true
       [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
     fi
     LAST_COMPLETED_PHASE=4
 
-    if [ -f "$task_dir/QA_REPORT.md" ] && ! grep -qiE "VERDICT:[[:space:]]*FAIL|สถานะ:[[:space:]]*ไม่ผ่าน" "$task_dir/QA_REPORT.md"; then
-      echo "- [PASS] รอบที่ $round/$max_rounds: ผ่านการตรวจรับจาก @qa เรียบร้อย (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
-      loop_passed=1
-      break
-    else
-      echo "- [RETRY] รอบที่ $round/$max_rounds: @qa พบจุดที่ต้องแก้ไขใน QA_REPORT.md (\`$(date '+%H:%M:%S')\`)" >> "$loop_log"
-    fi
+    local verdict
+    verdict="$(qa_verdict "$task_dir/QA_REPORT.md")"
+    case "$verdict" in
+      PASS)
+        echo "- [PASS] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: PASS (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        loop_passed=1
+        break
+        ;;
+      FAIL)
+        echo "- [RETRY] รอบที่ $round/$max_rounds: @qa ระบุ VERDICT: FAIL (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        ;;
+      NONE)
+        echo "- [RETRY] รอบที่ $round/$max_rounds: QA_REPORT.md ไม่มี VERDICT ที่ชัดเจน — ไม่นับว่าผ่าน (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        ;;
+      *)
+        loop_halt "@qa ทำงานจบแต่ไม่ได้เขียน .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (รอบที่ $round)"
+        return 1
+        ;;
+    esac
 
     round=$((round + 1))
   done
@@ -2407,11 +2740,12 @@ run_auto_relay_loop() {
   echo ""
   if [ "$loop_passed" -eq 1 ]; then
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_OK" "$C_RESET"
-    printf "%s│%s %s● [Auto-Relay Loop สำเร็จ!] ผ่านการตรวจรับ QA_REPORT.md ในรอบที่ %d/%d%s\n" "$C_OK" "$C_RESET" "$C_BOLD" "$round" "$max_rounds" "$C_RESET"
+    printf "%s│%s %s● [Auto-Relay Loop สำเร็จ!] @qa ระบุ VERDICT: PASS ในรอบที่ %d/%d%s\n" "$C_OK" "$C_RESET" "$C_BOLD" "$round" "$max_rounds" "$C_RESET"
     printf "%s│%s  • บันทึกลูปการทำงาน : .relay/tasks/%s/LOOP_LOG.md\n" "$C_OK" "$C_RESET" "$ACTIVE_TASK"
-    printf "%s│%s  • ขั้นตอนถัดไป     : กด [5] เพื่อสกัดบทเรียน ผสานโค้ดเข้า main และเก็บเข้า Archive\n" "$C_OK" "$C_RESET"
+    printf "%s│%s  • ขั้นตอนถัดไป     : กด [5] เพื่อตรวจ commit, ผสานโค้ดเข้า main, สกัดบทเรียน และปิดใบงาน\n" "$C_OK" "$C_RESET"
     printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_OK" "$C_RESET"
   else
+    echo "- [STOP] ครบเพดาน ${max_rounds} รอบโดยยังไม่ผ่าน (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
     printf "%s│%s %s▲ [Circuit Breaker: ครบเพดาน %d รอบ] หยุดลูปอัตโนมัติเพื่อให้คุณตรวจสอบร่วมตัดสินใจ%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$max_rounds" "$C_RESET"
     printf "%s│%s  • กรุณาตรวจสอบรายละเอียดใน .relay/tasks/%s/QA_REPORT.md และ LOOP_LOG.md\n" "$C_WARN" "$C_RESET" "$ACTIVE_TASK"
@@ -2423,33 +2757,146 @@ run_auto_relay_loop() {
   fi
 }
 
+# ─── 13.7 ขั้นตอนที่ 5: ผสานโค้ดอย่างปลอดภัย (ไม่ลบอะไรจนกว่าจะผสานสำเร็จ) ────────
+archive_active_task() {
+  mkdir -p "$RELAY_DIR/archive"
+  local dest="$RELAY_DIR/archive/$ACTIVE_TASK"
+  [ -e "$dest" ] && dest="${dest}-$(date +%H%M%S)"
+  mv "$RELAY_DIR/tasks/$ACTIVE_TASK" "$dest"
+  CURRENT_TASK=""
+  LAST_COMPLETED_PHASE=0
+}
+
 run_phase_5_merge() {
   require_all_roles_ready || return 0
+  refresh_project_paths
   get_active_task
   if [ -z "$ACTIVE_TASK" ]; then
     printf "%s▲ ยังไม่มีใบงานที่กำลังดำเนินการใน .relay/tasks/%s\n" "$C_ERR" "$C_RESET"
     return
   fi
-  local branch_name="feat/$ACTIVE_TASK"
-  local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
+  local task="$ACTIVE_TASK"
+  local branch_name="feat/$task"
+  local worktree_dir="$RELAY_DIR/worktrees/$task"
+  local task_dir="$RELAY_DIR/tasks/$task"
 
-  interactive_menu "ยืนยันการสกัดบทเรียน ผสานโค้ดกิ่ง ${branch_name} เข้าสู่ main และจัดเก็บใบงาน ${ACTIVE_TASK}" 0 \
-    "y|ยืนยัน — สกัดบทเรียนสะสม (Self-Learn) + ผสานโค้ดเข้ากิ่งหลัก + ย้ายเข้า .relay/archive/" \
-    "n|ยกเลิก — กลับสู่หน้าจอหลัก"
-
-  if [ "$MENU_RESULT" = "y" ]; then
-    distill_project_learned_skills "$ACTIVE_TASK" "auto" || true
-    if [ -d "$PROJECT_DIR/.git" ] && git show-ref --verify --quiet "refs/heads/$branch_name"; then
-      git merge "$branch_name" || true
-      [ -d "$worktree_dir" ] && { git worktree remove "$worktree_dir" --force 2>/dev/null || rm -rf "$worktree_dir"; }
-      git branch -d "$branch_name" 2>/dev/null || true
+  # กรณีไม่มีกิ่งโค้ดของใบงาน (เช่น ใบงานเอกสารล้วน หรือยังไม่ผ่านขั้นตอนที่ 3)
+  if ! git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 || ! git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$branch_name"; then
+    interactive_menu "ใบงาน ${task} ไม่มีกิ่งโค้ด ${branch_name} — ต้องการปิดใบงานโดยไม่ผสานโค้ดหรือไม่?" 1 \
+      "y|ปิดใบงาน: สกัดบทเรียน + ย้ายเข้า .relay/archive/ (ไม่มีโค้ดให้ผสาน)" \
+      "n|ยกเลิก — กลับสู่หน้าจอหลัก"
+    if [ "$MENU_RESULT" = "y" ]; then
+      distill_project_learned_skills "$task" "auto" || true
+      archive_active_task
+      printf "%s● ปิดใบงานและย้ายไปที่ .relay/archive/%s เรียบร้อยแล้ว%s\n" "$C_OK" "$task" "$C_RESET"
     fi
-    mkdir -p "$RELAY_DIR/archive"
-    mv "$RELAY_DIR/tasks/$ACTIVE_TASK" "$RELAY_DIR/archive/$ACTIVE_TASK"
-    CURRENT_TASK=""
-    LAST_COMPLETED_PHASE=0
-    printf "%s● สกัดบทเรียน ผสานโค้ด และย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
+    return 0
   fi
+
+  local base
+  base="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  if [ -z "$base" ] || [ "$base" = "HEAD" ] || [ "$base" = "$branch_name" ]; then
+    printf "\n%s✖ โฟลเดอร์โปรเจกต์ไม่ได้อยู่บนกิ่งหลัก (ปัจจุบัน: %s) — กรุณา git checkout main ก่อนกด [5]%s\n" "$C_ERR" "${base:-ไม่ทราบ}" "$C_RESET"
+    return 1
+  fi
+
+  # ดึงเอกสารล่าสุดจาก Worktree กลับมาที่ใบงานหลักก่อน
+  if [ -d "$worktree_dir/.relay/tasks/$task" ]; then
+    cp -R "$worktree_dir/.relay/tasks/$task/"* "$task_dir/" 2>/dev/null || true
+  fi
+
+  local dirty dirty_count ahead
+  dirty="$(worktree_dirty_files "$worktree_dir")"
+  dirty_count="$(printf "%s" "$dirty" | grep -c . || true)"
+  ahead="$(git -C "$PROJECT_DIR" rev-list --count "${base}..${branch_name}" 2>/dev/null || echo 0)"
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sตรวจสอบก่อนผสานโค้ด (ขั้นตอนที่ 5)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s  • ผสานจากกิ่ง  : %s ➔ เข้ากิ่ง %s%s%s\n" "$C_ACCENT" "$C_RESET" "$branch_name" "$C_BOLD" "$base" "$C_RESET"
+  printf "%s│%s  • commit ใหม่   : %s commit\n" "$C_ACCENT" "$C_RESET" "$ahead"
+  if [ "$dirty_count" -gt 0 ]; then
+    printf "%s│%s  • %sไฟล์ที่ยังไม่ commit ใน Worktree : %s ไฟล์ (ไม่นับ .relay/)%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$dirty_count" "$C_RESET"
+    printf "%s\n" "$dirty" | head -n 8 | sed "s/^/${C_ACCENT}│${C_RESET}      /"
+  else
+    printf "%s│%s  • ไฟล์ค้างใน Worktree : ไม่มี\n" "$C_ACCENT" "$C_RESET"
+  fi
+  if [ "$base" != "main" ] && [ "$base" != "master" ]; then
+    printf "%s│%s  %s▲ กิ่งปลายทางไม่ใช่ main/master — ระบบจะถามยืนยันอีกครั้ง%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET"
+  fi
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  local items=()
+  if [ "$dirty_count" -gt 0 ]; then
+    items+=("c|★ commit ไฟล์ที่ค้าง ${dirty_count} ไฟล์ใน Worktree (ไม่รวม .relay/) แล้วผสานเข้า ${base}")
+  elif [ "$ahead" -gt 0 ]; then
+    items+=("y|★ ผสาน ${ahead} commit เข้า ${base} ➔ สกัดบทเรียน ➔ ปิดใบงาน")
+  else
+    printf "%s▲ กิ่ง %s ไม่มีโค้ดใหม่ให้ผสาน — ระบบจะไม่ลบ Worktree หรือกิ่งใดๆ%s\n" "$C_WARN" "$branch_name" "$C_RESET"
+    items+=("a|ปิดใบงานโดยไม่ผสาน (เก็บกิ่งและ Worktree ไว้ตรวจสอบภายหลัง)")
+  fi
+  items+=("n|ยกเลิก — กลับสู่หน้าจอหลัก (ไม่มีการเปลี่ยนแปลงใดๆ)")
+
+  interactive_menu "เลือกการดำเนินการสำหรับใบงาน ${task}" 0 "${items[@]}"
+
+  case "$MENU_RESULT" in
+    c|C)
+      local commit_out=""
+      if ! commit_out="$( { git -C "$worktree_dir" add -A -- . ':(exclude).relay' && git -C "$worktree_dir" commit -m "feat(${task}): งานจาก @dev (RELAY auto-commit ก่อนผสาน)"; } 2>&1 )"; then
+        printf "\n%s✖ commit ใน Worktree ไม่สำเร็จ — ยังไม่มีการผสานหรือลบใดๆ:%s\n%s\n" "$C_ERR" "$C_RESET" "$(printf "%s" "$commit_out" | tail -n 8)"
+        return 1
+      fi
+      printf "%s● commit ไฟล์ใน Worktree เรียบร้อย%s\n" "$C_OK" "$C_RESET"
+      ;;
+    y|Y) ;;
+    a|A)
+      distill_project_learned_skills "$task" "auto" || true
+      archive_active_task
+      printf "%s● ปิดใบงานแล้ว (กิ่ง %s และ Worktree ยังเก็บไว้)%s\n" "$C_OK" "$branch_name" "$C_RESET"
+      return 0
+      ;;
+    *) return 0 ;;
+  esac
+
+  if [ "$base" != "main" ] && [ "$base" != "master" ]; then
+    interactive_menu "ยืนยันผสานเข้ากิ่ง '${base}' (ไม่ใช่ main/master)?" 1 \
+      "y|ยืนยันผสานเข้า ${base}" \
+      "n|ยกเลิก"
+    [ "$MENU_RESULT" != "y" ] && return 0
+  fi
+
+  local merge_out=""
+  if ! merge_out="$(git -C "$PROJECT_DIR" merge --no-ff "$branch_name" -m "merge: ${branch_name} (RELAY ${task})" 2>&1)"; then
+    git -C "$PROJECT_DIR" merge --abort >/dev/null 2>&1 || true
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+    printf "%s│%s %s✖ ผสานโค้ดไม่สำเร็จ — ยกเลิกการผสานแล้ว (ไม่มีไฟล์ใดถูกลบ)%s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s\n" "$merge_out" | head -n 10 | sed "s/^/${C_ERR}│${C_RESET}   /"
+    printf "%s│%s  • Worktree (.relay/worktrees/%s) และใบงานยังอยู่ครบ\n" "$C_ERR" "$C_RESET" "$task"
+    printf "%s│%s  • วิธีแก้: เข้า Worktree แล้ว git merge %s เพื่อแก้ conflict และ commit จากนั้นกด [5] อีกครั้ง\n" "$C_ERR" "$C_RESET" "$base"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+    return 1
+  fi
+  printf "%s● ผสาน %s เข้า %s สำเร็จ%s\n" "$C_OK" "$branch_name" "$base" "$C_RESET"
+
+  distill_project_learned_skills "$task" "auto" || true
+
+  # ลบ Worktree เฉพาะเมื่อไม่มีไฟล์โค้ดค้าง (ไฟล์ใน .relay/ เป็นสำเนาที่ดึงกลับมาแล้ว)
+  if [ -d "$worktree_dir" ]; then
+    if [ -n "$(worktree_dirty_files "$worktree_dir")" ]; then
+      printf "%s▲ ยังมีไฟล์ค้างใน Worktree — เก็บ .relay/worktrees/%s ไว้ให้ตรวจสอบ%s\n" "$C_WARN" "$task" "$C_RESET"
+    else
+      git -C "$PROJECT_DIR" worktree remove --force "$worktree_dir" >/dev/null 2>&1 || \
+        printf "%s▲ ลบ Worktree ไม่สำเร็จ กรุณาลบเองด้วย git worktree remove%s\n" "$C_WARN" "$C_RESET"
+    fi
+  fi
+  if [ ! -d "$worktree_dir" ]; then
+    git -C "$PROJECT_DIR" branch -d "$branch_name" >/dev/null 2>&1 || \
+      printf "%s▲ ลบกิ่ง %s ไม่สำเร็จ (ยังเก็บไว้)%s\n" "$C_WARN" "$branch_name" "$C_RESET"
+  fi
+
+  archive_active_task
+  printf "%s● ผสานโค้ด สกัดบทเรียน และย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$task" "$C_RESET"
 }
 
 run_init_greenfield() {
@@ -2635,7 +3082,7 @@ while true; do
     p2_label="ขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})"
     p3_label="ขั้นตอนที่ 3 (@dev)      — แยก Git Worktree และเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})"
     p4_label="ขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})"
-    p5_label="ขั้นตอนที่ 5 (Merge)     — สกัดบทเรียน + ผสานโค้ดเข้า main + เก็บเข้า .relay/archive/"
+    p5_label="ขั้นตอนที่ 5 (Merge)     — ตรวจ commit + ผสานโค้ดเข้า main + สกัดบทเรียน + เก็บเข้า .relay/archive/"
     pa_label="⚡ รัน Auto-Relay Loop: ขั้นที่ 2 ➔ 3 ⇄ 4 อัตโนมัติพร้อมเบรกโควต้า 20% (/loop)"
     pl_label="🧠 จัดการและสกัดบทเรียนสะสมเฉพาะโปรเจกต์ (Self-Learning Skills) (/learn)"
 
