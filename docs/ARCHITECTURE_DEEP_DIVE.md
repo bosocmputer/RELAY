@@ -49,8 +49,9 @@ sequenceDiagram
    - **ชั้นที่ 1 (Binary Discovery):** ตรวจหาไบนารีของ CLI ในเครื่อง รวมถึง `~/.gemini/bin/agy` สำหรับผู้ใช้ Google AI Ultra
    - **ชั้นที่ 2 (Live Auth Verification):** ตรวจสอบสถานะการ Login จริงของแต่ละค่าย (`~/.gemini/jetski-standalone-oauth-token`, `claude auth status`, `codex login status`, `GEMINI_API_KEY`)
    - **ชั้นที่ 3 (Live Model Discovery):** ดึงรายชื่อโมเดลสดจาก CLI (`agy models`, `~/.codex/models_cache.json`, ไบนารี `claude` และ `gemini`) เพื่อให้มั่นใจว่าโมเดลที่เลือกสามารถเรียกใช้งานได้จริง 100%
-3. **การกระจายโควต้าอย่างคุ้มค่าบนแพ็กเกจ Google AI Ultra (`agy`) ร่วมกับ Multi-Vendor CLI:**
+3. **การกระจายโควต้าอย่างคุ้มค่าพร้อมระบบติดตามโควต้าคงเหลือแบบเรียลไทม์ (`Real-Time Multi-Provider Quota Engine`):**
    - ในแพ็กเกจ **Google AI Ultra** ผู้ใช้มีโควต้าแยกเป็น 2 ก้อนอิสระ คือ **Gemini Models** และ **Claude & GPT Models**
+   - หน้าจอ `relay` (และคำสั่ง `relay quota` หรือปุ่ม `[u]` / `/quota`) ดึงเปอร์เซ็นต์โควต้าคงเหลือจริงทั้งรอบ **5 ชั่วโมง (5-Hour)** และ **รายสัปดาห์ (Weekly 7-Day)** พร้อมเวลาที่รีเซ็ตจากทั้ง `agy -p "/usage"`, `~/.codex/sessions`, และ Control Protocol `get_usage` ของ `claude` มาแสดงแบบเรียลไทม์ พร้อมแจ้งเตือนสีส้ม/แดง (`▲ ใกล้หมด`) ทันทีเมื่อค่ายใดมีโควต้าต่ำกว่า `20%`
    - การผูก `@po` เข้ากับ `agy (gemini-4-argon-high)` และผูก `@arch` / `@dev` เข้ากับ `agy (claude-opus-5-5-high / claude-sonnet-5-5-high)` ร่วมกับ `@qa` บน `codex (gpt-6.1-terra)` ช่วยกระจายภาระโควต้าไม่ให้ก้อนใดก้อนหนึ่งหมดก่อนเวลา
 4. **การแยกสภาพแวดล้อมการพัฒนาด้วย `Git Worktree` (Isolated Development Environment):**
    - ในขั้นตอนที่ 3 (`@dev`) การแก้ไขโค้ดจะดำเนินการภายในกิ่งแยก (`.relay/worktrees/<task-id>`) เสมอ ช่วยป้องกันไม่ให้โค้ดในกิ่งหลัก (`main`) ได้รับผลกระทบระหว่างการพัฒนา
