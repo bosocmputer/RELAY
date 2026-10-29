@@ -33,6 +33,67 @@ $Script:ACTIVE_TASK = ""
 $Script:READY_COUNT = 0
 $Script:ALL_READY = $false
 $Script:UX_STAGE = 1
+$Script:AGY_GEMINI_5H = "-"
+$Script:AGY_GEMINI_7D = "-"
+$Script:AGY_CLAUDE_5H = "-"
+$Script:AGY_CLAUDE_7D = "-"
+$Script:CODEX_5H = "-"
+$Script:CODEX_7D = "-"
+$Script:CLAUDE_5H = "-"
+$Script:CLAUDE_7D = "-"
+$Script:QUOTA_TIME = "-"
+
+function Update-QuotaCache {
+    $Script:QUOTA_TIME = (Get-Date).ToString("HH:mm:ss")
+    if (Test-ProviderInstalled "agy") {
+        try {
+            $agyBin = Get-ProviderBin "agy"
+            $out = (& $agyBin -p "/usage" 2>$null) -join "`n"
+            foreach ($line in ($out -split "`r?`n")) {
+                if ($line -match "Gemini Models\s+Weekly Limit Remaining\s+(\d+)%")     { $Script:AGY_GEMINI_7D = $Matches[1] }
+                if ($line -match "Gemini Models\s+Five Hour Limit Remaining\s+(\d+)%")  { $Script:AGY_GEMINI_5H = $Matches[1] }
+                if ($line -match "Claude and GPT models\s+Weekly Limit Remaining\s+(\d+)%")     { $Script:AGY_CLAUDE_7D = $Matches[1] }
+                if ($line -match "Claude and GPT models\s+Five Hour Limit Remaining\s+(\d+)%")  { $Script:AGY_CLAUDE_5H = $Matches[1] }
+            }
+        } catch {}
+    }
+    try {
+        $sessRoot = Join-Path $HOME ".codex\sessions"
+        if (Test-Path $sessRoot) {
+            $latest = Get-ChildItem -Path $sessRoot -Filter "rollout-*.jsonl" -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+            foreach ($f in $latest) {
+                $lines = Get-Content $f.FullName -ErrorAction SilentlyContinue
+                [array]::Reverse($lines)
+                $done = $false
+                foreach ($l in $lines) {
+                    if ($l -match '"rate_limits"' -and $l -match '"token_count"') {
+                        $obj = $l | ConvertFrom-Json
+                        $rl = $obj.payload.rate_limits
+                        if ($null -ne $rl.primary.used_percent)   { $Script:CODEX_5H = [string][Math]::Round(100 - [double]$rl.primary.used_percent) }
+                        if ($null -ne $rl.secondary.used_percent) { $Script:CODEX_7D = [string][Math]::Round(100 - [double]$rl.secondary.used_percent) }
+                        $done = $true; break
+                    }
+                }
+                if ($done) { break }
+            }
+        }
+    } catch {}
+    if (Test-ProviderInstalled "claude") {
+        try {
+            $req = '{"type":"control_request","request_id":"1","request":{"subtype":"get_usage","skip_behaviors":true}}'
+            $cOut = ($req | & claude -p --input-format stream-json --output-format stream-json --verbose 2>$null) -join "`n"
+            foreach ($cl in ($cOut -split "`r?`n")) {
+                if ($cl -match '"control_response"' -and $cl -match '"rate_limits"') {
+                    $cObj = $cl | ConvertFrom-Json
+                    $rl = $cObj.response.response.rate_limits
+                    if ($null -ne $rl.five_hour.utilization) { $Script:CLAUDE_5H = [string][Math]::Round(100 - [double]$rl.five_hour.utilization) }
+                    if ($null -ne $rl.seven_day.utilization) { $Script:CLAUDE_7D = [string][Math]::Round(100 - [double]$rl.seven_day.utilization) }
+                    break
+                }
+            }
+        } catch {}
+    }
+}
 
 function Get-ProviderBin([string]$Provider) {
     if ($Provider -eq "agy") {
@@ -325,6 +386,7 @@ function Invoke-InteractiveMenu([string]$Title, [int]$DefaultIndex, [string[]]$I
 
 function Print-DashboardHeader {
     Update-ReadinessState
+    if ($Script:QUOTA_TIME -eq "-") { Update-QuotaCache }
     Write-Host ""
     Write-Host " ██╗      ██████╗  ███████╗ ██╗       █████╗  ██╗   ██╗" -ForegroundColor Blue
     Write-Host " ╚██╗     ██╔══██╗ ██╔════╝ ██║      ██╔══██╗ ╚██╗ ██╔╝" -ForegroundColor Blue
@@ -346,6 +408,12 @@ function Print-DashboardHeader {
     Write-Host ("│ 3. @dev (Worktree)  ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_DEV, $Script:MODEL_DEV, (Get-RoleStatusText $Script:ROLE_DEV $Script:MODEL_DEV))
     Write-Host ("│ 4. @qa & @sec       ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_QA, $Script:MODEL_QA, (Get-RoleStatusText $Script:ROLE_QA $Script:MODEL_QA))
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
+    Write-Host ("│ โควต้าคงเหลือแต่ละค่าย (Real-Time Quota) [อัปเดต {0} • กด [u] หรือ /quota เพื่อดึงข้อมูลสด]:" -f $Script:QUOTA_TIME)
+    Write-Host ("│  • agy (Gemini Models)  ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:AGY_GEMINI_5H, $Script:AGY_GEMINI_7D)
+    Write-Host ("│  • agy (Claude & GPT)   ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:AGY_CLAUDE_5H, $Script:AGY_CLAUDE_7D)
+    Write-Host ("│  • codex (OpenAI Plus)  ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:CODEX_5H, $Script:CODEX_7D)
+    Write-Host ("│  • claude (Claude Pro)  ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:CLAUDE_5H, $Script:CLAUDE_7D)
+    Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
     if ($Script:UX_STAGE -eq 1) {
         Write-Host "│ 👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3): ตั้งค่าและ Login บัญชี CLI ให้ครบ 4 ตำแหน่ง" -ForegroundColor Blue
     } elseif ($Script:UX_STAGE -eq 2) {
@@ -356,7 +424,11 @@ function Print-DashboardHeader {
     Write-Host "╰────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
 }
 
-if ($SubCommand -eq "status") { Print-DashboardHeader; exit 0 }
+if ($SubCommand -eq "status" -or $SubCommand -eq "quota" -or $SubCommand -eq "usage") {
+    Update-QuotaCache
+    Print-DashboardHeader
+    exit 0
+}
 
 while ($true) {
     Print-DashboardHeader

@@ -14,6 +14,7 @@ export PATH="$HOME/.gemini/bin:$HOME/.local/bin:$HOME/.agents/bin:$PATH"
 GLOBAL_DIR="$HOME/.agents"
 GLOBAL_ROLES_CONF="$GLOBAL_DIR/relay-roles.conf"
 AGY_MODELS_CACHE="$GLOBAL_DIR/agy-models.cache"
+QUOTA_CACHE_FILE="$GLOBAL_DIR/relay-quota.cache"
 PROJECT_DIR="$(pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 RELAY_DIR="$PROJECT_DIR/.relay"
@@ -474,6 +475,353 @@ check_all_roles_ready() {
   else
     ALL_ROLES_READY=0
   fi
+
+  load_quota_cache
+}
+
+# ─── 2.5 ระบบดึงและแสดงโควต้าคงเหลือแบบเรียลไทม์ (Real-Time Multi-Provider Quota Engine) ───
+QUOTA_UPDATED_EPOCH=0
+QUOTA_UPDATED_AT="-"
+AGY_GEMINI_5H_REM="-"
+AGY_GEMINI_5H_RESET="-"
+AGY_GEMINI_7D_REM="-"
+AGY_GEMINI_7D_RESET="-"
+AGY_CLAUDE_5H_REM="-"
+AGY_CLAUDE_5H_RESET="-"
+AGY_CLAUDE_7D_REM="-"
+AGY_CLAUDE_7D_RESET="-"
+CODEX_PLAN="Plus"
+CODEX_5H_REM="-"
+CODEX_5H_RESET="-"
+CODEX_7D_REM="-"
+CODEX_7D_RESET="-"
+CLAUDE_PLAN="Pro"
+CLAUDE_5H_REM="-"
+CLAUDE_5H_RESET="-"
+CLAUDE_7D_REM="-"
+CLAUDE_7D_RESET="-"
+
+refresh_quota_cache() {
+  local mode="${1:-auto}"
+  mkdir -p "$GLOBAL_DIR"
+
+  if [ "$mode" != "--quiet" ]; then
+    printf "%sกำลังดึงข้อมูลโควต้าคงเหลือแบบเรียลไทม์จาก CLI ทุกค่าย (agy / codex / claude)...%s\n" "$C_ACCENT" "$C_RESET"
+  fi
+
+  if [ "$mode" = "--deep" ] && is_provider_installed "codex" && is_provider_logged_in "codex"; then
+    codex exec --skip-git-repo-check "ok" </dev/null >/dev/null 2>&1 || true
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$QUOTA_CACHE_FILE" "$CLI_AUTH_AGY" "$CLI_AUTH_CLAUDE" <<'PYEOF' 2>/dev/null || true
+import sys, os, re, json, glob, time, pty, subprocess
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+cache_file = sys.argv[1]
+has_agy = (sys.argv[2] == "1")
+has_claude = (sys.argv[3] == "1")
+TH_MONTHS = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+
+def fmt_dt_short(dt, is_weekly=False):
+    if not dt:
+        return "-"
+    if is_weekly:
+        return f"{dt.day:02d} {TH_MONTHS[dt.month]} {dt.strftime('%H:%M')}"
+    return dt.strftime("%H:%M")
+
+vals = {
+    "QUOTA_UPDATED_EPOCH": str(int(time.time())),
+    "QUOTA_UPDATED_AT": datetime.now().strftime("%H:%M:%S"),
+    "AGY_GEMINI_5H_REM": "-",
+    "AGY_GEMINI_5H_RESET": "-",
+    "AGY_GEMINI_7D_REM": "-",
+    "AGY_GEMINI_7D_RESET": "-",
+    "AGY_CLAUDE_5H_REM": "-",
+    "AGY_CLAUDE_5H_RESET": "-",
+    "AGY_CLAUDE_7D_REM": "-",
+    "AGY_CLAUDE_7D_RESET": "-",
+    "CODEX_PLAN": "Plus",
+    "CODEX_5H_REM": "-",
+    "CODEX_5H_RESET": "-",
+    "CODEX_7D_REM": "-",
+    "CODEX_7D_RESET": "-",
+    "CLAUDE_PLAN": "Pro",
+    "CLAUDE_5H_REM": "-",
+    "CLAUDE_5H_RESET": "-",
+    "CLAUDE_7D_REM": "-",
+    "CLAUDE_7D_RESET": "-",
+}
+
+if os.path.exists(cache_file):
+    try:
+        for line in open(cache_file, encoding="utf-8"):
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                v = v.strip().strip('"').strip("'")
+                if k in vals and k not in ("QUOTA_UPDATED_EPOCH", "QUOTA_UPDATED_AT") and v and v != "-":
+                    vals[k] = v
+    except Exception:
+        pass
+
+def fetch_agy():
+    if not has_agy:
+        return ""
+    try:
+        proc = subprocess.Popen(
+            ["agy", "-p", "/usage"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
+        out, _ = proc.communicate(timeout=15)
+        return out.decode("utf-8", errors="ignore")
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return ""
+
+def fetch_claude():
+    if not has_claude:
+        return ""
+    try:
+        req = b'{"type":"control_request","request_id":"1","request":{"subtype":"get_usage","skip_behaviors":true}}\n'
+        proc = subprocess.Popen(
+            ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
+        out, _ = proc.communicate(input=req, timeout=15)
+        return out.decode("utf-8", errors="ignore")
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return ""
+
+with ThreadPoolExecutor(max_workers=2) as ex:
+    fut_agy = ex.submit(fetch_agy)
+    fut_claude = ex.submit(fetch_claude)
+    raw_agy = fut_agy.result()
+    raw_claude = fut_claude.result()
+
+# 1. แยกวิเคราะห์ผลลัพธ์จาก agy -p "/usage" (รองรับทั้งโหมด TSV ISO-8601 UTC เมื่อต่อ Pipe และโหมด TTY)
+if raw_agy:
+    try:
+        for line in raw_agy.splitlines():
+            m = re.search(
+                r"^(Gemini Models|Claude and GPT models)\s+(Weekly Limit Remaining|Five Hour Limit Remaining)\s+(\d+)%\s+(\S+(?:\s+\S+)?)",
+                line.strip(),
+            )
+            if m:
+                group, win, pct, dt_str = m.group(1), m.group(2), m.group(3), m.group(4).strip()
+                dt_obj = None
+                try:
+                    if "T" in dt_str:
+                        dt_obj = datetime.fromisoformat(dt_str.replace("Z", "+00:00")).astimezone()
+                    else:
+                        dt_clean = re.sub(r"\s+[+-]\d+$", "", dt_str)
+                        dt_obj = datetime.strptime(dt_clean, "%Y-%m-%d %H:%M")
+                except Exception:
+                    dt_obj = None
+                is_wk = "Weekly" in win
+                prefix = "AGY_GEMINI" if "Gemini" in group else "AGY_CLAUDE"
+                win_key = "7D" if is_wk else "5H"
+                vals[f"{prefix}_{win_key}_REM"] = pct
+                vals[f"{prefix}_{win_key}_RESET"] = fmt_dt_short(dt_obj, is_weekly=is_wk)
+    except Exception:
+        pass
+
+# 2. แยกวิเคราะห์ผลลัพธ์จาก ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+try:
+    codex_files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
+    for cf in reversed(codex_files[-8:]):
+        found_rl = False
+        for line in reversed(open(cf, encoding="utf-8", errors="ignore").readlines()):
+            if '"rate_limits"' in line and '"token_count"' in line:
+                obj = json.loads(line)
+                rl = (obj.get("payload") or {}).get("rate_limits") or {}
+                prim = rl.get("primary") or {}
+                sec = rl.get("secondary") or {}
+                if prim.get("used_percent") is not None:
+                    rem5 = max(0, min(100, int(round(100.0 - float(prim["used_percent"])))))
+                    vals["CODEX_5H_REM"] = str(rem5)
+                    if prim.get("resets_at"):
+                        vals["CODEX_5H_RESET"] = fmt_dt_short(datetime.fromtimestamp(int(prim["resets_at"])), is_weekly=False)
+                if sec.get("used_percent") is not None:
+                    rem7 = max(0, min(100, int(round(100.0 - float(sec["used_percent"])))))
+                    vals["CODEX_7D_REM"] = str(rem7)
+                    if sec.get("resets_at"):
+                        vals["CODEX_7D_RESET"] = fmt_dt_short(datetime.fromtimestamp(int(sec["resets_at"])), is_weekly=True)
+                pt = rl.get("plan_type")
+                if pt:
+                    vals["CODEX_PLAN"] = str(pt).capitalize()
+                found_rl = True
+                break
+        if found_rl:
+            break
+except Exception:
+    pass
+
+# 3. แยกวิเคราะห์ผลลัพธ์จาก claude get_usage
+if raw_claude:
+    try:
+        for line in raw_claude.splitlines():
+            if '"control_response"' in line and '"rate_limits"' in line:
+                obj = json.loads(line)
+                resp = ((obj.get("response") or {}).get("response")) or {}
+                st = resp.get("subscription_type")
+                if st:
+                    vals["CLAUDE_PLAN"] = str(st).capitalize()
+                rl = resp.get("rate_limits")
+                if isinstance(rl, dict):
+                    fh = rl.get("five_hour") or {}
+                    sd = rl.get("seven_day") or {}
+                    if fh.get("utilization") is not None:
+                        rem5 = max(0, min(100, int(round(100.0 - float(fh["utilization"])))))
+                        vals["CLAUDE_5H_REM"] = str(rem5)
+                        if fh.get("resets_at"):
+                            dt5 = datetime.fromisoformat(str(fh["resets_at"]).replace("Z", "+00:00")).astimezone()
+                            vals["CLAUDE_5H_RESET"] = fmt_dt_short(dt5, is_weekly=False)
+                        else:
+                            vals["CLAUDE_5H_RESET"] = "พร้อมใช้"
+                    if sd.get("utilization") is not None:
+                        rem7 = max(0, min(100, int(round(100.0 - float(sd["utilization"])))))
+                        vals["CLAUDE_7D_REM"] = str(rem7)
+                        if sd.get("resets_at"):
+                            dt7 = datetime.fromisoformat(str(sd["resets_at"]).replace("Z", "+00:00")).astimezone()
+                            vals["CLAUDE_7D_RESET"] = fmt_dt_short(dt7, is_weekly=True)
+                break
+    except Exception:
+        pass
+
+with open(cache_file, "w", encoding="utf-8") as f:
+    for k, v in vals.items():
+        f.write(f'{k}="{v}"\n')
+PYEOF
+  fi
+
+  if [ -f "$QUOTA_CACHE_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$QUOTA_CACHE_FILE"
+  fi
+}
+
+update_codex_quota_fast() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  local cx_out
+  cx_out="$(python3 -c '
+import os, glob, json
+from datetime import datetime
+TH_MONTHS = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
+for cf in reversed(files[-5:]):
+    for line in reversed(open(cf, encoding="utf-8", errors="ignore").readlines()):
+        if "\"rate_limits\"" in line and "\"token_count\"" in line:
+            rl = (json.loads(line).get("payload") or {}).get("rate_limits") or {}
+            p, s = rl.get("primary") or {}, rl.get("secondary") or {}
+            r5 = max(0, min(100, int(round(100.0 - float(p.get("used_percent", 0))))))
+            r7 = max(0, min(100, int(round(100.0 - float(s.get("used_percent", 0))))))
+            dt5 = datetime.fromtimestamp(int(p["resets_at"])).strftime("%H:%M") if p.get("resets_at") else "-"
+            dt7_o = datetime.fromtimestamp(int(s["resets_at"])) if s.get("resets_at") else None
+            dt7 = f"{dt7_o.day:02d} {TH_MONTHS[dt7_o.month]} {dt7_o.strftime(\"%H:%M\")}" if dt7_o else "-"
+            pt = str(rl.get("plan_type") or "plus").capitalize()
+            print(f"{pt}|{r5}|{dt5}|{r7}|{dt7}")
+            raise SystemExit(0)
+' 2>/dev/null || true)"
+  if [ -n "$cx_out" ]; then
+    IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET <<<"$cx_out"
+  fi
+}
+
+load_quota_cache() {
+  local now_ts
+  now_ts="$(date +%s)"
+  if [ -f "$QUOTA_CACHE_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$QUOTA_CACHE_FILE"
+  fi
+  update_codex_quota_fast
+  local age=$((now_ts - ${QUOTA_UPDATED_EPOCH:-0}))
+  if [ "${SUBCOMMAND:-hub}" != "quota" ] && [ "${SUBCOMMAND:-hub}" != "usage" ]; then
+    if [ ! -f "$QUOTA_CACHE_FILE" ] || [ "$age" -gt 180 ] || [ "${AGY_GEMINI_5H_REM:--}" = "-" ]; then
+      ( refresh_quota_cache --quiet </dev/null >/dev/null 2>&1 & )
+    fi
+  fi
+}
+
+format_quota_pct_color() {
+  local pct="$1"
+  if [[ ! "$pct" =~ ^[0-9]+$ ]]; then
+    printf "%s—%s" "$C_MUTED" "$C_RESET"
+  elif [ "$pct" -ge 50 ]; then
+    printf "%s● %s%%%s" "$C_OK" "$pct" "$C_RESET"
+  elif [ "$pct" -ge 20 ]; then
+    printf "%s▲ %s%%%s" "$C_WARN" "$pct" "$C_RESET"
+  else
+    printf "%s▲ %s%% (ใกล้หมด)%s" "$C_ERR" "$pct" "$C_RESET"
+  fi
+}
+
+format_quota_bar() {
+  local pct="$1"
+  if [[ ! "$pct" =~ ^[0-9]+$ ]]; then
+    printf "%s[░░░░░░░░░░]   —%s" "$C_MUTED" "$C_RESET"
+    return
+  fi
+  local filled=$(( (pct + 5) / 10 ))
+  [ "$filled" -gt 10 ] && filled=10
+  [ "$filled" -lt 0 ] && filled=0
+  local empty=$((10 - filled))
+  local bar=""
+  local i=0
+  while [ "$i" -lt "$filled" ]; do bar="${bar}█"; i=$((i + 1)); done
+  i=0
+  while [ "$i" -lt "$empty" ]; do bar="${bar}░"; i=$((i + 1)); done
+
+  local col="$C_OK"
+  if [ "$pct" -lt 20 ]; then
+    col="$C_ERR"
+  elif [ "$pct" -lt 50 ]; then
+    col="$C_WARN"
+  fi
+  printf "%s[%s] %3d%%%s" "$col" "$bar" "$pct" "$C_RESET"
+}
+
+get_role_quota_pair() {
+  local provider="$1"
+  local model="$2"
+  local q5="-" q7="-"
+  case "$provider" in
+    agy)
+      if [[ "$model" == claude-* ]] || [[ "$model" == gpt-* ]]; then
+        q5="$AGY_CLAUDE_5H_REM"
+        q7="$AGY_CLAUDE_7D_REM"
+      else
+        q5="$AGY_GEMINI_5H_REM"
+        q7="$AGY_GEMINI_7D_REM"
+      fi
+      ;;
+    codex)
+      q5="$CODEX_5H_REM"
+      q7="$CODEX_7D_REM"
+      ;;
+    claude)
+      q5="$CLAUDE_5H_REM"
+      q7="$CLAUDE_7D_REM"
+      ;;
+  esac
+  printf "%s|%s" "$q5" "$q7"
 }
 
 format_role_status_cell() {
@@ -481,10 +829,28 @@ format_role_status_cell() {
   local model="$2"
   if ! is_provider_installed "$provider"; then
     printf "%s✖ ยังไม่ติดตั้ง CLI (กด [3])%s" "$C_ERR" "$C_RESET"
+    return
   elif ! is_provider_logged_in "$provider"; then
     printf "%s▲ ยังไม่ Login บัญชี (กด [3])%s" "$C_WARN" "$C_RESET"
+    return
   elif ! is_model_explicitly_set "$model"; then
     printf "%s▲ รอเลือกโมเดล (กด [1]/[2])%s" "$C_WARN" "$C_RESET"
+    return
+  fi
+
+  local qpair q5 q7
+  qpair="$(get_role_quota_pair "$provider" "$model")"
+  q5="${qpair%%|*}"
+  q7="${qpair#*|}"
+
+  if [[ "$q5" =~ ^[0-9]+$ ]] && [[ "$q7" =~ ^[0-9]+$ ]]; then
+    local min_q="$q5"
+    [ "$q7" -lt "$min_q" ] && min_q="$q7"
+    if [ "$min_q" -lt 20 ]; then
+      printf "%s▲ พร้อมใช้ • เหลือ 5h:%s%% │ 7d:%s%% (โควต้าต่ำ)%s" "$C_WARN" "$q5" "$q7" "$C_RESET"
+    else
+      printf "%s● พร้อมใช้ (เหลือ 5h:%s%% • 7d:%s%%)%s" "$C_OK" "$q5" "$q7" "$C_RESET"
+    fi
   elif [ "$provider" = "agy" ]; then
     printf "%s● พร้อมใช้งาน (Google AI Ultra)%s" "$C_OK" "$C_RESET"
   else
@@ -789,6 +1155,23 @@ print_dashboard_header() {
   printf "%s│%s %sสถานะ CLI:%s %b   %b   %b\n" \
     "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$agy_b" "$codex_b" "$claude_b"
 
+  # ─── แถบโควต้าคงเหลือแบบเรียลไทม์ของแต่ละค่าย (Real-Time Multi-Provider Quota) ───
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sโควต้าคงเหลือแต่ละค่าย (Real-Time Quota)%s  %s[อัปเดตล่าสุด %s • กด [u] หรือ /quota เพื่อดึงข้อมูลสด]%s\n" \
+    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
+  printf "%s│%s  • agy (Gemini Models)  ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
+    "$C_ACCENT" "$C_RESET" "$(format_quota_pct_color "$AGY_GEMINI_5H_REM")" "$C_MUTED" "$AGY_GEMINI_5H_RESET" "$C_RESET" \
+    "$(format_quota_pct_color "$AGY_GEMINI_7D_REM")" "$C_MUTED" "$AGY_GEMINI_7D_RESET" "$C_RESET"
+  printf "%s│%s  • agy (Claude & GPT)   ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
+    "$C_ACCENT" "$C_RESET" "$(format_quota_pct_color "$AGY_CLAUDE_5H_REM")" "$C_MUTED" "$AGY_CLAUDE_5H_RESET" "$C_RESET" \
+    "$(format_quota_pct_color "$AGY_CLAUDE_7D_REM")" "$C_MUTED" "$AGY_CLAUDE_7D_RESET" "$C_RESET"
+  printf "%s│%s  • codex (OpenAI %-4s)  ➔ 5 ชม.: %b %s(รีเซ็ต %s)%s │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
+    "$C_ACCENT" "$C_RESET" "$CODEX_PLAN" "$(format_quota_pct_color "$CODEX_5H_REM")" "$C_MUTED" "$CODEX_5H_RESET" "$C_RESET" \
+    "$(format_quota_pct_color "$CODEX_7D_REM")" "$C_MUTED" "$CODEX_7D_RESET" "$C_RESET"
+  printf "%s│%s  • claude (Claude %-3s)  ➔ 5 ชม.: %b %s(%s)%s    │ รายสัปดาห์: %b %s(รีเซ็ต %s)%s\n" \
+    "$C_ACCENT" "$C_RESET" "$CLAUDE_PLAN" "$(format_quota_pct_color "$CLAUDE_5H_REM")" "$C_MUTED" "$CLAUDE_5H_RESET" "$C_RESET" \
+    "$(format_quota_pct_color "$CLAUDE_7D_REM")" "$C_MUTED" "$CLAUDE_7D_RESET" "$C_RESET"
+
   # แสดงข้อมูลโฟลเดอร์โปรเจกต์เฉพาะเมื่อผ่านขั้นที่ 1 แล้ว
   if [ "$UX_STAGE" -ge 2 ]; then
     printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -831,6 +1214,76 @@ print_dashboard_header() {
       "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$STAGE3_FOCUS_TEXT"
   fi
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+}
+
+# ─── 4.5 ศูนย์ตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ ([u] / /quota / relay quota) ─────
+print_quota_report_box() {
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sรายงานโควต้าคงเหลือแบบเรียลไทม์ (RELAY Live Multi-Provider Quota Monitor)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (ดึงข้อมูลสดจาก CLI ทั้ง 3 ค่ายโดยตรง)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s1. Google AI Ultra — กระเป๋า Gemini Models (agy)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_GEMINI_5H_REM")" "$C_MUTED" "$AGY_GEMINI_5H_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_GEMINI_7D_REM")" "$C_MUTED" "$AGY_GEMINI_7D_RESET" "$C_RESET"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s2. Google AI Ultra — กระเป๋า Claude & GPT Models (agy)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_CLAUDE_5H_REM")" "$C_MUTED" "$AGY_CLAUDE_5H_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$AGY_CLAUDE_7D_REM")" "$C_MUTED" "$AGY_CLAUDE_7D_RESET" "$C_RESET"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s3. OpenAI Codex CLI — แพ็กเกจ %s (codex)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CODEX_PLAN" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(รีเซ็ตเวลา %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CODEX_5H_REM")" "$C_MUTED" "$CODEX_5H_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CODEX_7D_REM")" "$C_MUTED" "$CODEX_7D_RESET" "$C_RESET"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s4. Anthropic Claude Code CLI — แพ็กเกจ %s (claude)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$CLAUDE_PLAN" "$C_RESET"
+  printf "%s│%s    • โควต้า 5 ชั่วโมง (5-Hour) : %b   %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CLAUDE_5H_REM")" "$C_MUTED" "$CLAUDE_5H_RESET" "$C_RESET"
+  printf "%s│%s    • โควต้ารายสัปดาห์ (Weekly) : %b   %s(รีเซ็ตวันที่ %s)%s\n" "$C_ACCENT" "$C_RESET" "$(format_quota_bar "$CLAUDE_7D_REM")" "$C_MUTED" "$CLAUDE_7D_RESET" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sคำแนะนำการจัดสรรโควต้าปัจจุบัน:%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  if [[ "$CLAUDE_7D_REM" =~ ^[0-9]+$ ]] && [ "$CLAUDE_7D_REM" -lt 20 ]; then
+    printf "%s│%s  %s▲ โควต้ารายสัปดาห์ของค่าย claude เหลือเพียง %s%% — แนะนำให้ใช้ Claude Opus/Sonnet 5.5 ผ่านค่าย agy (Google AI Ultra เหลือ %s%%) แทน!%s\n" \
+      "$C_ACCENT" "$C_RESET" "$C_WARN" "$CLAUDE_7D_REM" "$AGY_CLAUDE_7D_REM" "$C_RESET"
+  else
+    printf "%s│%s  %s● โควต้าทุกตำแหน่งที่ตั้งค่าไว้พร้อมลุยงานต่อเนื่องได้อย่างเต็มประสิทธิภาพ%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
+  fi
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+}
+
+run_quota_dashboard() {
+  local mode="${1:-interactive}"
+  refresh_cli_auth_cache
+  refresh_quota_cache --live
+  print_quota_report_box
+
+  if [ "$mode" = "--once" ] || [ ! -t 0 ]; then
+    return 0
+  fi
+
+  while true; do
+    interactive_menu "จัดการและรีเฟรชโควต้าคงเหลือแบบเรียลไทม์" 0 \
+      "1|★ รีเฟรชข้อมูลโควต้าสดจากทุกค่ายเดี๋ยวนี้ (Live Sync: agy + codex + claude)" \
+      "2|ยิงอัปเดตโควต้า Codex สดจากเซิร์ฟเวอร์ OpenAI (Deep Codex Sync)" \
+      "c|สลับค่าย AI / เปลี่ยน Model ประจำตำแหน่งเพื่อกระจายโควต้า (/model)" \
+      "b|กลับสู่หน้าจอหลัก"
+
+    case "$MENU_RESULT" in
+      1)
+        refresh_quota_cache --live
+        print_quota_report_box
+        ;;
+      2)
+        refresh_quota_cache --deep
+        print_quota_report_box
+        ;;
+      c|C)
+        configure_roles_menu
+        return 0
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
 }
 
 # ─── 5. ฟังก์ชันตรวจสอบและบล็อกการถามงานหากยังตั้งค่า/Login ไม่ครบ 4 ตำแหน่ง ──
@@ -1483,6 +1936,7 @@ launch_provider_cli() {
       gemini) gemini -m "$configured_model" -i "$initial_prompt" 2>/dev/null || gemini -m "$configured_model" || true ;;
     esac
   )
+  refresh_quota_cache --quiet
 }
 
 ensure_or_create_task() {
@@ -1658,6 +2112,10 @@ case "$SUBCOMMAND" in
     print_dashboard_header
     exit 0
     ;;
+  quota|usage)
+    run_quota_dashboard "${2:-interactive}"
+    exit 0
+    ;;
   config|model)
     configure_roles_menu
     exit 0
@@ -1693,6 +2151,7 @@ while true; do
       "1|★ [แนะนำ] ตั้งค่าด่วนด้วยโควตา Google AI Ultra (agy) + Codex พร้อมใช้ทันที" \
       "2|เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)" \
       "3|จัดการการเชื่อมต่อ CLI & Login บัญชี (agy / codex / claude)" \
+      "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
       "t|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
       "q|ออกจากโปรแกรม (/quit)"
 
@@ -1700,6 +2159,7 @@ while true; do
       1) run_quick_preset_menu ;;
       2|c|C|/model|/config) configure_roles_menu ;;
       3|d|D|/connect|/doctor|/login) run_doctor_menu ;;
+      u|U|/quota|/usage) run_quota_dashboard ;;
       t|T|/test) run_agent_readiness_test ;;
       s|S|/skills) run_skills_menu ;;
       q|Q|/quit|/exit|exit)
@@ -1715,6 +2175,7 @@ while true; do
     if [ "$IN_HOME_DIR" -eq 1 ]; then
       interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ที่จะทำงาน (ปัจจุบันคุณอยู่ใน Home ~)" 0 \
         "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที (แนะนำ)" \
+        "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
         "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งด้วยโควตา Google AI Ultra + Codex (/test)" \
         "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
         "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
@@ -1722,6 +2183,7 @@ while true; do
 
       case "$MENU_RESULT" in
         1|f|F|i|I|/init) select_or_create_project_dir ;;
+        u|U|/quota|/usage) run_quota_dashboard ;;
         c|C|m|M|/model|/config) configure_roles_menu ;;
         d|D|/connect|/doctor) run_doctor_menu ;;
         t|T|/test) run_agent_readiness_test ;;
@@ -1736,6 +2198,7 @@ while true; do
         "1|★ เริ่มโปรเจกต์ใหม่ตั้งแต่ศูนย์ในโฟลเดอร์นี้ (Greenfield — สร้าง .relay/ ทันที)" \
         "2|นำ RELAY มาใช้กับโปรเจกต์เดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนสร้าง PROJECT_STATE.md)" \
         "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
+        "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
         "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
         "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
         "q|ออกจากโปรแกรม (/quit)"
@@ -1744,6 +2207,7 @@ while true; do
         1) run_init_greenfield ;;
         2) run_init_brownfield ;;
         f|F) select_or_create_project_dir ;;
+        u|U|/quota|/usage) run_quota_dashboard ;;
         c|C|m|M|/model|/config) configure_roles_menu ;;
         d|D|/connect|/doctor) run_doctor_menu ;;
         t|T|/test) run_agent_readiness_test ;;
@@ -1783,6 +2247,7 @@ while true; do
       "5|${p5_label}" \
       "n|สร้างใบงานใหม่ (New Task) (/new)" \
       "f|สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)" \
+      "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
       "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
       "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
       "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
@@ -1798,6 +2263,7 @@ while true; do
       n|N|/new)             create_new_task ;;
       f|F)                  select_or_create_project_dir ;;
       i|I|/init)            run_init_project ;;
+      u|U|/quota|/usage)    run_quota_dashboard ;;
       c|C|m|M|/model|/config) configure_roles_menu ;;
       d|D|/connect|/doctor|/login) run_doctor_menu ;;
       t|T|/test|/check)     run_agent_readiness_test ;;
