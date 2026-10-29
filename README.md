@@ -34,31 +34,31 @@
 
 ```mermaid
 flowchart TD
-    subgraph HUB ["🎛️ หน้าจอควบคุมกลาง: พิมพ์คำสั่ง 'relay' ในหน้าต่าง Terminal เดียว"]
-        S1["ขั้นที่ 1: ตั้งค่า & Login AI (4/4)<br/>(รองรับ agy Google AI Ultra, claude, codex, gemini + เช็กโควต้าเรียลไทม์ [u])"]
-        S2["ขั้นที่ 2: เตรียมโปรเจกต์ (.relay/PROJECT_STATE.md)<br/>(ป้องกันการรันใน ~ และสร้างโครงสร้าง .relay/ อัตโนมัติ)"]
-        S3["ขั้นที่ 3: เริ่มสั่งงานตามใบงาน 1 ถึง 5<br/>(ชี้เป้า ★ ขั้นตอนถัดไป หรือกด [a] รัน Auto-Relay Loop)"]
+    subgraph HUB ["🎛️ หน้าจอควบคุมกลาง: พิมพ์คำสั่ง relay ในหน้าต่าง Terminal เดียว"]
+        S1["ขั้นที่ 1: ตั้งค่าและ Login AI ครบ 4 ตำแหน่ง (agy, claude, codex + เช็กโควต้าสด)"]
+        S2["ขั้นที่ 2: เตรียมโปรเจกต์ (.relay/PROJECT_STATE.md)"]
+        S3["ขั้นที่ 3: เริ่มสั่งงานตามใบงาน 1 ถึง 5 หรือรัน Auto-Relay Loop"]
     end
 
-    subgraph PHASES ["🤖 การทำงานทั้ง 4 ขั้นตอน (เลือกกดทีละขั้น [1]-[4] หรือกด [a] รันลูปอัตโนมัติ 2 ➔ 3 ⇄ 4)"]
-        C1["กด [1] ขั้นตอนที่ 1 (@po)<br/>เช่น agy (gemini-4-argon-high) ➔ ซักถามความต้องการและสร้าง SPEC.md"]
-        C2["กด [2] ขั้นตอนที่ 2 (@arch & @pm)<br/>เช่น agy (claude-opus-5-5-high) ➔ อ่าน PROJECT_STATE + SPEC สร้าง ARCH & PLAN"]
-        C3["กด [3] ขั้นตอนที่ 3 (@dev)<br/>แยก Git Worktree อัตโนมัติ ➔ เช่น agy (claude-sonnet-5-5-high) พัฒนาโค้ดและเทสต์"]
-        C4["กด [4] ขั้นตอนที่ 4 (@qa & @sec)<br/>เช่น codex (gpt-6.1-terra) ➔ รันเทสต์ 0 Token + ตรวจ Security + เขียน QA_REPORT.md"]
+    subgraph PHASES ["🤖 การทำงานทั้ง 4 ขั้นตอน (เลือกกดทีละขั้น 1-4 หรือกด a รันลูปอัตโนมัติ 2 ➔ 3 ⇄ 4)"]
+        C1["ขั้นตอนที่ 1 (@po): ซักถามความต้องการและสร้าง SPEC.md"]
+        C2["ขั้นตอนที่ 2 (@arch / @pm): อ่าน PROJECT_STATE + SPEC สร้าง ARCH & PLAN"]
+        C3["ขั้นตอนที่ 3 (@dev): แยก Git Worktree อัตโนมัติ พัฒนาโค้ดและชุดทดสอบ"]
+        C4["ขั้นตอนที่ 4 (@qa / @sec): รันเทสต์ 0 Token + ตรวจ Security + เขียน QA_REPORT.md"]
     end
 
-    subgraph FINISH ["🏁 ขั้นตอนที่ 5: สกัดบทเรียนสะสม + ผสานโค้ด (กด [5] Merge & Archive / [l] Self-Learn)"]
-        MERGE["สกัดกฎป้องกันบั๊กซ้ำลง .relay/skills/project-learned/SKILL.md ➔ ผสานกิ่งเข้า main ➔ เก็บเข้า .relay/archive/"]
+    subgraph FINISH ["🏁 ขั้นตอนที่ 5: สกัดบทเรียนสะสม + ผสานโค้ด (Merge & Archive / Self-Learn)"]
+        MERGE["สกัดกฎป้องกันบั๊กซ้ำลง .relay/skills/project-learned/SKILL.md ➔ ผสานเข้า main ➔ เก็บเข้า .relay/archive/"]
     end
 
     S1 --> S2 --> S3
     S3 --> C1 & C2 & C3 & C4
-    C1 -->|อนุมัติ SPEC.md| C2
-    C2 -->|ส่งแผนงาน| C3
-    C3 -->|ส่งตรวจรับ| C4
-    C4 -->|หากไม่ผ่าน (ไม่เกิน 3 รอบ)| C3
-    C4 -->|VERDICT: PASS| S3
-    S3 -->|กด [5]| MERGE
+    C1 -->|"อนุมัติ SPEC.md"| C2
+    C2 -->|"ส่งแผนงาน ARCH & PLAN"| C3
+    C3 -->|"ส่งตรวจรับใน Worktree"| C4
+    C4 -->|"หากไม่ผ่าน: แก้ไขอัตโนมัติสูงสุด 3 รอบ"| C3
+    C4 -->|"VERDICT: PASS"| S3
+    S3 -->|"กด 5 ผสานโค้ดและสกัดบทเรียน"| MERGE
 ```
 
 ---
