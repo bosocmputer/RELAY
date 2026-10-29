@@ -33,9 +33,9 @@ sync_manifest_skills() {
     echo "------------------------------------------------------------------"
     echo "📦 ${desc:-Skill}: $repo ${skill:+(skill: $skill)}"
     if [ -n "$skill" ]; then
-      npx -y skills add "$repo" --skill "$skill" -g
+      npx -y skills add "$repo" --skill "$skill" -g -y < /dev/null
     else
-      npx -y skills add "$repo" -g
+      npx -y skills add "$repo" -g -y < /dev/null
     fi
   done < "$MANIFEST_FILE"
 

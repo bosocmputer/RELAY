@@ -120,9 +120,9 @@ function Invoke-InteractiveMenu([string]$Title, [int]$DefaultIndex, [string[]]$I
             $k = $parts[0]
             $lbl = $parts[1]
             if ($i -eq $selected) {
-                Write-Host ("  ❯ [{0}] {1,-68}" -f $k, $lbl) -BackgroundColor DarkBlue -ForegroundColor White
+                Write-Host ("  ❯ [{0}] {1}" -f $k, $lbl) -ForegroundColor Blue
             } else {
-                Write-Host ("    [{0}] {1,-68}" -f $k, $lbl) -ForegroundColor Cyan
+                Write-Host ("    [{0}] {1}" -f $k, $lbl)
             }
         }
         $curKey = ($Items[$selected] -split '\|', 2)[0]

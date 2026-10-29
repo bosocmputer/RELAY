@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# 🎛️ RELAY Central Terminal Hub (v1.0) — Full-Color Interactive TUI (macOS/Linux)
-# • 3D Two-Tone Pixel-Block Gradient Banner (> RELAY)
-# • รองรับปุ่มลูกศร ↑/↓ + Enter บน macOS Bash 3.2 / Zsh 100% (ไม่เพี้ยน ไม่ซ้อนบรรทัด)
-# • ระบบ Readiness Gate: บังคับตั้งค่า Roles + Provider + Model ให้ครบทั้ง 4 ตำแหน่งก่อนเริ่มถามงาน
+# 🎛️ RELAY Central Terminal Hub (v1.0) — Minimalist High-Contrast Interactive TUI
+# • โทนสี Minimalist 3-Tier (รองรับทั้ง Terminal พื้นหลังสีขาว Light Mode และพื้นดำ Dark Mode)
+# • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด (คลุมครบ 100% ไม่แหว่งสระไทย)
+# • ระบบ 4-Role Readiness Gate: บังคับตั้งค่า Roles + Provider + Model ให้ครบทั้ง 4 ตำแหน่งก่อนเริ่มงาน
 # ==============================================================================
 
 GLOBAL_DIR="$HOME/.agents"
@@ -14,38 +14,23 @@ PROJECT_NAME="$(basename "$PROJECT_DIR")"
 RELAY_DIR="$PROJECT_DIR/.relay"
 PROJECT_ROLES_CONF="$RELAY_DIR/roles.conf"
 
-# ─── ระบบสี ANSI 256-Color เต็มรูปแบบ ──────────────────────────────────────────
+# ─── ระบบสี Minimalist High-Contrast (อ่านคมชัดทั้งบนพื้นขาวและพื้นดำ) ─────────
 export CLICOLOR=1
-export CLICOLOR_FORCE=1
 C_RESET=$'\033[0m'
 C_BOLD=$'\033[1m'
-C_DIM=$'\033[2m'
 
-# สีหลักของธีมและเงา 3 มิติ
-C_CYAN=$'\033[1;38;5;51m'
-C_CYAN_SH=$'\033[38;5;31m'
-C_BLUE=$'\033[1;38;5;75m'
-C_BLUE_SH=$'\033[38;5;25m'
-C_INDIGO=$'\033[1;38;5;111m'
-C_INDIGO_SH=$'\033[38;5;61m'
-C_VIOLET=$'\033[1;38;5;141m'
-C_VIOLET_SH=$'\033[38;5;97m'
-C_PINK=$'\033[1;38;5;213m'
-C_PINK_SH=$'\033[38;5;162m'
-C_CORAL=$'\033[1;38;5;209m'
-C_CORAL_SH=$'\033[38;5;130m'
+# สีเทาเข้มปานกลาง (ไม่จางหายบนพื้นขาว และไม่มืดจมบนพื้นดำ)
+C_MUTED=$'\033[38;5;242m'
 
-# สีประจำบทบาทและสถานะ
-C_GOLD=$'\033[1;38;5;220m'
-C_GREEN=$'\033[1;38;5;84m'
-C_MINT=$'\033[1;38;5;48m'
-C_RED=$'\033[1;38;5;203m'
-C_GRAY=$'\033[38;5;242m'
-C_LIGHT_GRAY=$'\033[38;5;250m'
-C_WHITE=$'\033[1;38;5;255m'
+# สีหลักของระบบ (Primary Accent — น้ำเงินคราม Cerulean / Royal Blue)
+C_ACCENT=$'\033[38;5;32m'
+C_ACCENT_SH=$'\033[38;5;24m'
+C_SEL=$'\033[1;38;5;26m'
 
-# สีแถบไฮไลต์เมื่อเลื่อนปุ่มลูกศร ↑/↓
-C_SEL_BG=$'\033[48;5;24m\033[1;38;5;255m'
+# สีบอกสถานะ (ใช้เฉพาะจุดบอกสถานะเท่านั้น ไม่ระบายพร่ำเพรื่อ)
+C_OK=$'\033[38;5;28m'
+C_WARN=$'\033[38;5;166m'
+C_ERR=$'\033[38;5;160m'
 
 # ─── 1. โหลดและบันทึกการตั้งค่า Role & Model ─────────────────────────────────
 load_role_config() {
@@ -82,7 +67,7 @@ MODEL_QA="${MODEL_QA:-default}"
 EOF
 }
 
-# ─── 2. ตรวจสอบสถานะ CLI, สีประจำค่าย และระบบ 4-Role Readiness Gate ─────────
+# ─── 2. ตรวจสอบสถานะ CLI และระบบ 4-Role Readiness Gate ───────────────────────
 is_provider_installed() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -96,16 +81,6 @@ get_provider_version() {
   local ver
   ver="$("$provider" --version 2>/dev/null | head -n 1 | tr -d '\r' || true)"
   echo "${ver:-installed}"
-}
-
-format_provider_colored() {
-  local provider="$1"
-  case "$provider" in
-    claude) printf "%s%-6s%s" "$C_CORAL" "claude" "$C_RESET" ;;
-    gemini) printf "%s%-6s%s" "$C_BLUE"  "gemini" "$C_RESET" ;;
-    codex)  printf "%s%-6s%s" "$C_GREEN" "codex"  "$C_RESET" ;;
-    *)      printf "%s%-6s%s" "$C_WHITE" "$provider" "$C_RESET" ;;
-  esac
 }
 
 get_cli_default_model() {
@@ -206,23 +181,23 @@ format_role_status_cell() {
   local provider="$1"
   local model="$2"
   if ! is_provider_installed "$provider"; then
-    printf "%s✖ ยังไม่ติดตั้ง CLI%s" "$C_RED" "$C_RESET"
+    printf "%s✖ ยังไม่ติดตั้ง CLI%s" "$C_ERR" "$C_RESET"
   elif ! is_model_explicitly_set "$model"; then
-    printf "%s⚠️ รอเลือกโมเดล ([c])%s" "$C_GOLD" "$C_RESET"
+    printf "%s▲ รอเลือกโมเดล ([c])%s" "$C_WARN" "$C_RESET"
   else
-    printf "%s● พร้อมใช้งาน 100%%%s" "$C_GREEN" "$C_RESET"
+    printf "%s● พร้อมใช้งาน%s" "$C_OK" "$C_RESET"
   fi
 }
 
-format_role_model_cell() {
+format_role_model_text() {
   local provider="$1"
   local model="$2"
   if is_model_explicitly_set "$model"; then
-    printf "%s%-16s%s" "$C_WHITE" "$model" "$C_RESET"
+    printf "%-18s" "$model"
   else
     local cli_def
     cli_def="$(get_cli_default_model "$provider")"
-    printf "%s%-16s%s" "$C_GOLD" "ยังไม่เลือก($cli_def)" "$C_RESET"
+    printf "%-18s" "ยังไม่เลือก ($cli_def)"
   fi
 }
 
@@ -235,11 +210,11 @@ get_active_task() {
     ACTIVE_TASK="$CURRENT_TASK"
     return
   fi
-  ACTIVE_TASK="$(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | tail -n 1 || true)"
+  ACTIVE_TASK="$(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | grep -v '^\.' | tail -n 1 || true)"
 }
 
-# ─── 3. Interactive Arrow-Key Selector Engine (macOS Bash 3.2 & Zsh Safe) ────
-# รูปแบบรายการ: "คีย์|ข้อความแสดงผลปกติ (ใส่สีได้)|ข้อความตอนไฮไลต์"
+# ─── 3. Interactive Arrow-Key Menu (สไตล์ Claude Code: ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด) ───
+# รูปแบบรายการ: "คีย์|ข้อความแสดงผล" (ใช้ข้อความชุดเดียวกันเป๊ะ ไม่ตัดคำ ไม่ใช้แถบพื้นหลังที่แหว่งกับสระไทย)
 MENU_RESULT=""
 interactive_menu() {
   local title="$1"
@@ -252,16 +227,14 @@ interactive_menu() {
     selected=0
   fi
 
-  # กรณีรันผ่าน Pipe / Non-TTY
   if [ ! -t 0 ]; then
-    printf "\n%s%s%s\n" "$C_GOLD" "$title" "$C_RESET"
+    printf "\n%s%s%s\n" "$C_BOLD" "$title" "$C_RESET"
     local idx=0
     while [ "$idx" -lt "$count" ]; do
       local entry="${items[$idx]}"
       local key="${entry%%|*}"
-      local rest="${entry#*|}"
-      local colored_lbl="${rest%%|*}"
-      printf "  [%s] %b\n" "$key" "$colored_lbl"
+      local label="${entry#*|}"
+      printf "  [%s] %s\n" "$key" "$label"
       idx=$((idx + 1))
     done
     local input_val=""
@@ -274,8 +247,8 @@ interactive_menu() {
     return 0
   fi
 
-  printf "\n%s%s%s\n" "$C_GOLD" "$title" "$C_RESET"
-  printf "%s(กดลูกศร ↑/↓ เลื่อนแถบสี • Enter ยืนยัน • หรือกดคีย์ลัดในวงเล็บ [...] ได้ทันที)%s\n" "$C_LIGHT_GRAY" "$C_RESET"
+  printf "\n%s%s%s\n" "$C_BOLD" "$title" "$C_RESET"
+  printf "%sใช้ปุ่มลูกศร ↑/↓ เลื่อนเลือก • กด Enter ยืนยัน • หรือกดคีย์ลัด [...] ได้ทันที%s\n" "$C_MUTED" "$C_RESET"
 
   tput civis 2>/dev/null || true
   trap 'tput cnorm 2>/dev/null || true' EXIT INT TERM
@@ -283,7 +256,6 @@ interactive_menu() {
   local first_draw=1
   while true; do
     if [ "$first_draw" -eq 0 ]; then
-      # เลื่อนเคอร์เซอร์กลับขึ้นไปจุดเริ่มต้นของรายการเมนูอย่างแม่นยำ (count บรรทัด + 3 บรรทัดกล่องล่าง)
       printf "\033[%dA\r" "$((count + 3))"
     fi
     first_draw=0
@@ -292,37 +264,33 @@ interactive_menu() {
     while [ "$i" -lt "$count" ]; do
       local entry="${items[$i]}"
       local key="${entry%%|*}"
-      local rest="${entry#*|}"
-      local colored_lbl="${rest%%|*}"
-      local plain_lbl="${rest#*|}"
+      local label="${entry#*|}"
 
       printf "\033[2K\r"
       if [ "$i" -eq "$selected" ]; then
-        printf "  %s ❯ [%s] %s %s\n" "$C_SEL_BG" "$key" "$plain_lbl" "$C_RESET"
+        # สไตล์ที่ 1: เน้นด้วย ❯ + เปลี่ยนข้อความทั้งบรรทัดเป็นสีน้ำเงินครามเข้มตัวหนา คลุมครบทุกตัวอักษร 100%
+        printf "  %s❯ [%s] %s%s\n" "$C_SEL" "$key" "$label" "$C_RESET"
       else
-        printf "    %s[%s]%s %b\n" "$C_CYAN" "$key" "$C_RESET" "$colored_lbl"
+        printf "    %s[%s]%s %s\n" "$C_ACCENT" "$key" "$C_RESET" "$label"
       fi
       i=$((i + 1))
     done
 
     local cur_key="${items[$selected]%%|*}"
-    printf "\033[2K\r%s╭────────────────────────────────────────────────────────────────────────╮%s\n" "$C_INDIGO" "$C_RESET"
-    printf "\033[2K\r%s│%s %s❯%s เลือก: %s[%s]%s %s(↑/↓ เลื่อน • Enter ยืนยัน • กด / พิมพ์ /model, /connect, /test)%s\n" "$C_INDIGO" "$C_RESET" "$C_PINK" "$C_RESET" "$C_GOLD" "$cur_key" "$C_RESET" "$C_LIGHT_GRAY" "$C_RESET"
-    printf "\033[2K\r%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_INDIGO" "$C_RESET"
+    printf "\033[2K\r%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "\033[2K\r%s│%s %s❯%s คำสั่งที่เลือก: %s[%s]%s  %s(↑/↓ เลื่อน • Enter ยืนยัน • กด / พิมพ์ /model, /connect, /test)%s\n" "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$cur_key" "$C_RESET" "$C_MUTED" "$C_RESET"
+    printf "\033[2K\r%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
     local k1=""
     IFS= read -rsn1 k1 || true
 
-    # กด Enter -> เลือกรายการที่ไฮไลต์อยู่ทันที
     if [ -z "$k1" ]; then
       MENU_RESULT="${items[$selected]%%|*}"
       break
     fi
 
-    # กดปุ่ม Escape Sequence (ปุ่มลูกศร ↑ / ↓ ส่ง 3 ไบต์รวดเดียว: \x1b[A หรือ \x1b[B หรือ \x1bOA / \x1bOB)
     if [ "$k1" = $'\x1b' ]; then
       local k23=""
-      # ใช้ -t 1 (จำนวนเต็ม) เพื่อรองรับ Bash 3.2 บน macOS 100% (ไบต์ที่ 2-3 อยู่ในบัฟเฟอร์แล้วจึงอ่านออกทันที 0ms)
       IFS= read -rsn2 -t 1 k23 2>/dev/null || true
       case "$k23" in
         "[A"|"OA")
@@ -333,21 +301,15 @@ interactive_menu() {
           selected=$(((selected + 1) % count))
           continue
           ;;
-        "[C"|"OC"|"[D"|"OD")
-          # ลูกศรซ้าย/ขวา ไม่ต้องทำอะไร
-          continue
-          ;;
         *)
-          # กด Esc เดี่ยวๆ -> ไม่ต้องออกจากหน้าหลัก ให้คงอยู่ในเมนูเดิม
           continue
           ;;
       esac
     fi
 
-    # กดปุ่ม / -> เปิดโหมดพิมพ์ Slash Command
     if [ "$k1" = "/" ]; then
       tput cnorm 2>/dev/null || true
-      printf "\033[2A\033[2K\r%s│%s %s❯ /%s" "$C_INDIGO" "$C_RESET" "$C_PINK" "$C_RESET"
+      printf "\033[2A\033[2K\r%s│%s %s❯ /%s" "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET"
       local slash_cmd=""
       read -r slash_cmd || true
       printf "\n\n"
@@ -355,7 +317,6 @@ interactive_menu() {
       return 0
     fi
 
-    # ตรวจสอบคีย์ลัดตรงตัว
     local lower_k1
     lower_k1="$(printf "%s" "$k1" | tr '[:upper:]' '[:lower:]')"
     local match_idx=0
@@ -375,9 +336,8 @@ interactive_menu() {
   tput cnorm 2>/dev/null || true
 }
 
-# ─── 4. แสดงหัวกระดาษ 3D Dual-Tone Banner + กรอบ 2 คอลัมน์สีสันเต็มรูปแบบ ─────
+# ─── 4. แสดงหัวกระดาษ Minimalist Monochrome-Blue Banner + กรอบ Open-Right ───
 print_dashboard_header() {
-  # ล้างหน้าจอให้สะอาดทุกครั้งที่วาดหน้าหลัก เพื่อไม่ให้ตารางเก่าค้างซ้อนกัน
   if [ -t 1 ] && [ "${SUBCOMMAND:-hub}" = "hub" ]; then
     printf "\033[H\033[2J"
   fi
@@ -390,34 +350,28 @@ print_dashboard_header() {
     git_branch="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
   fi
 
-  local state_badge="${C_RED}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
-  [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && state_badge="${C_GREEN}● PROJECT_STATE.md พร้อม${C_RESET}"
+  local state_badge="${C_ERR}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
+  [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && state_badge="${C_OK}● PROJECT_STATE.md พร้อมใช้งาน${C_RESET}"
 
-  local spec_m="${C_GRAY}[ ] SPEC.md${C_RESET}"
-  local plan_m="${C_GRAY}[ ] ARCH & PLAN${C_RESET}"
-  local qa_m="${C_GRAY}[ ] QA_REPORT.md${C_RESET}"
+  local spec_m="${C_MUTED}[ ] SPEC.md${C_RESET}"
+  local plan_m="${C_MUTED}[ ] ARCH & PLAN${C_RESET}"
+  local qa_m="${C_MUTED}[ ] QA_REPORT.md${C_RESET}"
   if [ -n "$ACTIVE_TASK" ]; then
-    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ] && spec_m="${C_GREEN}[✓] SPEC.md${C_RESET}"
-    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ] && plan_m="${C_GREEN}[✓] ARCH & PLAN${C_RESET}"
-    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] && qa_m="${C_GREEN}[✓] QA_REPORT.md${C_RESET}"
+    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ] && spec_m="${C_OK}[✓] SPEC.md${C_RESET}"
+    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ] && plan_m="${C_OK}[✓] ARCH & PLAN${C_RESET}"
+    [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] && qa_m="${C_OK}[✓] QA_REPORT.md${C_RESET}"
   fi
 
-  local claude_dot="${C_RED}○${C_RESET}" gemini_dot="${C_RED}○${C_RESET}" codex_dot="${C_RED}○${C_RESET}"
-  if is_provider_installed "claude"; then claude_dot="${C_GREEN}●${C_RESET}"; fi
-  if is_provider_installed "gemini"; then gemini_dot="${C_GREEN}●${C_RESET}"; fi
-  if is_provider_installed "codex";  then codex_dot="${C_GREEN}●${C_RESET}"; fi
-
-  local p_po p_arch p_dev p_qa
-  p_po="$(format_provider_colored "$ROLE_PO")"
-  p_arch="$(format_provider_colored "$ROLE_ARCH")"
-  p_dev="$(format_provider_colored "$ROLE_DEV")"
-  p_qa="$(format_provider_colored "$ROLE_QA")"
+  local claude_dot="${C_ERR}○${C_RESET}" gemini_dot="${C_ERR}○${C_RESET}" codex_dot="${C_ERR}○${C_RESET}"
+  if is_provider_installed "claude"; then claude_dot="${C_OK}●${C_RESET}"; fi
+  if is_provider_installed "gemini"; then gemini_dot="${C_OK}●${C_RESET}"; fi
+  if is_provider_installed "codex";  then codex_dot="${C_OK}●${C_RESET}"; fi
 
   local m_po m_arch m_dev m_qa
-  m_po="$(format_role_model_cell "$ROLE_PO" "$MODEL_PO")"
-  m_arch="$(format_role_model_cell "$ROLE_ARCH" "$MODEL_ARCH")"
-  m_dev="$(format_role_model_cell "$ROLE_DEV" "$MODEL_DEV")"
-  m_qa="$(format_role_model_cell "$ROLE_QA" "$MODEL_QA")"
+  m_po="$(format_role_model_text "$ROLE_PO" "$MODEL_PO")"
+  m_arch="$(format_role_model_text "$ROLE_ARCH" "$MODEL_ARCH")"
+  m_dev="$(format_role_model_text "$ROLE_DEV" "$MODEL_DEV")"
+  m_qa="$(format_role_model_text "$ROLE_QA" "$MODEL_QA")"
 
   local s_po s_arch s_dev s_qa
   s_po="$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
@@ -425,49 +379,45 @@ print_dashboard_header() {
   s_dev="$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
   s_qa="$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
 
-  printf "%s╭────────────────────────────────────────────────────────────────────────╮%s\n" "$C_CORAL" "$C_RESET"
-  printf "%s│%s %s✻%s Welcome to %sRELAY v1.0%s — %sMulti-Agent Specification & Handoff Hub%s      %s│%s\n" "$C_CORAL" "$C_RESET" "$C_GOLD" "$C_RESET" "$C_WHITE" "$C_RESET" "$C_CYAN" "$C_RESET" "$C_CORAL" "$C_RESET"
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_CORAL" "$C_RESET"
-
-  # 3D Dual-Tone Pixel-Block Gradient Banner (> RELAY)
+  # โลโก้ 3D โทนสีเดียวสะอาดตา (Monochrome Cerulean Blue + Slate Shadow)
   printf " %s██%s╗      %s██████%s╗  %s███████%s╗ %s██%s╗       %s█████%s╗  %s██%s╗   %s██%s╗\n" \
-    "$C_CYAN" "$C_CYAN_SH" "$C_BLUE" "$C_BLUE_SH" "$C_INDIGO" "$C_INDIGO_SH" "$C_VIOLET" "$C_VIOLET_SH" "$C_PINK" "$C_PINK_SH" "$C_CORAL" "$C_CORAL_SH" "$C_CORAL" "$C_CORAL_SH"
+    "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH"
   printf " %s╚%s██%s╗     %s██%s╔══%s██%s╗ %s██%s╔════╝ %s██%s║      %s██%s╔══%s██%s╗ %s╚%s██%s╗ %s██%s╔╝\n" \
-    "$C_CYAN_SH" "$C_CYAN" "$C_CYAN_SH" "$C_BLUE" "$C_BLUE_SH" "$C_BLUE" "$C_BLUE_SH" "$C_INDIGO" "$C_INDIGO_SH" "$C_VIOLET" "$C_VIOLET_SH" "$C_PINK" "$C_PINK_SH" "$C_PINK" "$C_PINK_SH" "$C_CORAL_SH" "$C_CORAL" "$C_CORAL_SH" "$C_CORAL" "$C_CORAL_SH"
+    "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH"
   printf "  %s╚%s██%s╗    %s██████%s╔╝ %s█████%s╗   %s██%s║      %s███████%s║  %s╚%s████%s╔╝ %s\n" \
-    "$C_CYAN_SH" "$C_CYAN" "$C_CYAN_SH" "$C_BLUE" "$C_BLUE_SH" "$C_INDIGO" "$C_INDIGO_SH" "$C_VIOLET" "$C_VIOLET_SH" "$C_PINK" "$C_PINK_SH" "$C_CORAL_SH" "$C_CORAL" "$C_CORAL_SH" "$C_RESET"
+    "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_RESET"
   printf "  %s██%s╔╝    %s██%s╔══%s██%s╗ %s██%s╔══╝   %s██%s║      %s██%s╔══%s██%s║   %s╚%s██%s╔╝  %s\n" \
-    "$C_CYAN" "$C_CYAN_SH" "$C_BLUE" "$C_BLUE_SH" "$C_BLUE" "$C_BLUE_SH" "$C_INDIGO" "$C_INDIGO_SH" "$C_VIOLET" "$C_VIOLET_SH" "$C_PINK" "$C_PINK_SH" "$C_PINK" "$C_PINK_SH" "$C_CORAL_SH" "$C_CORAL" "$C_CORAL_SH" "$C_RESET"
+    "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_RESET"
   printf " %s██%s╔╝     %s██%s║  %s██%s║ %s███████%s╗ %s███████%s╗ %s██%s║  %s██%s║    %s██%s║   %s\n" \
-    "$C_CYAN" "$C_CYAN_SH" "$C_BLUE" "$C_BLUE_SH" "$C_BLUE" "$C_BLUE_SH" "$C_INDIGO" "$C_INDIGO_SH" "$C_VIOLET" "$C_VIOLET_SH" "$C_PINK" "$C_PINK_SH" "$C_PINK" "$C_PINK_SH" "$C_CORAL" "$C_CORAL_SH" "$C_RESET"
-  printf " %s╚═╝      %s╚═╝  ╚═╝ %s╚══════╝ %s╚══════╝ %s╚═╝  ╚═╝    %s╚═╝   %s\n" \
-    "$C_CYAN_SH" "$C_BLUE_SH" "$C_INDIGO_SH" "$C_VIOLET_SH" "$C_PINK_SH" "$C_CORAL_SH" "$C_RESET"
+    "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_RESET"
+  printf " %s╚═╝      ╚═╝  ╚═╝ ╚══════╝ ╚══════╝ ╚═╝  ╚═╝    ╚═╝%s   %sRELAY v1.0 • Multi-Agent Handoff Hub%s\n" \
+    "$C_ACCENT_SH" "$C_RESET" "$C_MUTED" "$C_RESET"
 
-  # กรอบข้อมูลควบคุมหลัก (ความกว้างกระชับ <= 74 คอลัมน์ ไม่ล้นหน้าจอ 80 คอลัมน์)
-  printf "%s╭──────────────────── %sRELAY v1.0 • Control Center%s ───────────────────────╮%s\n" "$C_GOLD" "$C_WHITE" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s╭─┤R├─╮%s %sตำแหน่ง (Roles)     ค่าย     โมเดลปัจจุบัน        สถานะความพร้อม%s\n" "$C_GOLD" "$C_RESET" "$C_CYAN" "$C_RESET" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s│ ╰┬╯ │%s %s1.@po (Product)%s  ➔ %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$C_BLUE" "$C_RESET" "$C_PINK" "$C_RESET" "$p_po" "$m_po" "$s_po"
-  printf "%s│%s %s╰──┼──╯%s %s2.@arch & @pm%s    ➔ %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$C_VIOLET" "$C_RESET" "$C_GOLD" "$C_RESET" "$p_arch" "$m_arch" "$s_arch"
-  printf "%s│%s %s  ╭┴╮  %s %s3.@dev (Code)%s    ➔ %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$C_PINK" "$C_RESET" "$C_CYAN" "$C_RESET" "$p_dev" "$m_dev" "$s_dev"
-  printf "%s│%s %s  ╰─╯  %s %s4.@qa & @sec%s     ➔ %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$C_CORAL" "$C_RESET" "$C_MINT" "$C_RESET" "$p_qa" "$m_qa" "$s_qa"
-  printf "%s├────────────────────────────────────────────────────────────────────────┤%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %sCLIs:%s %b %sclaude%s  %b %sgemini%s  %b %scodex%s │ %sSkills:%s %s@po/@arch/@dev/@qa Ready%s\n" \
-    "$C_GOLD" "$C_RESET" "$C_WHITE" "$C_RESET" "$claude_dot" "$C_CORAL" "$C_RESET" "$gemini_dot" "$C_BLUE" "$C_RESET" "$codex_dot" "$C_GREEN" "$C_RESET" "$C_GOLD" "$C_RESET" "$C_LIGHT_GRAY" "$C_RESET"
+  # กรอบข้อมูลแบบ Open-Right (ไม่ปิดเส้นขวา จึงไม่เบี้ยวเวลาแสดงสระภาษาไทย)
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sตำแหน่ง (Roles)       ค่าย      โมเดลปัจจุบัน          สถานะความพร้อม%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s 1. @po (Product)    ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_PO" "$m_po" "$s_po"
+  printf "%s│%s 2. @arch & @pm      ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$m_arch" "$s_arch"
+  printf "%s│%s 3. @dev (Worktree)  ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$m_dev" "$s_dev"
+  printf "%s│%s 4. @qa & @sec       ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$m_qa" "$s_qa"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sCLIs ในเครื่อง:%s %b claude   %b gemini   %b codex   %s(ตั้งค่าที่: %s)%s\n" \
+    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$claude_dot" "$gemini_dot" "$codex_dot" "$C_MUTED" "$CONFIG_SOURCE" "$C_RESET"
 
   if [ "$ALL_ROLES_READY" -eq 1 ]; then
-    printf "%s│%s 🔓 %sสถานะระบบ: ✅ ตั้งค่าครบทั้ง 4/4 ตำแหน่ง — พร้อมเริ่มถาม/สั่งงาน [1]-[5]!%s\n" "$C_GOLD" "$C_RESET" "$C_GREEN" "$C_RESET"
+    printf "%s│%s %s● สถานะระบบ: พร้อมครบทั้ง 4/4 ตำแหน่ง — เริ่มสั่งงานขั้นตอนที่ [1]-[5] ได้ทันที%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
   else
-    printf "%s│%s 🔒 %sสถานะระบบ: พร้อม %d/4 ตำแหน่ง — ต้องตั้งค่าให้ครบ 4 ตำแหน่งใน [c] ก่อนถาม!%s\n" "$C_GOLD" "$C_RESET" "$C_RED" "$READY_ROLE_COUNT" "$C_RESET"
+    printf "%s│%s %s▲ สถานะระบบ: ตั้งค่าพร้อม %d/4 ตำแหน่ง — กรุณาตั้งค่าให้ครบ 4 ตำแหน่งใน [c] ก่อนเริ่มงาน%s\n" "$C_ACCENT" "$C_RESET" "$C_ERR" "$READY_ROLE_COUNT" "$C_RESET"
   fi
 
-  printf "%s├────────────────────────────────────────────────────────────────────────┤%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s 📂 %s%s%s %s[⎇ %s]%s • %b • ⚙️ %s%s%s\n" "$C_GOLD" "$C_RESET" "$C_WHITE" "$PROJECT_NAME" "$C_RESET" "$C_CYAN" "$git_branch" "$C_RESET" "$state_badge" "$C_LIGHT_GRAY" "$CONFIG_SOURCE" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s โครงการ: %s%s%s [%s]  •  %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_NAME" "$C_RESET" "$git_branch" "$state_badge"
   if [ -n "$ACTIVE_TASK" ]; then
-    printf "%s│%s 📋 ใบงาน: %s%s%s ➔ %b  %b  %b\n" "$C_GOLD" "$C_RESET" "$C_GOLD" "$ACTIVE_TASK" "$C_RESET" "$spec_m" "$plan_m" "$qa_m"
+    printf "%s│%s ใบงาน  : %s%s%s  ➔  %b   %b   %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ACTIVE_TASK" "$C_RESET" "$spec_m" "$plan_m" "$qa_m"
   else
-    printf "%s│%s 📋 ใบงาน: %s(ยังไม่มีใบงาน — เลือก [1] หรือ [n] เพื่อสร้างใบงานใหม่)%s\n" "$C_GOLD" "$C_RESET" "$C_LIGHT_GRAY" "$C_RESET"
+    printf "%s│%s ใบงาน  : %s(ยังไม่มีใบงานที่กำลังดำเนินการ — เลือก [1] หรือ [n] เพื่อสร้างใบงานใหม่)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
   fi
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_GOLD" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 }
 
 # ─── 5. ฟังก์ชันตรวจสอบและบล็อกการถามงานหากยังตั้งค่าไม่ครบ 4 ตำแหน่ง ──────────
@@ -478,20 +428,19 @@ require_all_roles_ready() {
   fi
 
   echo ""
-  printf "%s╭────────────── 🔒 ยังไม่สามารถเริ่มถามหรือสั่งงาน Agent ได้ ───────────────╮%s\n" "$C_RED" "$C_RESET"
-  printf "%s│%s ต้องตั้งค่า %sตำแหน่ง (Roles) + ค่าย (Provider) + โมเดล (Model)%s           %s│%s\n" "$C_RED" "$C_RESET" "$C_GOLD" "$C_RESET" "$C_RED" "$C_RESET"
-  printf "%s│%s ให้พร้อมใช้งานครบทั้ง %s4/4 ตำแหน่ง%s ก่อนเริ่มงาน (ปัจจุบันพร้อม %d/4):     %s│%s\n" "$C_RED" "$C_RESET" "$C_WHITE" "$C_RESET" "$READY_ROLE_COUNT" "$C_RED" "$C_RESET"
-  printf "%s├────────────────────────────────────────────────────────────────────────┤%s\n" "$C_RED" "$C_RESET"
-  printf "%s│%s  • 1. @po       : %b (%s) ➔ %b\n" "$C_RED" "$C_RESET" "$(format_provider_colored "$ROLE_PO")" "$MODEL_PO" "$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
-  printf "%s│%s  • 2. @arch/@pm : %b (%s) ➔ %b\n" "$C_RED" "$C_RESET" "$(format_provider_colored "$ROLE_ARCH")" "$MODEL_ARCH" "$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
-  printf "%s│%s  • 3. @dev      : %b (%s) ➔ %b\n" "$C_RED" "$C_RESET" "$(format_provider_colored "$ROLE_DEV")" "$MODEL_DEV" "$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
-  printf "%s│%s  • 4. @qa/@sec  : %b (%s) ➔ %b\n" "$C_RED" "$C_RESET" "$(format_provider_colored "$ROLE_QA")" "$MODEL_QA" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_RED" "$C_RESET"
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+  printf "%s│%s %sยังไม่สามารถเริ่มถามหรือสั่งงาน Agent ได้ (พร้อม %d/4 ตำแหน่ง)%s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$READY_ROLE_COUNT" "$C_RESET"
+  printf "%s│%s กรุณาตั้งค่า ค่าย (Provider) และ โมเดล (Model) ให้ครบทั้ง 4 ตำแหน่งก่อน:\n" "$C_ERR" "$C_RESET"
+  printf "%s│%s  • 1. @po       : %-6s (%s) ➔ %b\n" "$C_ERR" "$C_RESET" "$ROLE_PO" "$MODEL_PO" "$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
+  printf "%s│%s  • 2. @arch/@pm : %-6s (%s) ➔ %b\n" "$C_ERR" "$C_RESET" "$ROLE_ARCH" "$MODEL_ARCH" "$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
+  printf "%s│%s  • 3. @dev      : %-6s (%s) ➔ %b\n" "$C_ERR" "$C_RESET" "$ROLE_DEV" "$MODEL_DEV" "$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
+  printf "%s│%s  • 4. @qa/@sec  : %-6s (%s) ➔ %b\n" "$C_ERR" "$C_RESET" "$ROLE_QA" "$MODEL_QA" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
 
-  interactive_menu "⚙️  กรุณาตั้งค่าค่าย AI และเลือก Model ให้ครบทั้ง 4 ตำแหน่งก่อนเริ่มงาน" 0 \
-    "c|${C_GOLD}ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งเดี๋ยวนี้ ([c])${C_RESET}|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งเดี๋ยวนี้ ([c])" \
-    "d|${C_CYAN}ไปที่หน้าติดตั้ง CLI & เชื่อมต่อบัญชี Login ([d])${C_RESET}|ไปที่หน้าติดตั้ง CLI & เชื่อมต่อบัญชี Login ([d])" \
-    "b|${C_LIGHT_GRAY}กลับสู่หน้าจอหลัก${C_RESET}|กลับสู่หน้าจอหลัก"
+  interactive_menu "เลือกขั้นตอนเพื่อตั้งค่าระบบให้พร้อมใช้งาน" 0 \
+    "c|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งเดี๋ยวนี้" \
+    "d|ไปที่หน้าติดตั้ง CLI & เชื่อมต่อบัญชี Login" \
+    "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
     c|C) configure_roles_menu ;;
@@ -505,15 +454,15 @@ choose_provider_interactive() {
   local role_label="$1"
   local current_p="$2"
   local c_stat g_stat x_stat
-  if is_provider_installed claude; then c_stat="${C_GREEN}✅ ติดตั้งแล้ว${C_RESET}"; else c_stat="${C_RED}❌ ยังไม่ติดตั้ง CLI${C_RESET}"; fi
-  if is_provider_installed gemini; then g_stat="${C_GREEN}✅ ติดตั้งแล้ว${C_RESET}"; else g_stat="${C_RED}❌ ยังไม่ติดตั้ง CLI${C_RESET}"; fi
-  if is_provider_installed codex;  then x_stat="${C_GREEN}✅ ติดตั้งแล้ว${C_RESET}"; else x_stat="${C_RED}❌ ยังไม่ติดตั้ง CLI${C_RESET}"; fi
+  if is_provider_installed claude; then c_stat="ติดตั้งแล้ว"; else c_stat="ยังไม่ติดตั้ง CLI"; fi
+  if is_provider_installed gemini; then g_stat="ติดตั้งแล้ว"; else g_stat="ยังไม่ติดตั้ง CLI"; fi
+  if is_provider_installed codex;  then x_stat="ติดตั้งแล้ว"; else x_stat="ยังไม่ติดตั้ง CLI"; fi
 
-  interactive_menu "🤖 เลือกค่าย AI สำหรับ ${role_label} (ปัจจุบัน: ${current_p})" 0 \
-    "1|${C_CORAL}claude${C_RESET} — Anthropic Claude Code CLI [${c_stat}]|claude — Anthropic Claude Code CLI" \
-    "2|${C_BLUE}gemini${C_RESET} — Google Gemini CLI         [${g_stat}]|gemini — Google Gemini CLI" \
-    "3|${C_GREEN}codex${C_RESET}  — OpenAI Codex CLI          [${x_stat}]|codex  — OpenAI Codex CLI" \
-    "b|${C_LIGHT_GRAY}คงค่าเดิม (${current_p})${C_RESET}|คงค่าเดิม (${current_p})"
+  interactive_menu "เลือกค่าย AI สำหรับ ${role_label} (ปัจจุบัน: ${current_p})" 0 \
+    "1|claude — Anthropic Claude Code CLI (${c_stat})" \
+    "2|gemini — Google Gemini CLI         (${g_stat})" \
+    "3|codex  — OpenAI Codex CLI          (${x_stat})" \
+    "b|คงค่าเดิม (${current_p})"
 
   local chosen_p="$current_p"
   case "$MENU_RESULT" in
@@ -528,13 +477,13 @@ choose_provider_interactive() {
     [ "$chosen_p" = "claude" ] && pkg="@anthropic-ai/claude-code"
     [ "$chosen_p" = "codex" ]  && pkg="@openai/codex"
 
-    interactive_menu "⚡ ค่าย '${chosen_p}' ยังไม่ได้ติดตั้งในเครื่อง ต้องการติดตั้งเลยหรือไม่?" 0 \
-      "1|${C_GREEN}ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ (npm install -g ${pkg}) และ Login${C_RESET}|ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ และ Login" \
-      "2|${C_GOLD}บันทึกชื่อค่ายไว้ก่อน (แต่จะยังเริ่มถามงานไม่ได้จนกว่าจะติดตั้ง CLI)${C_RESET}|บันทึกชื่อค่ายไว้ก่อน (ติดตั้งภายหลัง)"
+    interactive_menu "ค่าย '${chosen_p}' ยังไม่ได้ติดตั้งในเครื่อง ต้องการติดตั้งเลยหรือไม่?" 0 \
+      "1|ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ (npm install -g ${pkg}) และเปิดหน้า Login" \
+      "2|บันทึกชื่อค่ายไว้ก่อน (ติดตั้งภายหลัง)"
     if [ "$MENU_RESULT" = "1" ]; then
       npm install -g "$pkg"
       if is_provider_installed "$chosen_p"; then
-        printf "%s✅ ติดตั้ง %s สำเร็จ! กำลังเปิดหน้า Login (พิมพ์ /exit เมื่อเสร็จ)...%s\n" "$C_GREEN" "$chosen_p" "$C_RESET"
+        printf "%s● ติดตั้ง %s สำเร็จ! กำลังเปิดหน้า Login (พิมพ์ /exit เมื่อเสร็จ)...%s\n" "$C_OK" "$chosen_p" "$C_RESET"
         "$chosen_p" || true
       fi
     fi
@@ -551,13 +500,13 @@ choose_model_interactive() {
 
   case "$provider" in
     claude)
-      interactive_menu "🧠 เลือก Model ของค่าย [claude] สำหรับ ${role_label}" 0 \
-        "1|${C_CORAL}sonnet${C_RESET}            — Claude Sonnet 4.5 (รวดเร็ว สมดุล แนะนำ)|sonnet            — Claude Sonnet 4.5 (รวดเร็ว สมดุล แนะนำ)" \
-        "2|${C_GOLD}opus${C_RESET}              — Claude Opus 4.5 (วิเคราะห์เชิงลึก สถาปัตยกรรม)|opus              — Claude Opus 4.5 (วิเคราะห์เชิงลึก สถาปัตยกรรม)" \
-        "3|${C_CYAN}haiku${C_RESET}             — Claude Haiku 4.5 (ประหยัดโควตาสูงสุด)|haiku             — Claude Haiku 4.5 (ประหยัดโควตาสูงสุด)" \
-        "4|${C_WHITE}claude-sonnet-4-5${C_RESET} — รหัสเต็ม claude-sonnet-4-5|claude-sonnet-4-5 — รหัสเต็ม claude-sonnet-4-5" \
-        "5|${C_WHITE}claude-opus-4-5${C_RESET}   — รหัสเต็ม claude-opus-4-5|claude-opus-4-5   — รหัสเต็ม claude-opus-4-5" \
-        "6|${C_PINK}กำหนดชื่อโมเดลเอง${C_RESET}   — พิมพ์รหัส Model ID ที่ต้องการ|กำหนดชื่อโมเดลเอง   — พิมพ์รหัส Model ID ที่ต้องการ"
+      interactive_menu "เลือก Model ของค่าย [claude] สำหรับ ${role_label}" 0 \
+        "1|sonnet            — Claude Sonnet 4.5 (รวดเร็ว สมดุล แนะนำ)" \
+        "2|opus              — Claude Opus 4.5 (วิเคราะห์เชิงลึก สถาปัตยกรรม)" \
+        "3|haiku             — Claude Haiku 4.5 (ประหยัดโควตาสูงสุด)" \
+        "4|claude-sonnet-4-5 — รหัสเต็ม claude-sonnet-4-5" \
+        "5|claude-opus-4-5   — รหัสเต็ม claude-opus-4-5" \
+        "6|กำหนดชื่อโมเดลเอง   — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง"
       case "$MENU_RESULT" in
         1) SELECTED_MODEL="sonnet" ;;
         2) SELECTED_MODEL="opus" ;;
@@ -569,10 +518,10 @@ choose_model_interactive() {
       esac
       ;;
     gemini)
-      interactive_menu "🧠 เลือก Model ของค่าย [gemini] สำหรับ ${role_label}" 0 \
-        "1|${C_BLUE}gemini-2.5-pro${C_RESET}   — Gemini 2.5 Pro (วิเคราะห์เชิงลึก แนะนำ)|gemini-2.5-pro   — Gemini 2.5 Pro (วิเคราะห์เชิงลึก แนะนำ)" \
-        "2|${C_CYAN}gemini-2.5-flash${C_RESET} — Gemini 2.5 Flash (รวดเร็วสูง ประหยัดโควตา)|gemini-2.5-flash — Gemini 2.5 Flash (รวดเร็วสูง ประหยัดโควตา)" \
-        "3|${C_PINK}กำหนดชื่อโมเดลเอง${C_RESET} — พิมพ์รหัส Model ID ที่ต้องการ|กำหนดชื่อโมเดลเอง — พิมพ์รหัส Model ID ที่ต้องการ"
+      interactive_menu "เลือก Model ของค่าย [gemini] สำหรับ ${role_label}" 0 \
+        "1|gemini-2.5-pro   — Gemini 2.5 Pro (วิเคราะห์เชิงลึก แนะนำ)" \
+        "2|gemini-2.5-flash — Gemini 2.5 Flash (รวดเร็วสูง ประหยัดโควตา)" \
+        "3|กำหนดชื่อโมเดลเอง — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง"
       case "$MENU_RESULT" in
         1) SELECTED_MODEL="gemini-2.5-pro" ;;
         2) SELECTED_MODEL="gemini-2.5-flash" ;;
@@ -581,11 +530,11 @@ choose_model_interactive() {
       esac
       ;;
     codex)
-      interactive_menu "🧠 เลือก Model ของค่าย [codex] สำหรับ ${role_label}" 0 \
-        "1|${C_GREEN}o3${C_RESET}               — OpenAI o3 (ตรวจสอบโค้ดแม่นยำสูง แนะนำ)|o3               — OpenAI o3 (ตรวจสอบโค้ดแม่นยำสูง แนะนำ)" \
-        "2|${C_CYAN}o4-mini${C_RESET}          — OpenAI o4-mini (รวดเร็ว ประหยัดโควตา)|o4-mini          — OpenAI o4-mini (รวดเร็ว ประหยัดโควตา)" \
-        "3|${C_GOLD}gpt-5${C_RESET}            — OpenAI GPT-5 (โมเดลเรือธงรุ่นล่าสุด)|gpt-5            — OpenAI GPT-5 (โมเดลเรือธงรุ่นล่าสุด)" \
-        "4|${C_PINK}กำหนดชื่อโมเดลเอง${C_RESET} — พิมพ์รหัส Model ID ที่ต้องการ|กำหนดชื่อโมเดลเอง — พิมพ์รหัส Model ID ที่ต้องการ"
+      interactive_menu "เลือก Model ของค่าย [codex] สำหรับ ${role_label}" 0 \
+        "1|o3               — OpenAI o3 (ตรวจสอบโค้ดแม่นยำสูง แนะนำ)" \
+        "2|o4-mini          — OpenAI o4-mini (รวดเร็ว ประหยัดโควตา)" \
+        "3|gpt-5            — OpenAI GPT-5 (โมเดลเรือธงรุ่นล่าสุด)" \
+        "4|กำหนดชื่อโมเดลเอง — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง"
       case "$MENU_RESULT" in
         1) SELECTED_MODEL="o3" ;;
         2) SELECTED_MODEL="o4-mini" ;;
@@ -609,60 +558,60 @@ configure_roles_menu() {
 
   while true; do
     check_all_roles_ready
-    local st_po st_arch st_dev st_qa
-    st_po="$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
-    st_arch="$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
-    st_dev="$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
-    st_qa="$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
+    local r1_stat="ยังไม่ครบ" r2_stat="ยังไม่ครบ" r3_stat="ยังไม่ครบ" r4_stat="ยังไม่ครบ"
+    if is_role_ready "$ROLE_PO" "$MODEL_PO"; then r1_stat="พร้อมแล้ว"; fi
+    if is_role_ready "$ROLE_ARCH" "$MODEL_ARCH"; then r2_stat="พร้อมแล้ว"; fi
+    if is_role_ready "$ROLE_DEV" "$MODEL_DEV"; then r3_stat="พร้อมแล้ว"; fi
+    if is_role_ready "$ROLE_QA" "$MODEL_QA"; then r4_stat="พร้อมแล้ว"; fi
 
-    interactive_menu "⚙️  ตั้งค่าค่าย AI & เลือก Model ให้ครบ 4 ตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
-      "p|${C_GOLD}⚡ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Quick Presets: All-Claude / All-Gemini / All-Codex)${C_RESET}|⚡ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Quick Presets)" \
-      "1|${C_PINK}1. @po${C_RESET}       ➔ ค่าย: ${C_WHITE}${ROLE_PO}${C_RESET} | โมเดล: ${C_CYAN}${MODEL_PO}${C_RESET} | ${st_po}|1. @po       ➔ ค่าย: ${ROLE_PO} | โมเดล: ${MODEL_PO}" \
-      "2|${C_GOLD}2. @arch/@pm${C_RESET} ➔ ค่าย: ${C_WHITE}${ROLE_ARCH}${C_RESET} | โมเดล: ${C_CYAN}${MODEL_ARCH}${C_RESET} | ${st_arch}|2. @arch/@pm ➔ ค่าย: ${ROLE_ARCH} | โมเดล: ${MODEL_ARCH}" \
-      "3|${C_CYAN}3. @dev${C_RESET}      ➔ ค่าย: ${C_WHITE}${ROLE_DEV}${C_RESET} | โมเดล: ${C_CYAN}${MODEL_DEV}${C_RESET} | ${st_dev}|3. @dev      ➔ ค่าย: ${ROLE_DEV} | โมเดล: ${MODEL_DEV}" \
-      "4|${C_MINT}4. @qa/@sec${C_RESET}  ➔ ค่าย: ${C_WHITE}${ROLE_QA}${C_RESET} | โมเดล: ${C_CYAN}${MODEL_QA}${C_RESET} | ${st_qa}|4. @qa/@sec  ➔ ค่าย: ${ROLE_QA} | โมเดล: ${MODEL_QA}" \
-      "m|${C_VIOLET}🧠 ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย (Claude / Gemini / Codex)${C_RESET}|🧠 ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย" \
-      "d|${C_BLUE}🔌 จัดการการเชื่อมต่อ CLI (ติดตั้ง CLI / เปิดหน้า Login)${C_RESET}|🔌 จัดการการเชื่อมต่อ CLI (ติดตั้ง CLI / เปิดหน้า Login)" \
-      "s|${C_LIGHT_GRAY}📂 สลับไฟล์บันทึก (Global ~/.agents/ ↔ Project .relay/roles.conf)${C_RESET}|📂 สลับไฟล์บันทึก (Global ↔ Project)" \
-      "t|${C_GREEN}🧪 บันทึกและทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งทันที (/test)${C_RESET}|🧪 บันทึกและทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งทันที" \
-      "b|${C_WHITE}💾 บันทึกการตั้งค่าและกลับสู่หน้าจอหลัก${C_RESET}|💾 บันทึกการตั้งค่าและกลับสู่หน้าจอหลัก"
+    interactive_menu "ตั้งค่าค่าย AI & เลือก Model ให้ครบ 4 ตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
+      "p|ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Quick Presets: All-Claude / All-Gemini / All-Codex)" \
+      "1|ขั้นตอนที่ 1 (@po)       ➔ ค่าย: ${ROLE_PO} | โมเดล: ${MODEL_PO} (${r1_stat})" \
+      "2|ขั้นตอนที่ 2 (@arch/@pm) ➔ ค่าย: ${ROLE_ARCH} | โมเดล: ${MODEL_ARCH} (${r2_stat})" \
+      "3|ขั้นตอนที่ 3 (@dev)      ➔ ค่าย: ${ROLE_DEV} | โมเดล: ${MODEL_DEV} (${r3_stat})" \
+      "4|ขั้นตอนที่ 4 (@qa/@sec)  ➔ ค่าย: ${ROLE_QA} | โมเดล: ${MODEL_QA} (${r4_stat})" \
+      "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย (Claude / Gemini / Codex)" \
+      "d|จัดการการเชื่อมต่อ CLI (ติดตั้ง CLI / เปิดหน้า Login)" \
+      "s|สลับไฟล์บันทึกการตั้งค่า (Global ~/.agents/ ↔ Project .relay/roles.conf)" \
+      "t|บันทึกและทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งทันที (/test)" \
+      "b|บันทึกการตั้งค่าและกลับสู่หน้าจอหลัก"
 
     case "$MENU_RESULT" in
       1)
         choose_provider_interactive "ขั้นตอนที่ 1 (@po)" "$ROLE_PO"
         ROLE_PO="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_PO" "ขั้นตอนที่ 1 (@po)" "$MODEL_PO"
+        choose_model_interactive "$ROLE_PO" "ขั้นตอนที่ 1 (@po)"
         MODEL_PO="$SELECTED_MODEL"
         save_role_config "$target_conf"
         ;;
       2)
         choose_provider_interactive "ขั้นตอนที่ 2 (@arch/@pm)" "$ROLE_ARCH"
         ROLE_ARCH="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_ARCH" "ขั้นตอนที่ 2 (@arch/@pm)" "$MODEL_ARCH"
+        choose_model_interactive "$ROLE_ARCH" "ขั้นตอนที่ 2 (@arch/@pm)"
         MODEL_ARCH="$SELECTED_MODEL"
         save_role_config "$target_conf"
         ;;
       3)
         choose_provider_interactive "ขั้นตอนที่ 3 (@dev)" "$ROLE_DEV"
         ROLE_DEV="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_DEV" "ขั้นตอนที่ 3 (@dev)" "$MODEL_DEV"
+        choose_model_interactive "$ROLE_DEV" "ขั้นตอนที่ 3 (@dev)"
         MODEL_DEV="$SELECTED_MODEL"
         save_role_config "$target_conf"
         ;;
       4)
         choose_provider_interactive "ขั้นตอนที่ 4 (@qa/@sec)" "$ROLE_QA"
         ROLE_QA="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_QA" "ขั้นตอนที่ 4 (@qa/@sec)" "$MODEL_QA"
+        choose_model_interactive "$ROLE_QA" "ขั้นตอนที่ 4 (@qa/@sec)"
         MODEL_QA="$SELECTED_MODEL"
         save_role_config "$target_conf"
         ;;
       p|P)
-        interactive_menu "⚡ เลือกชุดการตั้งค่าด่วน (กำหนดค่ายและ Model ให้ครบทั้ง 4 ตำแหน่งทันที)" 0 \
-          "1|${C_CORAL}All-Claude Preset${C_RESET}  — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)|All-Claude Preset  — ใช้ Claude ทั้ง 4 ตำแหน่ง" \
-          "2|${C_BLUE}All-Gemini Preset${C_RESET}  — ใช้ Gemini ทั้ง 4 ตำแหน่ง (gemini-2.5-pro ทั้ง 4 ตำแหน่ง)|All-Gemini Preset  — ใช้ Gemini ทั้ง 4 ตำแหน่ง" \
-          "3|${C_GREEN}All-Codex Preset${C_RESET}   — ใช้ Codex ทั้ง 4 ตำแหน่ง (o3 ทั้ง 4 ตำแหน่ง)|All-Codex Preset   — ใช้ Codex ทั้ง 4 ตำแหน่ง" \
-          "4|${C_GOLD}Multi-Vendor แนะนำ${C_RESET} — @po=gemini, @arch=claude(opus), @dev=claude(sonnet), @qa=codex(o3)|Multi-Vendor แนะนำ — ผสม 3 ค่ายตามจุดแข็ง" \
-          "b|${C_LIGHT_GRAY}ย้อนกลับ${C_RESET}|ย้อนกลับ"
+        interactive_menu "เลือกชุดการตั้งค่าด่วน (กำหนดค่ายและ Model ให้ครบทั้ง 4 ตำแหน่งทันที)" 0 \
+          "1|All-Claude Preset  — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)" \
+          "2|All-Gemini Preset  — ใช้ Gemini ทั้ง 4 ตำแหน่ง (gemini-2.5-pro ทั้ง 4 ตำแหน่ง)" \
+          "3|All-Codex Preset   — ใช้ Codex ทั้ง 4 ตำแหน่ง (o3 ทั้ง 4 ตำแหน่ง)" \
+          "4|Multi-Vendor แนะนำ — @po=gemini(2.5-pro), @arch=claude(opus), @dev=claude(sonnet), @qa=codex(o3)" \
+          "b|ย้อนกลับ"
         case "$MENU_RESULT" in
           1)
             ROLE_PO="claude";   MODEL_PO="sonnet"
@@ -727,11 +676,11 @@ configure_provider_defaults_menu() {
     gm="$(get_cli_default_model gemini)"
     xm="$(get_cli_default_model codex)"
 
-    interactive_menu "🧠 ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย" 0 \
-      "1|${C_CORAL}Claude Code CLI${C_RESET} (~/.claude/settings.json) — ปัจจุบัน: ${C_WHITE}${cm}${C_RESET}|Claude Code CLI — ปัจจุบัน: ${cm}" \
-      "2|${C_BLUE}Google Gemini CLI${C_RESET} (~/.gemini/settings.json) — ปัจจุบัน: ${C_WHITE}${gm}${C_RESET}|Google Gemini CLI — ปัจจุบัน: ${gm}" \
-      "3|${C_GREEN}OpenAI Codex CLI${C_RESET} (~/.codex/config.toml)   — ปัจจุบัน: ${C_WHITE}${xm}${C_RESET}|OpenAI Codex CLI — ปัจจุบัน: ${xm}" \
-      "b|${C_LIGHT_GRAY}ย้อนกลับ${C_RESET}|ย้อนกลับ"
+    interactive_menu "ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย" 0 \
+      "1|Claude Code CLI (~/.claude/settings.json) — ค่าเริ่มต้นปัจจุบัน: ${cm}" \
+      "2|Google Gemini CLI (~/.gemini/settings.json) — ค่าเริ่มต้นปัจจุบัน: ${gm}" \
+      "3|OpenAI Codex CLI (~/.codex/config.toml)   — ค่าเริ่มต้นปัจจุบัน: ${xm}" \
+      "b|ย้อนกลับ"
 
     case "$MENU_RESULT" in
       1)
@@ -755,35 +704,35 @@ configure_provider_defaults_menu() {
 run_doctor_menu() {
   while true; do
     echo ""
-    printf "%s╭──────────────── 🔌 RELAY CLI Connection & Login Hub ─────────────────╮%s\n" "$C_GOLD" "$C_RESET"
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s %sสถานะการติดตั้ง CLI และโมเดลเริ่มต้นของทั้ง 3 ค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
     for p in claude gemini codex; do
       local pkg="@google/gemini-cli"
       [ "$p" = "claude" ] && pkg="@anthropic-ai/claude-code"
       [ "$p" = "codex" ]  && pkg="@openai/codex"
-      local def_m p_col
+      local def_m
       def_m="$(get_cli_default_model "$p")"
-      p_col="$(format_provider_colored "$p")"
 
       if is_provider_installed "$p"; then
         local ver_s
         ver_s="$(get_provider_version "$p")"
-        printf "%s│%s  %s●%s %b : %sติดตั้งแล้ว%s (%s%s%s) • Default Model: %s%s%s\n" "$C_GOLD" "$C_RESET" "$C_GREEN" "$C_RESET" "$p_col" "$C_GREEN" "$C_RESET" "$C_CYAN" "$ver_s" "$C_RESET" "$C_WHITE" "$def_m" "$C_RESET"
+        printf "%s│%s  %s●%s %-8s : ติดตั้งแล้ว (%s) • Default Model: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET" "$p" "$ver_s" "$C_BOLD" "$def_m" "$C_RESET"
       else
-        printf "%s│%s  %s○%s %b : %sยังไม่ได้ติดตั้งในเครื่อง%s %s(%s)%s\n" "$C_GOLD" "$C_RESET" "$C_RED" "$C_RESET" "$p_col" "$C_RED" "$C_RESET" "$C_LIGHT_GRAY" "$pkg" "$C_RESET"
+        printf "%s│%s  %s○%s %-8s : %sยังไม่ได้ติดตั้งในเครื่อง%s %s(%s)%s\n" "$C_ACCENT" "$C_RESET" "$C_ERR" "$C_RESET" "$p" "$C_ERR" "$C_RESET" "$C_MUTED" "$pkg" "$C_RESET"
       fi
     done
-    printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_GOLD" "$C_RESET"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-    interactive_menu "🔌 เลือกการจัดการเชื่อมต่อ CLI และบัญชีผู้ใช้งาน" 0 \
-      "1|${C_BLUE}ติดตั้ง / อัปเดต Google Gemini CLI${C_RESET}  (npm install -g @google/gemini-cli)|ติดตั้ง / อัปเดต Google Gemini CLI" \
-      "2|${C_GREEN}ติดตั้ง / อัปเดต OpenAI Codex CLI${C_RESET}   (npm install -g @openai/codex)|ติดตั้ง / อัปเดต OpenAI Codex CLI" \
-      "3|${C_CORAL}ติดตั้ง / อัปเดต Claude Code CLI${C_RESET}    (npm install -g @anthropic-ai/claude-code)|ติดตั้ง / อัปเดต Claude Code CLI" \
-      "4|${C_GOLD}ติดตั้งรวดเดียวครบทั้ง 3 ค่าย${C_RESET} (claude + gemini + codex)|ติดตั้งรวดเดียวครบทั้ง 3 ค่าย (claude + gemini + codex)" \
-      "5|${C_CORAL}🔑 เปิด Claude Code เพื่อเข้าสู่ระบบ (Login / เช็กสถานะบัญชี)${C_RESET}|🔑 เปิด Claude Code เพื่อเข้าสู่ระบบ (Login)" \
-      "6|${C_BLUE}🔑 เปิด Gemini CLI เพื่อเข้าสู่ระบบ (Login ด้วยบัญชี Google)${C_RESET}|🔑 เปิด Gemini CLI เพื่อเข้าสู่ระบบ (Login)" \
-      "7|${C_GREEN}🔑 เปิด OpenAI Codex เพื่อเข้าสู่ระบบ (Login ด้วยบัญชี OpenAI)${C_RESET}|🔑 เปิด OpenAI Codex เพื่อเข้าสู่ระบบ (Login)" \
-      "m|${C_VIOLET}🧠 ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย${C_RESET}|🧠 ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย" \
-      "b|${C_LIGHT_GRAY}กลับสู่หน้าจอหลัก${C_RESET}|กลับสู่หน้าจอหลัก"
+    interactive_menu "เลือกการจัดการเชื่อมต่อ CLI และบัญชีผู้ใช้งาน" 0 \
+      "1|ติดตั้ง / อัปเดต Google Gemini CLI  (npm install -g @google/gemini-cli)" \
+      "2|ติดตั้ง / อัปเดต OpenAI Codex CLI   (npm install -g @openai/codex)" \
+      "3|ติดตั้ง / อัปเดต Claude Code CLI    (npm install -g @anthropic-ai/claude-code)" \
+      "4|ติดตั้งรวดเดียวครบทั้ง 3 ค่าย (claude + gemini + codex)" \
+      "5|เปิด Claude Code เพื่อเข้าสู่ระบบ (Login / เช็กสถานะบัญชี)" \
+      "6|เปิด Gemini CLI เพื่อเข้าสู่ระบบ (Login ด้วยบัญชี Google)" \
+      "7|เปิด OpenAI Codex เพื่อเข้าสู่ระบบ (Login ด้วยบัญชี OpenAI)" \
+      "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่าย" \
+      "b|กลับสู่หน้าจอหลัก"
 
     case "$MENU_RESULT" in
       1) npm install -g @google/gemini-cli ;;
@@ -792,26 +741,26 @@ run_doctor_menu() {
       4) npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex ;;
       5)
         if is_provider_installed claude; then
-          printf "%s💡 กำลังเปิด claude เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_CYAN" "$C_RESET"
+          printf "%sกำลังเปิด claude เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_ACCENT" "$C_RESET"
           claude || true
         else
-          printf "%s❌ ยังไม่ได้ติดตั้ง claude (กรุณาเลือก [3] เพื่อติดตั้งก่อน)%s\n" "$C_RED" "$C_RESET"
+          printf "%s✖ ยังไม่ได้ติดตั้ง claude (กรุณาเลือก [3] เพื่อติดตั้งก่อน)%s\n" "$C_ERR" "$C_RESET"
         fi
         ;;
       6)
         if is_provider_installed gemini; then
-          printf "%s💡 กำลังเปิด gemini เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_CYAN" "$C_RESET"
+          printf "%sกำลังเปิด gemini เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_ACCENT" "$C_RESET"
           gemini || true
         else
-          printf "%s❌ ยังไม่ได้ติดตั้ง gemini (กรุณาเลือก [1] เพื่อติดตั้งก่อน)%s\n" "$C_RED" "$C_RESET"
+          printf "%s✖ ยังไม่ได้ติดตั้ง gemini (กรุณาเลือก [1] เพื่อติดตั้งก่อน)%s\n" "$C_ERR" "$C_RESET"
         fi
         ;;
       7)
         if is_provider_installed codex; then
-          printf "%s💡 กำลังเปิด codex เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_CYAN" "$C_RESET"
+          printf "%sกำลังเปิด codex เพื่อให้คุณ Login (พิมพ์ /exit เพื่อกลับมาหน้านี้)...%s\n" "$C_ACCENT" "$C_RESET"
           codex || true
         else
-          printf "%s❌ ยังไม่ได้ติดตั้ง codex (กรุณาเลือก [2] เพื่อติดตั้งก่อน)%s\n" "$C_RED" "$C_RESET"
+          printf "%s✖ ยังไม่ได้ติดตั้ง codex (กรุณาเลือก [2] เพื่อติดตั้งก่อน)%s\n" "$C_ERR" "$C_RESET"
         fi
         ;;
       m|M) configure_provider_defaults_menu ;;
@@ -826,9 +775,9 @@ check_role_skills_status() {
   local output=""
   for sk in $skills_list; do
     if [ -d "$GLOBAL_DIR/skills/$sk" ]; then
-      output="${output}${C_GREEN}[✓] ${sk}${C_RESET}  "
+      output="${output}${C_OK}[✓] ${sk}${C_RESET}  "
     else
-      output="${output}${C_CYAN}[•] ${sk}${C_RESET}  "
+      output="${output}${C_MUTED}[•] ${sk}${C_RESET}  "
     fi
   done
   printf "%b" "$output"
@@ -837,10 +786,10 @@ check_role_skills_status() {
 get_provider_rules_status() {
   local provider="$1"
   case "$provider" in
-    claude) [ -e "$HOME/.claude/CLAUDE.md" ] && printf "%s✅ เชื่อม ~/.claude/CLAUDE.md แล้ว%s" "$C_GREEN" "$C_RESET" || printf "%s❌ ไม่พบ ~/.claude/CLAUDE.md%s" "$C_RED" "$C_RESET" ;;
-    codex)  [ -e "$HOME/.codex/AGENTS.md" ]  && printf "%s✅ เชื่อม ~/.codex/AGENTS.md แล้ว%s" "$C_GREEN" "$C_RESET"  || printf "%s❌ ไม่พบ ~/.codex/AGENTS.md%s" "$C_RED" "$C_RESET" ;;
-    gemini) [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s✅ เชื่อม ~/.gemini/GEMINI.md แล้ว%s" "$C_GREEN" "$C_RESET" || printf "%s❌ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_RED" "$C_RESET" ;;
-    *) printf "⚠️ ไม่ทราบค่าย" ;;
+    claude) [ -e "$HOME/.claude/CLAUDE.md" ] && printf "%s● เชื่อม ~/.claude/CLAUDE.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.claude/CLAUDE.md%s" "$C_ERR" "$C_RESET" ;;
+    codex)  [ -e "$HOME/.codex/AGENTS.md" ]  && printf "%s● เชื่อม ~/.codex/AGENTS.md แล้ว%s" "$C_OK" "$C_RESET"  || printf "%s○ ไม่พบ ~/.codex/AGENTS.md%s" "$C_ERR" "$C_RESET" ;;
+    gemini) [ -e "$HOME/.gemini/GEMINI.md" ] && printf "%s● เชื่อม ~/.gemini/GEMINI.md แล้ว%s" "$C_OK" "$C_RESET" || printf "%s○ ไม่พบ ~/.gemini/GEMINI.md%s" "$C_ERR" "$C_RESET" ;;
+    *) printf "ไม่ทราบค่าย" ;;
   esac
 }
 
@@ -853,14 +802,14 @@ ping_single_role_agent() {
   local expected_duty="$6"
 
   echo ""
-  printf "%s╭────────────────────────────────────────────────────────────────────────╮%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s 🧪 กำลังทดสอบรายงานตัวของ: %s%s%s\n" "$C_GOLD" "$C_RESET" "$C_WHITE" "$role_title" "$C_RESET"
-  printf "%s│%s    • ค่าย / โมเดล : %b (%s%s%s)\n" "$C_GOLD" "$C_RESET" "$(format_provider_colored "$provider")" "$C_CYAN" "$configured_model" "$C_RESET"
-  printf "%s│%s    • ทักษะประจำตัว: %s%s%s\n" "$C_GOLD" "$C_RESET" "$C_LIGHT_GRAY" "$expected_skills" "$C_RESET"
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_GOLD" "$C_RESET"
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s กำลังทดสอบรายงานตัวของ: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_title" "$C_RESET"
+  printf "%s│%s  • ค่าย / โมเดล : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$provider" "$configured_model"
+  printf "%s│%s  • ทักษะประจำตัว: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$expected_skills" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if ! is_role_ready "$provider" "$configured_model"; then
-    printf "%s❌ ไม่สามารถยิงทดสอบ %s ได้ เนื่องจากยังตั้งค่าไม่สมบูรณ์ (%b)%s\n" "$C_RED" "$role_code" "$(format_role_status_cell "$provider" "$configured_model")" "$C_RESET"
+    printf "%s✖ ไม่สามารถยิงทดสอบ %s ได้ เนื่องจากยังตั้งค่าไม่สมบูรณ์ (%b)%s\n" "$C_ERR" "$role_code" "$(format_role_status_cell "$provider" "$configured_model")" "$C_RESET"
     return 1
   fi
 
@@ -870,7 +819,7 @@ ping_single_role_agent() {
 3. ยืนยันชุดทักษะ (Skills) ประจำตำแหน่งของคุณ ได้แก่: $expected_skills
 4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน 100%'"
 
-  printf "%s⏳ กำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_CYAN" "$provider" "$configured_model" "$C_RESET"
+  printf "%sกำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_MUTED" "$provider" "$configured_model" "$C_RESET"
   local exit_code=0
   case "$provider" in
     claude) claude --model "$configured_model" -p "$self_check_prompt" || exit_code=$? ;;
@@ -879,9 +828,9 @@ ping_single_role_agent() {
   esac
 
   if [ "$exit_code" -eq 0 ]; then
-    printf "%s✅ [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งาน 100%%!%s\n" "$C_GREEN" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งาน 100%%!%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
   else
-    printf "%s❌ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้ (เช็ก Login ใน [d])%s\n" "$C_RED" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s✖ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้ (เช็กการ Login ในเมนู [d])%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
   fi
 }
 
@@ -893,44 +842,46 @@ run_agent_readiness_test() {
   local qa_skills="verification-before-completion differential-review semgrep playwright-qa"
 
   echo ""
-  printf "%s╭────────── 🧪 RELAY Agent Readiness & Skill Verification ───────────────╮%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s1️⃣  ขั้นตอนที่ 1: @po (Product Owner — สร้าง SPEC.md)%s\n" "$C_GOLD" "$C_RESET" "$C_PINK" "$C_RESET"
-  printf "%s│%s    • ค่าย / โมเดล : %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$(format_provider_colored "$ROLE_PO")" "$(format_role_model_cell "$ROLE_PO" "$MODEL_PO")" "$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
-  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_GOLD" "$C_RESET" "$(get_provider_rules_status "$ROLE_PO")"
-  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_GOLD" "$C_RESET" "$(check_role_skills_status "$po_skills")"
-  printf "%s│%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s2️⃣  ขั้นตอนที่ 2: @arch & @pm (Architect & Planner — สร้าง ARCH & PLAN)%s\n" "$C_GOLD" "$C_RESET" "$C_GOLD" "$C_RESET"
-  printf "%s│%s    • ค่าย / โมเดล : %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$(format_provider_colored "$ROLE_ARCH")" "$(format_role_model_cell "$ROLE_ARCH" "$MODEL_ARCH")" "$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
-  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_GOLD" "$C_RESET" "$(get_provider_rules_status "$ROLE_ARCH")"
-  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_GOLD" "$C_RESET" "$(check_role_skills_status "$arch_skills")"
-  printf "%s│%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s3️⃣  ขั้นตอนที่ 3: @dev (Full-Stack Developer — พัฒนาโค้ดใน Git Worktree)%s\n" "$C_GOLD" "$C_RESET" "$C_CYAN" "$C_RESET"
-  printf "%s│%s    • ค่าย / โมเดล : %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$(format_provider_colored "$ROLE_DEV")" "$(format_role_model_cell "$ROLE_DEV" "$MODEL_DEV")" "$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
-  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_GOLD" "$C_RESET" "$(get_provider_rules_status "$ROLE_DEV")"
-  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_GOLD" "$C_RESET" "$(check_role_skills_status "$dev_skills")"
-  printf "%s│%s\n" "$C_GOLD" "$C_RESET"
-  printf "%s│%s %s4️⃣  ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor — สร้าง QA_REPORT.md)%s\n" "$C_GOLD" "$C_RESET" "$C_MINT" "$C_RESET"
-  printf "%s│%s    • ค่าย / โมเดล : %b │ %b │ %b\n" "$C_GOLD" "$C_RESET" "$(format_provider_colored "$ROLE_QA")" "$(format_role_model_cell "$ROLE_QA" "$MODEL_QA")" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
-  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_GOLD" "$C_RESET" "$(get_provider_rules_status "$ROLE_QA")"
-  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_GOLD" "$C_RESET" "$(check_role_skills_status "$qa_skills")"
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_GOLD" "$C_RESET"
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sตรวจสอบบทบาท โมเดล และทักษะประจำตำแหน่ง (RELAY Agent Readiness)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s1. ขั้นตอนที่ 1: @po (Product Owner — สร้าง SPEC.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_PO" "$(format_role_model_text "$ROLE_PO" "$MODEL_PO")" "$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
+  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_PO")"
+  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$po_skills")"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s2. ขั้นตอนที่ 2: @arch & @pm (Architect & Planner — สร้าง ARCH & PLAN)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$(format_role_model_text "$ROLE_ARCH" "$MODEL_ARCH")" "$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
+  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_ARCH")"
+  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$arch_skills")"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s3. ขั้นตอนที่ 3: @dev (Full-Stack Developer — พัฒนาโค้ดใน Git Worktree)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$(format_role_model_text "$ROLE_DEV" "$MODEL_DEV")" "$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
+  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_DEV")"
+  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$dev_skills")"
+  printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %s4. ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor — สร้าง QA_REPORT.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$(format_role_model_text "$ROLE_QA" "$MODEL_QA")" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
+  printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_QA")"
+  printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$qa_skills")"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if [ "$ALL_ROLES_READY" -eq 0 ]; then
-    printf "\n%s🔒 ยังไม่สามารถยิงทดสอบ Live Handshake ได้ เนื่องจากยังตั้งค่าไม่ครบทั้ง 4 ตำแหน่ง (%d/4)%s\n" "$C_RED" "$READY_ROLE_COUNT" "$C_RESET"
+    printf "\n%s▲ ยังไม่สามารถยิงทดสอบ Live Handshake ได้ เนื่องจากยังตั้งค่าไม่ครบทั้ง 4 ตำแหน่ง (%d/4)%s\n" "$C_ERR" "$READY_ROLE_COUNT" "$C_RESET"
     interactive_menu "ต้องการไปตั้งค่าให้ครบทั้ง 4 ตำแหน่งก่อนหรือไม่?" 0 \
-      "c|${C_GOLD}ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง ([c])${C_RESET}|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง ([c])" \
-      "b|${C_LIGHT_GRAY}กลับสู่หน้าจอหลัก${C_RESET}|กลับสู่หน้าจอหลัก"
+      "c|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง ([c])" \
+      "b|กลับสู่หน้าจอหลัก"
     if [ "$MENU_RESULT" = "c" ]; then configure_roles_menu; fi
     return 0
   fi
 
-  interactive_menu "🧪 เลือกตำแหน่งที่ต้องการยิงทดสอบให้ AI รายงานบทบาทและ Skills จริง" 0 \
-    "1|${C_GREEN}ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec)${C_RESET}|ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง" \
-    "2|${C_PINK}ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po        ➔ ${ROLE_PO} / ${MODEL_PO})${C_RESET}|ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po)" \
-    "3|${C_GOLD}ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm  ➔ ${ROLE_ARCH} / ${MODEL_ARCH})${C_RESET}|ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm)" \
-    "4|${C_CYAN}ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev       ➔ ${ROLE_DEV} / ${MODEL_DEV})${C_RESET}|ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev)" \
-    "5|${C_MINT}ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec   ➔ ${ROLE_QA} / ${MODEL_QA})${C_RESET}|ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec)" \
-    "b|${C_LIGHT_GRAY}กลับสู่หน้าจอหลัก${C_RESET}|กลับสู่หน้าจอหลัก"
+  interactive_menu "เลือกตำแหน่งที่ต้องการยิงทดสอบให้ AI รายงานบทบาทและ Skills จริง" 0 \
+    "1|ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec)" \
+    "2|ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po        ➔ ${ROLE_PO} / ${MODEL_PO})" \
+    "3|ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm  ➔ ${ROLE_ARCH} / ${MODEL_ARCH})" \
+    "4|ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev       ➔ ${ROLE_DEV} / ${MODEL_DEV})" \
+    "5|ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec   ➔ ${ROLE_QA} / ${MODEL_QA})" \
+    "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
     1)
@@ -959,7 +910,7 @@ run_agent_readiness_test() {
   esac
 }
 
-# ─── 11. เรียกใช้งาน CLI ของแต่ละขั้นตอน (บังคับผ่าน 4-Role Readiness Gate ก่อนเสมอ) ───
+# ─── 11. เรียกใช้งาน CLI ของแต่ละขั้นตอน ──────────────────────────────────────
 launch_provider_cli() {
   local provider="$1"
   local configured_model="$2"
@@ -968,16 +919,16 @@ launch_provider_cli() {
   local initial_prompt="$5"
 
   echo ""
-  printf "%s╭────────────────────────────────────────────────────────────────────────╮%s\n" "$C_CYAN" "$C_RESET"
-  printf "%s│%s 🚀 กำลังเข้าสู่ %s%s%s\n" "$C_CYAN" "$C_RESET" "$C_WHITE" "$role_name" "$C_RESET"
-  printf "%s│%s    • ค่ายผู้ให้บริการ : %b  │  โมเดลที่ใช้: %s%s%s\n" "$C_CYAN" "$C_RESET" "$(format_provider_colored "$provider")" "$C_GOLD" "$configured_model" "$C_RESET"
-  printf "%s│%s    • โฟลเดอร์ทำงาน  : %s%s%s\n" "$C_CYAN" "$C_RESET" "$C_LIGHT_GRAY" "$work_dir" "$C_RESET"
-  printf "%s├────────────────────────────────────────────────────────────────────────┤%s\n" "$C_CYAN" "$C_RESET"
-  printf "%s│%s 📋 คำสั่งเริ่มต้น (คัดลอกลง Clipboard ให้แล้วอัตโนมัติ):\n" "$C_CYAN" "$C_RESET"
-  printf "%s%s%s\n" "$C_LIGHT_GRAY" "$initial_prompt" "$C_RESET"
-  printf "%s├────────────────────────────────────────────────────────────────────────┤%s\n" "$C_CYAN" "$C_RESET"
-  printf "%s│%s 💡 เมื่อสร้างเอกสารของขั้นตอนนี้เสร็จแล้ว ให้พิมพ์ %s/exit%s เพื่อกลับมาหน้าจอ RELAY\n" "$C_CYAN" "$C_RESET" "$C_GOLD" "$C_RESET"
-  printf "%s╰────────────────────────────────────────────────────────────────────────╯%s\n" "$C_CYAN" "$C_RESET"
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s กำลังเข้าสู่ %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_name" "$C_RESET"
+  printf "%s│%s  • ค่ายผู้ให้บริการ : %s  │  โมเดลที่ใช้: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$provider" "$C_BOLD" "$configured_model" "$C_RESET"
+  printf "%s│%s  • โฟลเดอร์ทำงาน  : %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$work_dir" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s คำสั่งเริ่มต้น (คัดลอกลง Clipboard ให้แล้วอัตโนมัติ):\n" "$C_ACCENT" "$C_RESET"
+  printf "%s%s%s\n" "$C_MUTED" "$initial_prompt" "$C_RESET"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s เมื่อสร้างเอกสารของขั้นตอนนี้เสร็จแล้ว ให้พิมพ์ %s/exit%s เพื่อกลับมาหน้าจอ RELAY\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if command -v pbcopy >/dev/null 2>&1; then
     printf "%s" "$initial_prompt" | pbcopy
@@ -1004,21 +955,21 @@ ensure_or_create_task() {
 create_new_task() {
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
   echo ""
-  read -r -p "📝 ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ payment-api): " slug
+  read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ payment-api): " slug
   slug="$(echo "${slug:-feature}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g')"
   local today
   today="$(date +%Y%m%d)"
   CURRENT_TASK="${today}-${slug}"
   mkdir -p "$RELAY_DIR/tasks/$CURRENT_TASK/screenshots"
   ACTIVE_TASK="$CURRENT_TASK"
-  printf "%s✅ สร้างใบงานใหม่เรียบร้อย: .relay/tasks/%s%s\n" "$C_GREEN" "$ACTIVE_TASK" "$C_RESET"
+  printf "%s● สร้างใบงานใหม่เรียบร้อย: .relay/tasks/%s%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
 }
 
 run_phase_1_po() {
   require_all_roles_ready || return 0
   ensure_or_create_task
   echo ""
-  read -r -p "💡 อธิบายฟีเจอร์หรือความต้องการคร่าวๆ ที่ต้องการให้ @po วิเคราะห์: " user_goal
+  read -r -p "อธิบายฟีเจอร์หรือความต้องการคร่าวๆ ที่ต้องการให้ @po วิเคราะห์: " user_goal
   local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po (Product Owner)" "$PROJECT_DIR" "$prompt"
 }
@@ -1040,7 +991,7 @@ run_phase_3_dev() {
   if [ -d "$PROJECT_DIR/.git" ]; then
     mkdir -p "$RELAY_DIR/worktrees"
     if [ ! -d "$worktree_dir" ]; then
-      printf "%s🌿 กำลังสร้าง Git Worktree แยกอิสระที่ .relay/worktrees/%s (กิ่ง %s)...%s\n" "$C_CYAN" "$ACTIVE_TASK" "$branch_name" "$C_RESET"
+      printf "%sกำลังสร้าง Git Worktree แยกอิสระที่ .relay/worktrees/%s (กิ่ง %s)...%s\n" "$C_ACCENT" "$ACTIVE_TASK" "$branch_name" "$C_RESET"
       git worktree add "$worktree_dir" -b "$branch_name" 2>/dev/null || git worktree add "$worktree_dir" "$branch_name" 2>/dev/null || true
     fi
     if [ -d "$worktree_dir" ]; then
@@ -1075,15 +1026,15 @@ run_phase_5_merge() {
   require_all_roles_ready || return 0
   get_active_task
   if [ -z "$ACTIVE_TASK" ]; then
-    printf "%s⚠️ ยังไม่มีใบงานที่กำลังดำเนินการใน .relay/tasks/%s\n" "$C_RED" "$C_RESET"
+    printf "%s▲ ยังไม่มีใบงานที่กำลังดำเนินการใน .relay/tasks/%s\n" "$C_ERR" "$C_RESET"
     return
   fi
   local branch_name="feat/$ACTIVE_TASK"
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
 
-  interactive_menu "🏁 ยืนยันการผสานโค้ดกิ่ง ${branch_name} เข้าสู่ main และจัดเก็บใบงาน ${ACTIVE_TASK}" 0 \
-    "y|${C_GREEN}ยืนยัน — ผสานโค้ดเข้ากิ่งหลัก ลบ Worktree และย้ายเข้า .relay/archive/${C_RESET}|ยืนยัน — ผสานโค้ดเข้ากิ่งหลัก ลบ Worktree และย้ายเข้า .relay/archive/" \
-    "n|${C_LIGHT_GRAY}ยกเลิก — กลับสู่หน้าจอหลัก${C_RESET}|ยกเลิก — กลับสู่หน้าจอหลัก"
+  interactive_menu "ยืนยันการผสานโค้ดกิ่ง ${branch_name} เข้าสู่ main และจัดเก็บใบงาน ${ACTIVE_TASK}" 0 \
+    "y|ยืนยัน — ผสานโค้ดเข้ากิ่งหลัก ลบ Worktree และย้ายเข้า .relay/archive/" \
+    "n|ยกเลิก — กลับสู่หน้าจอหลัก"
 
   if [ "$MENU_RESULT" = "y" ]; then
     if [ -d "$PROJECT_DIR/.git" ] && git show-ref --verify --quiet "refs/heads/$branch_name"; then
@@ -1094,15 +1045,15 @@ run_phase_5_merge() {
     mkdir -p "$RELAY_DIR/archive"
     mv "$RELAY_DIR/tasks/$ACTIVE_TASK" "$RELAY_DIR/archive/$ACTIVE_TASK"
     CURRENT_TASK=""
-    printf "%s✅ ผสานโค้ดและย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_GREEN" "$ACTIVE_TASK" "$C_RESET"
+    printf "%s● ผสานโค้ดและย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
   fi
 }
 
 run_init_project() {
-  interactive_menu "📂 เลือกประเภทโครงการที่ต้องการเตรียมโครงสร้าง .relay/" 0 \
-    "1|${C_GREEN}โครงการใหม่ตั้งแต่ศูนย์ (Greenfield — สร้างโครงสร้าง .relay/ ทันที)${C_RESET}|โครงการใหม่ตั้งแต่ศูนย์ (Greenfield)" \
-    "2|${C_GOLD}โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield — สแกนโค้ดสรุปลง PROJECT_STATE.md)${C_RESET}|โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield)" \
-    "b|${C_LIGHT_GRAY}ย้อนกลับ${C_RESET}|ย้อนกลับ"
+  interactive_menu "เลือกประเภทโครงการที่ต้องการเตรียมโครงสร้าง .relay/" 0 \
+    "1|โครงการใหม่ตั้งแต่ศูนย์ (Greenfield — สร้างโครงสร้าง .relay/ ทันที)" \
+    "2|โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield — สแกนโค้ดสรุปลง PROJECT_STATE.md)" \
+    "b|ย้อนกลับ"
   case "$MENU_RESULT" in
     1) "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" new ;;
     2)
@@ -1118,12 +1069,12 @@ run_skills_menu() {
   local skills_cmd="$GLOBAL_DIR/bin/relay-skills"
   [ ! -x "$skills_cmd" ] && skills_cmd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/relay-skills.sh"
 
-  interactive_menu "🧰 จัดการและอัปเดตชุดทักษะ (RELAY Modular Skill Packs)" 0 \
-    "1|${C_CYAN}แสดงรายการทักษะทั้งหมดในคลังและที่ติดตั้งแล้วในเครื่อง (list)${C_RESET}|แสดงรายการทักษะทั้งหมดในคลังและที่ติดตั้งแล้วในเครื่อง (list)" \
-    "2|${C_GREEN}ติดตั้งชุดทักษะมาตรฐานทั้งหมดลงเครื่อง (install)${C_RESET}|ติดตั้งชุดทักษะมาตรฐานทั้งหมดลงเครื่อง (install)" \
-    "3|${C_GOLD}อัปเดตทักษะทั้งหมดให้เป็นเวอร์ชันล่าสุดจาก GitHub (update)${C_RESET}|อัปเดตทักษะทั้งหมดให้เป็นเวอร์ชันล่าสุดจาก GitHub (update)" \
-    "4|${C_PINK}เพิ่มทักษะใหม่จากลิงก์ GitHub Repository (add)${C_RESET}|เพิ่มทักษะใหม่จากลิงก์ GitHub Repository (add)" \
-    "b|${C_LIGHT_GRAY}กลับสู่หน้าจอหลัก${C_RESET}|กลับสู่หน้าจอหลัก"
+  interactive_menu "จัดการและอัปเดตชุดทักษะ (RELAY Modular Skill Packs)" 0 \
+    "1|แสดงรายการทักษะทั้งหมดในคลังและที่ติดตั้งแล้วในเครื่อง (list)" \
+    "2|ติดตั้งชุดทักษะมาตรฐานทั้งหมดลงเครื่อง (install)" \
+    "3|อัปเดตทักษะทั้งหมดให้เป็นเวอร์ชันล่าสุดจาก GitHub (update)" \
+    "4|เพิ่มทักษะใหม่จากลิงก์ GitHub Repository (add)" \
+    "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
     1) "$skills_cmd" list ;;
@@ -1172,33 +1123,33 @@ while true; do
   print_dashboard_header
 
   if [ "$ALL_ROLES_READY" -eq 1 ]; then
-    interactive_menu "🎛️  เลือกคำสั่งการทำงาน (✅ ตั้งค่าครบทั้ง 4 ตำแหน่ง — พร้อมเริ่มงานทันที)" 0 \
-      "1|${C_PINK}เริ่มขั้นตอนที่ 1 (@po)${C_RESET}       — วิเคราะห์ความต้องการและสร้าง SPEC.md (${ROLE_PO}/${MODEL_PO})|เริ่มขั้นตอนที่ 1 (@po) — สร้าง SPEC.md (${ROLE_PO}/${MODEL_PO})" \
-      "2|${C_GOLD}เริ่มขั้นตอนที่ 2 (@arch/@pm)${C_RESET} — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})|เริ่มขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH & PLAN (${ROLE_ARCH}/${MODEL_ARCH})" \
-      "3|${C_CYAN}เริ่มขั้นตอนที่ 3 (@dev)${C_RESET}      — แยก Git Worktree อัตโนมัติและเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})|เริ่มขั้นตอนที่ 3 (@dev) — เขียนโค้ดใน Worktree (${ROLE_DEV}/${MODEL_DEV})" \
-      "4|${C_MINT}เริ่มขั้นตอนที่ 4 (@qa/@sec)${C_RESET}  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})|เริ่มขั้นตอนที่ 4 (@qa/@sec) — ตรวจรับงาน (${ROLE_QA}/${MODEL_QA})" \
-      "5|${C_GREEN}ผสานโค้ดและจัดเก็บใบงาน${C_RESET}     — Merge เข้ากิ่ง main และย้ายเข้า .relay/archive/|ผสานโค้ดและจัดเก็บใบงาน — Merge & Archive" \
-      "c|${C_GOLD}ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง (/model)${C_RESET}|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง (/model)" \
-      "d|${C_BLUE}จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)${C_RESET}|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
-      "t|${C_GREEN}ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง — เช็กบทบาท & Skills (/test)${C_RESET}|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
-      "s|${C_VIOLET}จัดการและอัปเดตชุดทักษะ Skills (/skills)${C_RESET}|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
-      "n|${C_CYAN}สร้างใบงานใหม่ (New Task) (/new)${C_RESET}|สร้างใบงานใหม่ (New Task) (/new)" \
-      "i|${C_INDIGO}เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)${C_RESET}|เตรียมโครงสร้าง .relay/ (/init)" \
-      "q|${C_RED}ออกจากโปรแกรม (/quit)${C_RESET}|ออกจากโปรแกรม (/quit)"
+    interactive_menu "เลือกคำสั่งการทำงาน (พร้อมครบทั้ง 4 ตำแหน่ง — เริ่มสั่งงานได้ทันที)" 0 \
+      "1|เริ่มขั้นตอนที่ 1 (@po)       — วิเคราะห์ความต้องการและสร้าง SPEC.md (${ROLE_PO}/${MODEL_PO})" \
+      "2|เริ่มขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})" \
+      "3|เริ่มขั้นตอนที่ 3 (@dev)      — แยก Git Worktree อัตโนมัติและเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})" \
+      "4|เริ่มขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})" \
+      "5|ผสานโค้ดและจัดเก็บใบงาน     — Merge เข้ากิ่ง main และย้ายเข้า .relay/archive/" \
+      "c|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง (/model)" \
+      "d|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
+      "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง — เช็กบทบาท & Skills (/test)" \
+      "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
+      "n|สร้างใบงานใหม่ (New Task) (/new)" \
+      "i|เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)" \
+      "q|ออกจากโปรแกรม (/quit)"
   else
-    interactive_menu "🔒 กรุณาตั้งค่าค่าย AI & Model ให้ครบ 4 ตำแหน่งก่อน (พร้อม ${READY_ROLE_COUNT}/4 ตำแหน่ง)" 5 \
-      "1|${C_GRAY}🔒 [ล็อก] ขั้นตอนที่ 1 (@po)       — ตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน${C_RESET}|🔒 [ล็อก] ขั้นตอนที่ 1 (@po) — ตั้งค่าใน [c] ให้ครบก่อน" \
-      "2|${C_GRAY}🔒 [ล็อก] ขั้นตอนที่ 2 (@arch/@pm) — ตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน${C_RESET}|🔒 [ล็อก] ขั้นตอนที่ 2 (@arch/@pm) — ตั้งค่าใน [c] ให้ครบก่อน" \
-      "3|${C_GRAY}🔒 [ล็อก] ขั้นตอนที่ 3 (@dev)      — ตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน${C_RESET}|🔒 [ล็อก] ขั้นตอนที่ 3 (@dev) — ตั้งค่าใน [c] ให้ครบก่อน" \
-      "4|${C_GRAY}🔒 [ล็อก] ขั้นตอนที่ 4 (@qa/@sec)  — ตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน${C_RESET}|🔒 [ล็อก] ขั้นตอนที่ 4 (@qa/@sec) — ตั้งค่าใน [c] ให้ครบก่อน" \
-      "5|${C_GRAY}🔒 [ล็อก] ผสานโค้ดและจัดเก็บใบงาน     — ตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน${C_RESET}|🔒 [ล็อก] ผสานโค้ดและจัดเก็บใบงาน — ตั้งค่าใน [c] ให้ครบก่อน" \
-      "c|${C_GOLD}👉 ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งให้ครบ 4 ตำแหน่ง (/model)${C_RESET}|👉 ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งให้ครบ 4 ตำแหน่ง (/model)" \
-      "d|${C_BLUE}จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)${C_RESET}|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
-      "t|${C_GREEN}ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)${C_RESET}|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
-      "s|${C_VIOLET}จัดการและอัปเดตชุดทักษะ Skills (/skills)${C_RESET}|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
-      "n|${C_CYAN}สร้างใบงานใหม่ (New Task) (/new)${C_RESET}|สร้างใบงานใหม่ (New Task) (/new)" \
-      "i|${C_INDIGO}เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)${C_RESET}|เตรียมโครงสร้าง .relay/ (/init)" \
-      "q|${C_RED}ออกจากโปรแกรม (/quit)${C_RESET}|ออกจากโปรแกรม (/quit)"
+    interactive_menu "กรุณาตั้งค่าค่าย AI & Model ให้ครบ 4 ตำแหน่งก่อนเริ่มงาน (พร้อม ${READY_ROLE_COUNT}/4 ตำแหน่ง)" 5 \
+      "1|[ล็อก] ขั้นตอนที่ 1 (@po)       — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
+      "2|[ล็อก] ขั้นตอนที่ 2 (@arch/@pm) — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
+      "3|[ล็อก] ขั้นตอนที่ 3 (@dev)      — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
+      "4|[ล็อก] ขั้นตอนที่ 4 (@qa/@sec)  — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
+      "5|[ล็อก] ผสานโค้ดและจัดเก็บใบงาน     — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
+      "c|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งให้ครบ 4 ตำแหน่ง (/model)" \
+      "d|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
+      "t|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
+      "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
+      "n|สร้างใบงานใหม่ (New Task) (/new)" \
+      "i|เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)" \
+      "q|ออกจากโปรแกรม (/quit)"
   fi
 
   case "$MENU_RESULT" in
@@ -1214,7 +1165,7 @@ while true; do
     n|N|/new)             create_new_task ;;
     i|I|/init)            run_init_project ;;
     q|Q|/quit|/exit|exit)
-      printf "%s👋 ออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_CYAN" "$C_RESET"
+      printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
       exit 0
       ;;
   esac
