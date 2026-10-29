@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# 🎛️ RELAY Central Terminal Hub (v1.0) — Minimalist High-Contrast Interactive TUI
+# 🎛️ RELAY Central Terminal Hub (v1.0) — Guided 3-Stage Progressive UX
 # • โทนสี Minimalist 3-Tier (รองรับทั้ง Terminal พื้นหลังสีขาว Light Mode และพื้นดำ Dark Mode)
 # • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด (คลุมครบ 100% ไม่แหว่งสระไทย)
-# • ระบบ 4-Role Readiness Gate: บังคับตั้งค่า Roles + Provider + Model ให้ครบทั้ง 4 ตำแหน่งก่อนเริ่มงาน
+# • ระบบนำทาง 3 ขั้นตอนอัตโนมัติ (Guided 3-Stage Progressive Disclosure):
+#     ขั้นที่ 1: ตั้งค่า AI ให้ครบ 4 ตำแหน่ง (ซ่อนเมนูที่ยังไม่ถึงคิว มีปุ่ม Quick Setup คลิกเดียวเสร็จ)
+#     ขั้นที่ 2: เตรียมโฟลเดอร์โปรเจกต์ (ป้องกันการรันใน Home ~ และช่วยสร้าง .relay/PROJECT_STATE.md)
+#     ขั้นที่ 3: เริ่มสั่งงานตามใบงาน 1-5 (เลื่อนตัวชี้ ❯ ไปยังขั้นตอนถัดไปของใบงานให้อัตโนมัติ)
 # ==============================================================================
 
 GLOBAL_DIR="$HOME/.agents"
@@ -13,6 +16,13 @@ PROJECT_DIR="$(pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 RELAY_DIR="$PROJECT_DIR/.relay"
 PROJECT_ROLES_CONF="$RELAY_DIR/roles.conf"
+LAST_COMPLETED_PHASE=0
+
+refresh_project_paths() {
+  PROJECT_NAME="$(basename "$PROJECT_DIR")"
+  RELAY_DIR="$PROJECT_DIR/.relay"
+  PROJECT_ROLES_CONF="$RELAY_DIR/roles.conf"
+}
 
 # ─── ระบบสี Minimalist High-Contrast (อ่านคมชัดทั้งบนพื้นขาวและพื้นดำ) ─────────
 export CLICOLOR=1
@@ -34,6 +44,7 @@ C_ERR=$'\033[38;5;160m'
 
 # ─── 1. โหลดและบันทึกการตั้งค่า Role & Model ─────────────────────────────────
 load_role_config() {
+  refresh_project_paths
   ROLE_PO="gemini";   MODEL_PO="default"
   ROLE_ARCH="claude"; MODEL_ARCH="default"
   ROLE_DEV="claude";  MODEL_DEV="default"
@@ -67,7 +78,7 @@ MODEL_QA="${MODEL_QA:-default}"
 EOF
 }
 
-# ─── 2. ตรวจสอบสถานะ CLI และระบบ 4-Role Readiness Gate ───────────────────────
+# ─── 2. ตรวจสอบสถานะ CLI และระบบ 3-Stage Progressive UX ──────────────────────
 is_provider_installed() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -183,7 +194,7 @@ format_role_status_cell() {
   if ! is_provider_installed "$provider"; then
     printf "%s✖ ยังไม่ติดตั้ง CLI%s" "$C_ERR" "$C_RESET"
   elif ! is_model_explicitly_set "$model"; then
-    printf "%s▲ รอเลือกโมเดล ([c])%s" "$C_WARN" "$C_RESET"
+    printf "%s▲ รอเลือกโมเดล%s" "$C_WARN" "$C_RESET"
   else
     printf "%s● พร้อมใช้งาน%s" "$C_OK" "$C_RESET"
   fi
@@ -202,6 +213,7 @@ format_role_model_text() {
 }
 
 get_active_task() {
+  refresh_project_paths
   if [ ! -d "$RELAY_DIR/tasks" ]; then
     ACTIVE_TASK=""
     return
@@ -213,8 +225,59 @@ get_active_task() {
   ACTIVE_TASK="$(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | grep -v '^\.' | tail -n 1 || true)"
 }
 
+# คำนวณว่าตอนนี้อยู่ในขั้นที่เท่าไรจาก 3 ขั้นตอนหลัก (Stage 1 / Stage 2 / Stage 3)
+UX_STAGE=1
+IN_HOME_DIR=0
+HAS_PROJECT_STATE=0
+RECOMMENDED_STEP=1
+STAGE3_FOCUS_TEXT=""
+
+determine_ux_stage() {
+  check_all_roles_ready
+  get_active_task
+
+  if [ "$PROJECT_DIR" = "$HOME" ]; then
+    IN_HOME_DIR=1
+  else
+    IN_HOME_DIR=0
+  fi
+
+  if [ "$IN_HOME_DIR" -eq 0 ] && [ -f "$RELAY_DIR/PROJECT_STATE.md" ]; then
+    HAS_PROJECT_STATE=1
+  else
+    HAS_PROJECT_STATE=0
+  fi
+
+  if [ "$ALL_ROLES_READY" -eq 0 ]; then
+    UX_STAGE=1
+  elif [ "$IN_HOME_DIR" -eq 1 ] || [ "$HAS_PROJECT_STATE" -eq 0 ]; then
+    UX_STAGE=2
+  else
+    UX_STAGE=3
+    compute_stage3_next_step
+  fi
+}
+
+compute_stage3_next_step() {
+  if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
+    RECOMMENDED_STEP=1
+    STAGE3_FOCUS_TEXT="กด Enter ที่ข้อ [1] เพื่อให้ @po ซักถามความต้องการและสร้างเอกสาร SPEC.md"
+  elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ]; then
+    RECOMMENDED_STEP=2
+    STAGE3_FOCUS_TEXT="มี SPEC.md แล้ว — กด Enter ที่ข้อ [2] เพื่อให้ @arch/@pm สร้าง ARCH.md & PLAN.md"
+  elif [ ! -d "$RELAY_DIR/worktrees/$ACTIVE_TASK" ] && [ "${LAST_COMPLETED_PHASE:-0}" -lt 3 ]; then
+    RECOMMENDED_STEP=3
+    STAGE3_FOCUS_TEXT="มี PLAN.md แล้ว — กด Enter ที่ข้อ [3] เพื่อให้ @dev แยก Worktree และเขียนโค้ด"
+  elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ]; then
+    RECOMMENDED_STEP=4
+    STAGE3_FOCUS_TEXT="เขียนโค้ดใน Worktree แล้ว — กด Enter ที่ข้อ [4] เพื่อให้ @qa/@sec ตรวจรับงาน"
+  else
+    RECOMMENDED_STEP=5
+    STAGE3_FOCUS_TEXT="ผ่าน QA_REPORT.md แล้ว — กด Enter ที่ข้อ [5] เพื่อผสานโค้ดเข้า main และเก็บเข้า Archive"
+  fi
+}
+
 # ─── 3. Interactive Arrow-Key Menu (สไตล์ Claude Code: ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด) ───
-# รูปแบบรายการ: "คีย์|ข้อความแสดงผล" (ใช้ข้อความชุดเดียวกันเป๊ะ ไม่ตัดคำ ไม่ใช้แถบพื้นหลังที่แหว่งกับสระไทย)
 MENU_RESULT=""
 interactive_menu() {
   local title="$1"
@@ -268,7 +331,6 @@ interactive_menu() {
 
       printf "\033[2K\r"
       if [ "$i" -eq "$selected" ]; then
-        # สไตล์ที่ 1: เน้นด้วย ❯ + เปลี่ยนข้อความทั้งบรรทัดเป็นสีน้ำเงินครามเข้มตัวหนา คลุมครบทุกตัวอักษร 100%
         printf "  %s❯ [%s] %s%s\n" "$C_SEL" "$key" "$label" "$C_RESET"
       else
         printf "    %s[%s]%s %s\n" "$C_ACCENT" "$key" "$C_RESET" "$label"
@@ -336,21 +398,20 @@ interactive_menu() {
   tput cnorm 2>/dev/null || true
 }
 
-# ─── 4. แสดงหัวกระดาษ Minimalist Monochrome-Blue Banner + กรอบ Open-Right ───
+# ─── 4. แสดงหัวกระดาษพร้อมแถบนำทาง 3 ขั้นตอน (3-Stage Progress Stepper) ──────
 print_dashboard_header() {
   if [ -t 1 ] && [ "${SUBCOMMAND:-hub}" = "hub" ]; then
     printf "\033[H\033[2J"
   fi
 
-  check_all_roles_ready
-  get_active_task
+  determine_ux_stage
 
   local git_branch="no-git"
   if [ -d "$PROJECT_DIR/.git" ]; then
     git_branch="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
   fi
 
-  local state_badge="${C_ERR}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
+  local state_badge="${C_WARN}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
   [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && state_badge="${C_OK}● PROJECT_STATE.md พร้อมใช้งาน${C_RESET}"
 
   local spec_m="${C_MUTED}[ ] SPEC.md${C_RESET}"
@@ -379,6 +440,22 @@ print_dashboard_header() {
   s_dev="$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
   s_qa="$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
 
+  # แถบ 3-Stage Stepper บอกตำแหน่งปัจจุบัน
+  local step1_badge step2_badge step3_badge
+  if [ "$UX_STAGE" -eq 1 ]; then
+    step1_badge="${C_SEL}● [ขั้นที่ 1: ตั้งค่า AI (${READY_ROLE_COUNT}/4)]${C_RESET}"
+    step2_badge="${C_MUTED}○ ขั้นที่ 2: เตรียมโปรเจกต์${C_RESET}"
+    step3_badge="${C_MUTED}○ ขั้นที่ 3: เริ่มสั่งงาน${C_RESET}"
+  elif [ "$UX_STAGE" -eq 2 ]; then
+    step1_badge="${C_OK}✓ ขั้นที่ 1: ตั้งค่า AI (4/4)${C_RESET}"
+    step2_badge="${C_SEL}● [ขั้นที่ 2: เตรียมโปรเจกต์]${C_RESET}"
+    step3_badge="${C_MUTED}○ ขั้นที่ 3: เริ่มสั่งงาน${C_RESET}"
+  else
+    step1_badge="${C_OK}✓ ขั้นที่ 1: ตั้งค่า AI (4/4)${C_RESET}"
+    step2_badge="${C_OK}✓ ขั้นที่ 2: เตรียมโปรเจกต์${C_RESET}"
+    step3_badge="${C_SEL}● [ขั้นที่ 3: เริ่มสั่งงาน]${C_RESET}"
+  fi
+
   # โลโก้ 3D โทนสีเดียวสะอาดตา (Monochrome Cerulean Blue + Slate Shadow)
   printf " %s██%s╗      %s██████%s╗  %s███████%s╗ %s██%s╗       %s█████%s╗  %s██%s╗   %s██%s╗\n" \
     "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH" "$C_ACCENT" "$C_ACCENT_SH"
@@ -393,8 +470,11 @@ print_dashboard_header() {
   printf " %s╚═╝      ╚═╝  ╚═╝ ╚══════╝ ╚══════╝ ╚═╝  ╚═╝    ╚═╝%s   %sRELAY v1.0 • Multi-Agent Handoff Hub%s\n" \
     "$C_ACCENT_SH" "$C_RESET" "$C_MUTED" "$C_RESET"
 
-  # กรอบข้อมูลแบบ Open-Right (ไม่ปิดเส้นขวา จึงไม่เบี้ยวเวลาแสดงสระภาษาไทย)
+  # กรอบข้อมูลแบบ Open-Right พร้อมแถบนำทาง 3 ขั้นตอนด้านบนสุด
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sลำดับงาน :%s %b %s──➔%s %b %s──➔%s %b\n" \
+    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$step1_badge" "$C_MUTED" "$C_RESET" "$step2_badge" "$C_MUTED" "$C_RESET" "$step3_badge"
+  printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %sตำแหน่ง (Roles)       ค่าย      โมเดลปัจจุบัน          สถานะความพร้อม%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s 1. @po (Product)    ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_PO" "$m_po" "$s_po"
   printf "%s│%s 2. @arch & @pm      ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$m_arch" "$s_arch"
@@ -404,18 +484,41 @@ print_dashboard_header() {
   printf "%s│%s %sCLIs ในเครื่อง:%s %b claude   %b gemini   %b codex   %s(ตั้งค่าที่: %s)%s\n" \
     "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$claude_dot" "$gemini_dot" "$codex_dot" "$C_MUTED" "$CONFIG_SOURCE" "$C_RESET"
 
-  if [ "$ALL_ROLES_READY" -eq 1 ]; then
-    printf "%s│%s %s● สถานะระบบ: พร้อมครบทั้ง 4/4 ตำแหน่ง — เริ่มสั่งงานขั้นตอนที่ [1]-[5] ได้ทันที%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
-  else
-    printf "%s│%s %s▲ สถานะระบบ: ตั้งค่าพร้อม %d/4 ตำแหน่ง — กรุณาตั้งค่าให้ครบ 4 ตำแหน่งใน [c] ก่อนเริ่มงาน%s\n" "$C_ACCENT" "$C_RESET" "$C_ERR" "$READY_ROLE_COUNT" "$C_RESET"
+  # แสดงข้อมูลโฟลเดอร์โปรเจกต์เฉพาะเมื่อผ่านขั้นที่ 1 แล้ว (ลดความรกตาตอนตั้งค่า AI ครั้งแรก)
+  if [ "$UX_STAGE" -ge 2 ]; then
+    printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    if [ "$IN_HOME_DIR" -eq 1 ]; then
+      printf "%s│%s โฟลเดอร์ : %s~ (%s)%s  •  %s▲ เป็นโฟลเดอร์ Home ส่วนตัว (ไม่ใช่โฟลเดอร์โปรเจกต์)%s\n" \
+        "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_DIR" "$C_RESET" "$C_WARN" "$C_RESET"
+    else
+      printf "%s│%s โครงการ : %s%s%s [%s]  •  %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_NAME" "$C_RESET" "$git_branch" "$state_badge"
+    fi
+
+    if [ "$UX_STAGE" -eq 3 ]; then
+      if [ -n "$ACTIVE_TASK" ]; then
+        printf "%s│%s ใบงาน   : %s%s%s  ➔  %b   %b   %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ACTIVE_TASK" "$C_RESET" "$spec_m" "$plan_m" "$qa_m"
+      else
+        printf "%s│%s ใบงาน   : %s(ยังไม่มีใบงานที่กำลังดำเนินการ — กด Enter ที่ข้อ [1] เพื่อเริ่มใบงานแรก)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
+      fi
+    fi
   fi
 
+  # แถบชี้เป้า "สิ่งที่ต้องทำตอนนี้" (Focus Callout) ให้ผู้ใช้รู้ทันทีว่าต้องโฟกัสจุดไหน
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s โครงการ: %s%s%s [%s]  •  %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$PROJECT_NAME" "$C_RESET" "$git_branch" "$state_badge"
-  if [ -n "$ACTIVE_TASK" ]; then
-    printf "%s│%s ใบงาน  : %s%s%s  ➔  %b   %b   %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ACTIVE_TASK" "$C_RESET" "$spec_m" "$plan_m" "$qa_m"
+  if [ "$UX_STAGE" -eq 1 ]; then
+    printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3):%s ตั้งค่า AI ให้ครบ 4 ตำแหน่ง (กด Enter ที่ข้อ %s[1]%s เพื่อตั้งค่าด่วนในคลิกเดียว)\n" \
+      "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET"
+  elif [ "$UX_STAGE" -eq 2 ]; then
+    if [ "$IN_HOME_DIR" -eq 1 ]; then
+      printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 2/3):%s คุณอยู่ในโฟลเดอร์ Home (~) — กด Enter ที่ข้อ %s[1]%s เพื่อเลือก/สร้างโฟลเดอร์โปรเจกต์\n" \
+        "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET"
+    else
+      printf "%s│%s %s👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 2/3):%s เตรียมโครงสร้าง .relay/ สำหรับโปรเจกต์ '%s' (กด Enter ที่ข้อ %s[1]%s หรือ %s[2]%s)\n" \
+        "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$PROJECT_NAME" "$C_SEL" "$C_RESET" "$C_SEL" "$C_RESET"
+    fi
   else
-    printf "%s│%s ใบงาน  : %s(ยังไม่มีใบงานที่กำลังดำเนินการ — เลือก [1] หรือ [n] เพื่อสร้างใบงานใหม่)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
+    printf "%s│%s %s👉 ขั้นตอนถัดไปที่แนะนำ (ขั้นที่ 3/3):%s %s\n" \
+      "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$STAGE3_FOCUS_TEXT"
   fi
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 }
@@ -438,18 +541,144 @@ require_all_roles_ready() {
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
 
   interactive_menu "เลือกขั้นตอนเพื่อตั้งค่าระบบให้พร้อมใช้งาน" 0 \
-    "c|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งเดี๋ยวนี้" \
+    "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — แนะนำ)" \
+    "c|ตั้งค่าค่าย AI & เลือก Model แยกทีละตำแหน่ง" \
     "d|ไปที่หน้าติดตั้ง CLI & เชื่อมต่อบัญชี Login" \
     "b|กลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
+    1) run_quick_preset_menu ;;
     c|C) configure_roles_menu ;;
     d|D) run_doctor_menu ;;
   esac
   return 1
 }
 
-# ─── 6. เมนูเลือกค่าย AI และเลือก Model แบบ Interactive (ลูกศร ↑/↓) ──────────
+# ─── 6. เมนูตั้งค่าด่วนคลิกเดียวครบ 4 ตำแหน่ง (Quick 1-Click Preset) ────────────
+run_quick_preset_menu() {
+  load_role_config
+  local target_conf="$GLOBAL_ROLES_CONF"
+  [ -f "$PROJECT_ROLES_CONF" ] && target_conf="$PROJECT_ROLES_CONF"
+
+  interactive_menu "เลือกชุดการตั้งค่าด่วน (กำหนดค่ายและ Model ให้ครบทั้ง 4 ตำแหน่งในคลิกเดียว)" 0 \
+    "1|★ ชุดแนะนำ Multi-Vendor — @po=gemini(2.5-pro), @arch=claude(opus), @dev=claude(sonnet), @qa=codex(o3)" \
+    "2|All-Claude Preset       — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)" \
+    "3|All-Gemini Preset       — ใช้ Gemini ทั้ง 4 ตำแหน่ง (gemini-2.5-pro ทั้ง 4 ตำแหน่ง)" \
+    "4|All-Codex Preset        — ใช้ Codex ทั้ง 4 ตำแหน่ง (o3 ทั้ง 4 ตำแหน่ง)" \
+    "b|ย้อนกลับ"
+
+  case "$MENU_RESULT" in
+    1)
+      ROLE_PO="gemini";   MODEL_PO="gemini-2.5-pro"
+      ROLE_ARCH="claude"; MODEL_ARCH="opus"
+      ROLE_DEV="claude";  MODEL_DEV="sonnet"
+      ROLE_QA="codex";    MODEL_QA="o3"
+      save_role_config "$target_conf"
+      printf "\n%s● บันทึกชุด Multi-Vendor ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
+      ;;
+    2)
+      ROLE_PO="claude";   MODEL_PO="sonnet"
+      ROLE_ARCH="claude"; MODEL_ARCH="opus"
+      ROLE_DEV="claude";  MODEL_DEV="sonnet"
+      ROLE_QA="claude";   MODEL_QA="opus"
+      save_role_config "$target_conf"
+      printf "\n%s● บันทึกชุด All-Claude ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
+      ;;
+    3)
+      ROLE_PO="gemini";   MODEL_PO="gemini-2.5-pro"
+      ROLE_ARCH="gemini"; MODEL_ARCH="gemini-2.5-pro"
+      ROLE_DEV="gemini";  MODEL_DEV="gemini-2.5-pro"
+      ROLE_QA="gemini";   MODEL_QA="gemini-2.5-pro"
+      save_role_config "$target_conf"
+      printf "\n%s● บันทึกชุด All-Gemini ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
+      ;;
+    4)
+      ROLE_PO="codex";   MODEL_PO="o3"
+      ROLE_ARCH="codex"; MODEL_ARCH="o3"
+      ROLE_DEV="codex";  MODEL_DEV="o3"
+      ROLE_QA="codex";   MODEL_QA="o3"
+      save_role_config "$target_conf"
+      printf "\n%s● บันทึกชุด All-Codex ครบทั้ง 4 ตำแหน่งเรียบร้อยแล้ว!%s\n" "$C_OK" "$C_RESET"
+      ;;
+  esac
+}
+
+# ─── 7. ตัวช่วยเลือกหรือสร้างโฟลเดอร์โปรเจกต์ (เมื่อรันใน Home ~ หรือกด [f]) ───
+select_or_create_project_dir() {
+  local base_workspace="$HOME/dev_bos"
+  [ ! -d "$base_workspace" ] && base_workspace="$HOME/Projects"
+
+  local folder_items=()
+  local folder_paths=()
+  folder_items+=("n|★ สร้างโฟลเดอร์โปรเจกต์ใหม่ตั้งแต่ศูนย์ (สร้างโฟลเดอร์ + git init + .relay/ อัตโนมัติ)")
+
+  local idx=1
+  for search_root in "$HOME/dev_bos" "$HOME/Projects" "$HOME/workspace" "$HOME/Developer"; do
+    if [ -d "$search_root" ]; then
+      for d in "$search_root"/*; do
+        [ -d "$d" ] || continue
+        local dname
+        dname="$(basename "$d")"
+        [[ "$dname" == .* ]] && continue
+        local r_stat="ยังไม่มี .relay/"
+        [ -f "$d/.relay/PROJECT_STATE.md" ] && r_stat="● มี .relay/ พร้อมทำงาน"
+        folder_items+=("${idx}|เปิดโปรเจกต์: ${d/#$HOME/\~} (${r_stat})")
+        folder_paths[$idx]="$d"
+        idx=$((idx + 1))
+        [ "$idx" -gt 7 ] && break 2
+      done
+    fi
+  done
+
+  folder_items+=("p|พิมพ์ระบุตำแหน่งโฟลเดอร์ (Path) ด้วยตนเอง")
+  folder_items+=("b|ย้อนกลับ")
+
+  interactive_menu "เลือกโฟลเดอร์โปรเจกต์ที่ต้องการทำงาน หรือสร้างโปรเจกต์ใหม่" 0 "${folder_items[@]}"
+
+  case "$MENU_RESULT" in
+    n|N)
+      echo ""
+      read -r -p "ตั้งชื่อโฟลเดอร์โปรเจกต์ใหม่ (ภาษาอังกฤษ เช่น my-saas-app หรือ booking-web): " new_proj_name
+      new_proj_name="$(echo "${new_proj_name:-my-relay-app}" | tr ' ' '-' | sed -E 's/[^a-zA-Z0-9_-]+/-/g; s/^-|-$//g')"
+      mkdir -p "$base_workspace/$new_proj_name"
+      PROJECT_DIR="$base_workspace/$new_proj_name"
+      cd "$PROJECT_DIR" || true
+      refresh_project_paths
+      "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" new
+      CURRENT_TASK=""
+      printf "\n%s● สร้างและเข้าสู่โปรเจกต์ใหม่เรียบร้อย: %s%s\n" "$C_OK" "$PROJECT_DIR" "$C_RESET"
+      ;;
+    [1-7])
+      local chosen_dir="${folder_paths[$MENU_RESULT]}"
+      if [ -n "$chosen_dir" ] && [ -d "$chosen_dir" ]; then
+        PROJECT_DIR="$chosen_dir"
+        cd "$PROJECT_DIR" || true
+        refresh_project_paths
+        CURRENT_TASK=""
+        printf "\n%s● สลับเข้าสู่โฟลเดอร์โปรเจกต์: %s%s\n" "$C_OK" "$PROJECT_DIR" "$C_RESET"
+      fi
+      ;;
+    p|P)
+      echo ""
+      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/dev_bos/my-app): " custom_path
+      custom_path="${custom_path/#\~/$HOME}"
+      if [ -n "$custom_path" ]; then
+        mkdir -p "$custom_path" 2>/dev/null || true
+        if [ -d "$custom_path" ]; then
+          PROJECT_DIR="$(cd "$custom_path" && pwd)"
+          cd "$PROJECT_DIR" || true
+          refresh_project_paths
+          CURRENT_TASK=""
+          printf "\n%s● สลับเข้าสู่โฟลเดอร์โปรเจกต์: %s%s\n" "$C_OK" "$PROJECT_DIR" "$C_RESET"
+        else
+          printf "\n%s✖ ไม่พบโฟลเดอร์ที่ระบุ: %s%s\n" "$C_ERR" "$custom_path" "$C_RESET"
+        fi
+      fi
+      ;;
+  esac
+}
+
+# ─── 8. เมนูเลือกค่าย AI และเลือก Model แบบ Interactive (ลูกศร ↑/↓) ──────────
 choose_provider_interactive() {
   local role_label="$1"
   local current_p="$2"
@@ -546,7 +775,7 @@ choose_model_interactive() {
   esac
 }
 
-# ─── 7. ศูนย์ตั้งค่าจับคู่ค่าย AI, เลือก Model และการเชื่อมต่อ CLI ([c] / /model) ───
+# ─── 9. ศูนย์ตั้งค่าจับคู่ค่าย AI, เลือก Model และการเชื่อมต่อ CLI ([c] / /model) ───
 configure_roles_menu() {
   load_role_config
   local target_conf="$GLOBAL_ROLES_CONF"
@@ -565,7 +794,7 @@ configure_roles_menu() {
     if is_role_ready "$ROLE_QA" "$MODEL_QA"; then r4_stat="พร้อมแล้ว"; fi
 
     interactive_menu "ตั้งค่าค่าย AI & เลือก Model ให้ครบ 4 ตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
-      "p|ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Quick Presets: All-Claude / All-Gemini / All-Codex)" \
+      "p|★ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Quick Presets: Multi-Vendor / All-Claude / All-Gemini)" \
       "1|ขั้นตอนที่ 1 (@po)       ➔ ค่าย: ${ROLE_PO} | โมเดล: ${MODEL_PO} (${r1_stat})" \
       "2|ขั้นตอนที่ 2 (@arch/@pm) ➔ ค่าย: ${ROLE_ARCH} | โมเดล: ${MODEL_ARCH} (${r2_stat})" \
       "3|ขั้นตอนที่ 3 (@dev)      ➔ ค่าย: ${ROLE_DEV} | โมเดล: ${MODEL_DEV} (${r3_stat})" \
@@ -606,42 +835,8 @@ configure_roles_menu() {
         save_role_config "$target_conf"
         ;;
       p|P)
-        interactive_menu "เลือกชุดการตั้งค่าด่วน (กำหนดค่ายและ Model ให้ครบทั้ง 4 ตำแหน่งทันที)" 0 \
-          "1|All-Claude Preset  — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)" \
-          "2|All-Gemini Preset  — ใช้ Gemini ทั้ง 4 ตำแหน่ง (gemini-2.5-pro ทั้ง 4 ตำแหน่ง)" \
-          "3|All-Codex Preset   — ใช้ Codex ทั้ง 4 ตำแหน่ง (o3 ทั้ง 4 ตำแหน่ง)" \
-          "4|Multi-Vendor แนะนำ — @po=gemini(2.5-pro), @arch=claude(opus), @dev=claude(sonnet), @qa=codex(o3)" \
-          "b|ย้อนกลับ"
-        case "$MENU_RESULT" in
-          1)
-            ROLE_PO="claude";   MODEL_PO="sonnet"
-            ROLE_ARCH="claude"; MODEL_ARCH="opus"
-            ROLE_DEV="claude";  MODEL_DEV="sonnet"
-            ROLE_QA="claude";   MODEL_QA="opus"
-            save_role_config "$target_conf"
-            ;;
-          2)
-            ROLE_PO="gemini";   MODEL_PO="gemini-2.5-pro"
-            ROLE_ARCH="gemini"; MODEL_ARCH="gemini-2.5-pro"
-            ROLE_DEV="gemini";  MODEL_DEV="gemini-2.5-pro"
-            ROLE_QA="gemini";   MODEL_QA="gemini-2.5-pro"
-            save_role_config "$target_conf"
-            ;;
-          3)
-            ROLE_PO="codex";   MODEL_PO="o3"
-            ROLE_ARCH="codex"; MODEL_ARCH="o3"
-            ROLE_DEV="codex";  MODEL_DEV="o3"
-            ROLE_QA="codex";   MODEL_QA="o3"
-            save_role_config "$target_conf"
-            ;;
-          4)
-            ROLE_PO="gemini";   MODEL_PO="gemini-2.5-pro"
-            ROLE_ARCH="claude"; MODEL_ARCH="opus"
-            ROLE_DEV="claude";  MODEL_DEV="sonnet"
-            ROLE_QA="codex";    MODEL_QA="o3"
-            save_role_config "$target_conf"
-            ;;
-        esac
+        run_quick_preset_menu
+        load_role_config
         ;;
       m|M) configure_provider_defaults_menu ;;
       d|D) run_doctor_menu ;;
@@ -668,7 +863,7 @@ configure_roles_menu() {
   done
 }
 
-# ─── 8. ตั้งค่า Default Model ของแต่ละค่ายโดยตรง (Claude / Gemini / Codex) ────
+# ─── 10. ตั้งค่า Default Model ของแต่ละค่ายโดยตรง (Claude / Gemini / Codex) ────
 configure_provider_defaults_menu() {
   while true; do
     local cm gm xm
@@ -700,7 +895,7 @@ configure_provider_defaults_menu() {
   done
 }
 
-# ─── 9. ศูนย์จัดการการเชื่อมต่อ CLI, ติดตั้ง และ Login (RELAY Doctor / /connect) ─
+# ─── 11. ศูนย์จัดการการเชื่อมต่อ CLI, ติดตั้ง และ Login (RELAY Doctor / /connect) ─
 run_doctor_menu() {
   while true; do
     echo ""
@@ -769,7 +964,7 @@ run_doctor_menu() {
   done
 }
 
-# ─── 10. ทดสอบความพร้อมของ Agent แต่ละตำแหน่ง ([t] / /test) ─────────────────
+# ─── 12. ทดสอบความพร้อมของ Agent แต่ละตำแหน่ง ([t] / /test) ─────────────────
 check_role_skills_status() {
   local skills_list="$1"
   local output=""
@@ -868,10 +1063,14 @@ run_agent_readiness_test() {
 
   if [ "$ALL_ROLES_READY" -eq 0 ]; then
     printf "\n%s▲ ยังไม่สามารถยิงทดสอบ Live Handshake ได้ เนื่องจากยังตั้งค่าไม่ครบทั้ง 4 ตำแหน่ง (%d/4)%s\n" "$C_ERR" "$READY_ROLE_COUNT" "$C_RESET"
-    interactive_menu "ต้องการไปตั้งค่าให้ครบทั้ง 4 ตำแหน่งก่อนหรือไม่?" 0 \
-      "c|ไปที่หน้าตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง ([c])" \
+    interactive_menu "ต้องการตั้งค่าให้ครบทั้ง 4 ตำแหน่งเดี๋ยวนี้หรือไม่?" 0 \
+      "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup)" \
+      "c|ตั้งค่าค่าย AI & เลือก Model แยกทีละตำแหน่ง" \
       "b|กลับสู่หน้าจอหลัก"
-    if [ "$MENU_RESULT" = "c" ]; then configure_roles_menu; fi
+    case "$MENU_RESULT" in
+      1) run_quick_preset_menu ;;
+      c) configure_roles_menu ;;
+    esac
     return 0
   fi
 
@@ -910,7 +1109,7 @@ run_agent_readiness_test() {
   esac
 }
 
-# ─── 11. เรียกใช้งาน CLI ของแต่ละขั้นตอน ──────────────────────────────────────
+# ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน ──────────────────────────────────────
 launch_provider_cli() {
   local provider="$1"
   local configured_model="$2"
@@ -945,6 +1144,7 @@ launch_provider_cli() {
 }
 
 ensure_or_create_task() {
+  refresh_project_paths
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
   get_active_task
   if [ -z "$ACTIVE_TASK" ]; then
@@ -953,6 +1153,7 @@ ensure_or_create_task() {
 }
 
 create_new_task() {
+  refresh_project_paths
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
   echo ""
   read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ payment-api): " slug
@@ -962,6 +1163,7 @@ create_new_task() {
   CURRENT_TASK="${today}-${slug}"
   mkdir -p "$RELAY_DIR/tasks/$CURRENT_TASK/screenshots"
   ACTIVE_TASK="$CURRENT_TASK"
+  LAST_COMPLETED_PHASE=0
   printf "%s● สร้างใบงานใหม่เรียบร้อย: .relay/tasks/%s%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
 }
 
@@ -972,6 +1174,7 @@ run_phase_1_po() {
   read -r -p "อธิบายฟีเจอร์หรือความต้องการคร่าวๆ ที่ต้องการให้ @po วิเคราะห์: " user_goal
   local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po (Product Owner)" "$PROJECT_DIR" "$prompt"
+  LAST_COMPLETED_PHASE=1
 }
 
 run_phase_2_arch() {
@@ -979,6 +1182,7 @@ run_phase_2_arch() {
   ensure_or_create_task
   local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (Architect & Planner)" "$PROJECT_DIR" "$prompt"
+  LAST_COMPLETED_PHASE=2
 }
 
 run_phase_3_dev() {
@@ -1004,6 +1208,7 @@ run_phase_3_dev() {
 
   local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (Full-Stack Developer ใน Git Worktree)" "$target_work_dir" "$prompt"
+  LAST_COMPLETED_PHASE=3
 }
 
 run_phase_4_qa() {
@@ -1020,6 +1225,7 @@ run_phase_4_qa() {
     cp -R "$worktree_dir/.relay/tasks/$ACTIVE_TASK/"* "$RELAY_DIR/tasks/$ACTIVE_TASK/" 2>/dev/null || true
     [ -f "$worktree_dir/.relay/PROJECT_STATE.md" ] && cp "$worktree_dir/.relay/PROJECT_STATE.md" "$RELAY_DIR/PROJECT_STATE.md" 2>/dev/null || true
   fi
+  LAST_COMPLETED_PHASE=4
 }
 
 run_phase_5_merge() {
@@ -1045,23 +1251,38 @@ run_phase_5_merge() {
     mkdir -p "$RELAY_DIR/archive"
     mv "$RELAY_DIR/tasks/$ACTIVE_TASK" "$RELAY_DIR/archive/$ACTIVE_TASK"
     CURRENT_TASK=""
+    LAST_COMPLETED_PHASE=0
     printf "%s● ผสานโค้ดและย้ายใบงานไปที่ .relay/archive/%s เรียบร้อยแล้ว!%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
   fi
 }
 
+run_init_greenfield() {
+  refresh_project_paths
+  "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" new
+}
+
+run_init_brownfield() {
+  require_all_roles_ready || return 0
+  refresh_project_paths
+  "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" existing
+  local prompt="@arch ช่วยสำรวจและวิเคราะห์โครงสร้างของโครงการเดิมนี้ทั้งหมด (ประกอบด้วย Tech Stack, โครงสร้างโฟลเดอร์สำคัญ, รูปแบบฐานข้อมูล/Schema, รายการ API หลัก และคำสั่งที่ใช้ในการ Build/Test) แล้วสรุปเขียนทับลงในไฟล์ .relay/PROJECT_STATE.md ให้มีความชัดเจนและกระชับ (ความยาวไม่เกิน 2 หน้า) โดยห้ามแก้ไขไฟล์โค้ดใดๆ ของระบบ"
+  launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "การสแกนโครงสร้างโครงการเดิม (@arch)" "$PROJECT_DIR" "$prompt"
+}
+
 run_init_project() {
-  interactive_menu "เลือกประเภทโครงการที่ต้องการเตรียมโครงสร้าง .relay/" 0 \
-    "1|โครงการใหม่ตั้งแต่ศูนย์ (Greenfield — สร้างโครงสร้าง .relay/ ทันที)" \
-    "2|โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield — สแกนโค้ดสรุปลง PROJECT_STATE.md)" \
+  if [ "$PROJECT_DIR" = "$HOME" ]; then
+    select_or_create_project_dir
+    return 0
+  fi
+  interactive_menu "เลือกประเภทโครงการที่ต้องการเตรียมโครงสร้าง .relay/ สำหรับ '${PROJECT_NAME}'" 0 \
+    "1|★ โครงการใหม่ตั้งแต่ศูนย์ (Greenfield — สร้างโครงสร้าง .relay/ ทันที)" \
+    "2|โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนโค้ดสรุปลง PROJECT_STATE.md)" \
+    "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
     "b|ย้อนกลับ"
   case "$MENU_RESULT" in
-    1) "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" new ;;
-    2)
-      require_all_roles_ready || return 0
-      "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" existing
-      local prompt="@arch ช่วยสำรวจและวิเคราะห์โครงสร้างของโครงการเดิมนี้ทั้งหมด (ประกอบด้วย Tech Stack, โครงสร้างโฟลเดอร์สำคัญ, รูปแบบฐานข้อมูล/Schema, รายการ API หลัก และคำสั่งที่ใช้ในการ Build/Test) แล้วสรุปเขียนทับลงในไฟล์ .relay/PROJECT_STATE.md ให้มีความชัดเจนและกระชับ (ความยาวไม่เกิน 2 หน้า) โดยห้ามแก้ไขไฟล์โค้ดใดๆ ของระบบ"
-      launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "การสแกนโครงสร้างโครงการเดิม (@arch)" "$PROJECT_DIR" "$prompt"
-      ;;
+    1) run_init_greenfield ;;
+    2) run_init_brownfield ;;
+    f|F) select_or_create_project_dir ;;
   esac
 }
 
@@ -1088,7 +1309,7 @@ run_skills_menu() {
   esac
 }
 
-# ─── 12. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
+# ─── 14. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
 SUBCOMMAND="${1:-hub}"
 case "$SUBCOMMAND" in
   status)
@@ -1118,55 +1339,131 @@ case "$SUBCOMMAND" in
   5) run_phase_5_merge; exit 0 ;;
 esac
 
-# ─── 13. Interactive Main Loop ────────────────────────────────────────────────
+# ─── 15. Interactive Main Loop (Guided 3-Stage Progressive UX) ────────────────
 while true; do
   print_dashboard_header
 
-  if [ "$ALL_ROLES_READY" -eq 1 ]; then
-    interactive_menu "เลือกคำสั่งการทำงาน (พร้อมครบทั้ง 4 ตำแหน่ง — เริ่มสั่งงานได้ทันที)" 0 \
-      "1|เริ่มขั้นตอนที่ 1 (@po)       — วิเคราะห์ความต้องการและสร้าง SPEC.md (${ROLE_PO}/${MODEL_PO})" \
-      "2|เริ่มขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})" \
-      "3|เริ่มขั้นตอนที่ 3 (@dev)      — แยก Git Worktree อัตโนมัติและเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})" \
-      "4|เริ่มขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})" \
-      "5|ผสานโค้ดและจัดเก็บใบงาน     — Merge เข้ากิ่ง main และย้ายเข้า .relay/archive/" \
-      "c|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่ง (/model)" \
-      "d|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
-      "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง — เช็กบทบาท & Skills (/test)" \
-      "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
-      "n|สร้างใบงานใหม่ (New Task) (/new)" \
-      "i|เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)" \
-      "q|ออกจากโปรแกรม (/quit)"
-  else
-    interactive_menu "กรุณาตั้งค่าค่าย AI & Model ให้ครบ 4 ตำแหน่งก่อนเริ่มงาน (พร้อม ${READY_ROLE_COUNT}/4 ตำแหน่ง)" 5 \
-      "1|[ล็อก] ขั้นตอนที่ 1 (@po)       — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
-      "2|[ล็อก] ขั้นตอนที่ 2 (@arch/@pm) — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
-      "3|[ล็อก] ขั้นตอนที่ 3 (@dev)      — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
-      "4|[ล็อก] ขั้นตอนที่ 4 (@qa/@sec)  — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
-      "5|[ล็อก] ผสานโค้ดและจัดเก็บใบงาน     — ต้องตั้งค่าค่าย & Model ใน [c] ให้ครบ 4 ตำแหน่งก่อน" \
-      "c|ตั้งค่าค่าย AI & เลือก Model ประจำตำแหน่งให้ครบ 4 ตำแหน่ง (/model)" \
-      "d|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login ทั้ง 3 ค่าย (/connect)" \
+  if [ "$UX_STAGE" -eq 1 ]; then
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ขั้นที่ 1/3: ตั้งค่า AI ให้ครบ 4 ตำแหน่ง (ซ่อนเมนูใบงานที่ยังไม่ถึงคิวทั้งหมด!)
+    # ═══════════════════════════════════════════════════════════════════════════
+    interactive_menu "ขั้นที่ 1/3: ตั้งค่าค่าย AI & Model ให้ครบ 4 ตำแหน่งก่อนเริ่มใช้งาน (พร้อม ${READY_ROLE_COUNT}/4)" 0 \
+      "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — แนะนำสำหรับเริ่มต้น)" \
+      "2|เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)" \
+      "3|จัดการการเชื่อมต่อ CLI, ติดตั้ง & Login บัญชี (Claude / Gemini / Codex)" \
       "t|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
-      "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
-      "n|สร้างใบงานใหม่ (New Task) (/new)" \
-      "i|เตรียมโครงสร้าง .relay/ (โครงการใหม่ / โครงการเดิม) (/init)" \
       "q|ออกจากโปรแกรม (/quit)"
-  fi
 
-  case "$MENU_RESULT" in
-    1|/po|/1)             run_phase_1_po ;;
-    2|/arch|/pm|/2)       run_phase_2_arch ;;
-    3|/dev|/3)            run_phase_3_dev ;;
-    4|/qa|/sec|/4)        run_phase_4_qa ;;
-    5|/merge|/5)          run_phase_5_merge ;;
-    c|C|m|M|/model|/config) configure_roles_menu ;;
-    d|D|/connect|/doctor|/login) run_doctor_menu ;;
-    t|T|/test|/check)     run_agent_readiness_test ;;
-    s|S|/skills)          run_skills_menu ;;
-    n|N|/new)             create_new_task ;;
-    i|I|/init)            run_init_project ;;
-    q|Q|/quit|/exit|exit)
-      printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
-      exit 0
-      ;;
-  esac
+    case "$MENU_RESULT" in
+      1) run_quick_preset_menu ;;
+      2|c|C|/model|/config) configure_roles_menu ;;
+      3|d|D|/connect|/doctor) run_doctor_menu ;;
+      t|T|/test) run_agent_readiness_test ;;
+      s|S|/skills) run_skills_menu ;;
+      q|Q|/quit|/exit|exit)
+        printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
+        exit 0
+        ;;
+    esac
+
+  elif [ "$UX_STAGE" -eq 2 ]; then
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ขั้นที่ 2/3: เตรียมโฟลเดอร์โปรเจกต์ (.relay/PROJECT_STATE.md)
+    # ═══════════════════════════════════════════════════════════════════════════
+    if [ "$IN_HOME_DIR" -eq 1 ]; then
+      interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ที่จะทำงาน (ปัจจุบันคุณอยู่ใน Home ~)" 0 \
+        "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที (แนะนำ)" \
+        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
+        "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
+        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
+        "q|ออกจากโปรแกรม (เพื่อพิมพ์ cd เข้าโฟลเดอร์โปรเจกต์เอง)"
+
+      case "$MENU_RESULT" in
+        1|f|F|i|I|/init) select_or_create_project_dir ;;
+        c|C|m|M|/model|/config) configure_roles_menu ;;
+        d|D|/connect|/doctor) run_doctor_menu ;;
+        t|T|/test) run_agent_readiness_test ;;
+        s|S|/skills) run_skills_menu ;;
+        q|Q|/quit|/exit|exit)
+          printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
+          exit 0
+          ;;
+      esac
+    else
+      interactive_menu "ขั้นที่ 2/3: เตรียมโครงสร้าง .relay/ สำหรับโปรเจกต์ '${PROJECT_NAME}'" 0 \
+        "1|★ เริ่มโปรเจกต์ใหม่ตั้งแต่ศูนย์ในโฟลเดอร์นี้ (Greenfield — สร้าง .relay/ ทันที)" \
+        "2|นำ RELAY มาใช้กับโปรเจกต์เดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนสร้าง PROJECT_STATE.md)" \
+        "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
+        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
+        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
+        "q|ออกจากโปรแกรม (/quit)"
+
+      case "$MENU_RESULT" in
+        1) run_init_greenfield ;;
+        2) run_init_brownfield ;;
+        f|F) select_or_create_project_dir ;;
+        c|C|m|M|/model|/config) configure_roles_menu ;;
+        d|D|/connect|/doctor) run_doctor_menu ;;
+        t|T|/test) run_agent_readiness_test ;;
+        s|S|/skills) run_skills_menu ;;
+        q|Q|/quit|/exit|exit)
+          printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
+          exit 0
+          ;;
+      esac
+    fi
+
+  else
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ขั้นที่ 3/3: เริ่มสั่งงานตามใบงาน 1-5 (เลื่อน ❯ ไปยังขั้นตอนถัดไปอัตโนมัติ!)
+    # ═══════════════════════════════════════════════════════════════════════════
+    p1_label="ขั้นตอนที่ 1 (@po)       — วิเคราะห์ความต้องการและสร้าง SPEC.md (${ROLE_PO}/${MODEL_PO})"
+    p2_label="ขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (${ROLE_ARCH}/${MODEL_ARCH})"
+    p3_label="ขั้นตอนที่ 3 (@dev)      — แยก Git Worktree และเขียนโค้ด (${ROLE_DEV}/${MODEL_DEV})"
+    p4_label="ขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (${ROLE_QA}/${MODEL_QA})"
+    p5_label="ขั้นตอนที่ 5 (Merge)     — ผสานโค้ดเข้า main และเก็บเข้า .relay/archive/"
+
+    case "$RECOMMENDED_STEP" in
+      1) p1_label="★ [แนะนำให้เริ่มที่นี่] ${p1_label}" ;;
+      2) p2_label="★ [ขั้นตอนถัดไป] ${p2_label}" ;;
+      3) p3_label="★ [ขั้นตอนถัดไป] ${p3_label}" ;;
+      4) p4_label="★ [ขั้นตอนถัดไป] ${p4_label}" ;;
+      5) p5_label="★ [ขั้นตอนถัดไป] ${p5_label}" ;;
+    esac
+
+    default_menu_idx=$((RECOMMENDED_STEP - 1))
+
+    interactive_menu "ขั้นที่ 3/3: เลือกขั้นตอนการทำงานสำหรับโปรเจกต์ '${PROJECT_NAME}'" "$default_menu_idx" \
+      "1|${p1_label}" \
+      "2|${p2_label}" \
+      "3|${p3_label}" \
+      "4|${p4_label}" \
+      "5|${p5_label}" \
+      "n|สร้างใบงานใหม่ (New Task) (/new)" \
+      "f|สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)" \
+      "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
+      "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
+      "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
+      "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
+      "q|ออกจากโปรแกรม (/quit)"
+
+    case "$MENU_RESULT" in
+      1|/po|/1)             run_phase_1_po ;;
+      2|/arch|/pm|/2)       run_phase_2_arch ;;
+      3|/dev|/3)            run_phase_3_dev ;;
+      4|/qa|/sec|/4)        run_phase_4_qa ;;
+      5|/merge|/5)          run_phase_5_merge ;;
+      n|N|/new)             create_new_task ;;
+      f|F)                  select_or_create_project_dir ;;
+      i|I|/init)            run_init_project ;;
+      c|C|m|M|/model|/config) configure_roles_menu ;;
+      d|D|/connect|/doctor|/login) run_doctor_menu ;;
+      t|T|/test|/check)     run_agent_readiness_test ;;
+      s|S|/skills)          run_skills_menu ;;
+      q|Q|/quit|/exit|exit)
+        printf "%sออกจากหน้าจอควบคุม RELAY เรียบร้อย%s\n" "$C_MUTED" "$C_RESET"
+        exit 0
+        ;;
+    esac
+  fi
 done
