@@ -7,15 +7,18 @@
 ## 2. โครงสร้างโมดูลและไฟล์สำคัญล่าสุด
 - **หน้าจอควบคุมกลางแบบนำทาง 3 ขั้นตอนอัตโนมัติ (`relay.sh`, `relay.ps1`, `templates/relay-roles.conf`):**
   - ใช้โทนสี **Minimalist High-Contrast (3-Tier Monochrome Blue)** ที่อ่านคมชัดทั้งบน Terminal พื้นขาว (Light Mode) และพื้นดำ (Dark Mode) พร้อมตัวชี้ `❯` สีน้ำเงินครามตัวหนาทั้งบรรทัดที่ไม่ตัดสระภาษาไทย
+  - **ตรวจสอบความพร้อมจริง 3 ชั้น (3-Layer CLI Readiness Verification):**
+    1. ตรวจการติดตั้ง CLI (`command -v`)
+    2. ตรวจสถานะการเข้าสู่ระบบจริง (`claude auth status`, `codex login status`, และ `selectedType` ใน `~/.gemini/settings.json`) ก่อนแสดงสถานะ `● พร้อมใช้งาน (Login แล้ว)`
+    3. ดึงรายชื่อ Model จากไฟล์แคชและไบนารีของ CLI ในเครื่องโดยตรง (`~/.codex/models_cache.json`, `@google/gemini-cli`, และไบนารี `claude`)
   - **ระบบนำทางทีละขั้น (Guided 3-Stage Progressive Disclosure UX):**
-    1. **ขั้นที่ 1 (`ตั้งค่า AI ให้ครบ 4 ตำแหน่ง`):** ซ่อนเมนูใบงานที่ยังไม่ถึงคิวทั้งหมด และแสดงปุ่ม `[1] ★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup)` เป็นตัวเลือกแรก
+    1. **ขั้นที่ 1 (`ตั้งค่า & Login AI ให้ครบ 4 ตำแหน่ง`):** ซ่อนเมนูใบงานที่ยังไม่ถึงคิวทั้งหมด ชี้เป้าปุ่ม Quick Setup หรือปุ่ม Login บัญชีค่ายที่ยังไม่ได้ยืนยันตัวตนอัตโนมัติ
     2. **ขั้นที่ 2 (`เตรียมโฟลเดอร์โปรเจกต์`):** ตรวจจับหากผู้ใช้เผลอรัน `relay` ในโฟลเดอร์ `$HOME` (`~`) พร้อมตัวช่วยเลือก/สร้างโฟลเดอร์โปรเจกต์ใหม่ในคลิกเดียว และเมนูสร้าง `.relay/PROJECT_STATE.md` (Greenfield / Brownfield)
     3. **ขั้นที่ 3 (`เริ่มสั่งงานตามใบงาน 1-5`):** ตรวจจับไฟล์ในใบงานปัจจุบัน (`SPEC.md`, `PLAN.md`, `Worktree`, `QA_REPORT.md`) เพื่อเลื่อนตัวชี้ `❯` และป้าย `★ [ขั้นตอนถัดไป]` ไปยังขั้นตอนที่ต้องทำต่อให้อัตโนมัติ
-  - มีเมนู `[t]` (`relay test`) สำหรับตรวจสอบทักษะประจำตำแหน่งและยิงทดสอบ Live Handshake รวมถึงเมนู `[d]` (`relay doctor`) สำหรับตรวจสอบและติดตั้ง CLI
-  - จัดการสร้างและลบ `Git Worktree` แยกอิสระอัตโนมัติที่ `.relay/worktrees/<task-id>` ในขั้นตอนที่ 3 และผสานโค้ดพร้อมจัดเก็บใบงานเข้า `.relay/archive/` ในขั้นตอนที่ 5
+  - มีเมนู `[t]` (`relay test`) สำหรับตรวจสอบทักษะประจำตำแหน่งและยิงทดสอบ Live Handshake (รองรับ `codex exec --skip-git-repo-check` และกรอง Warning ของ `.claude/settings.json`) รวมถึงเมนู `[d]` (`relay doctor`) สำหรับ Login และติดตั้ง CLI
 - **สคริปต์ติดตั้งส่วนกลางและสร้างโครงสร้างโครงการ (`setup-mac.sh`, `setup-win.ps1`, `relay-init.sh`, `relay-init.ps1`):**
   - ติดตั้ง `~/.agents/GLOBAL_AGENTS.md`, `~/.agents/bin/relay`, `~/.agents/bin/relay-init`, `~/.agents/bin/relay-skills` พร้อมเพิ่มเข้าสู่ `PATH` อัตโนมัติ และเปิดใช้งาน Global Git `pre-commit` Hook
 - **ระบบจัดการและอัปเดตทักษะ (`relay-skills.sh`, `relay-skills.ps1` และ `skills-manifest.txt`):**
-  - รองรับคำสั่ง `install`, `update` (ดึงอัปเดตเวอร์ชันล่าสุดจาก GitHub ของผู้พัฒนาต้นทาง), `add <repo>` และ `list`
+  - รองรับคำสั่ง `install`, `update`, `add <repo>` และ `list`
 - **เอกสารคู่มือมาตรฐาน (`README.md`, `docs/` และ `domains/`):**
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การเชื่อมต่อโปรแกรม **Obsidian** การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield) รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี

@@ -4,10 +4,8 @@
 .DESCRIPTION
     • โทนสี Minimalist High-Contrast (Monochrome Blue + Status Dots)
     • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินตัวหนาทั้งบรรทัด
-    • ระบบนำทาง 3 ขั้นตอนอัตโนมัติ (Guided 3-Stage Progressive UX):
-      ขั้นที่ 1: ตั้งค่า AI ให้ครบ 4 ตำแหน่ง (Quick Setup คลิกเดียวเสร็จ ซ่อนเมนูที่ยังไม่ถึงคิว)
-      ขั้นที่ 2: เตรียมโฟลเดอร์โปรเจกต์ (.relay/PROJECT_STATE.md)
-      ขั้นที่ 3: เริ่มสั่งงานตามใบงาน 1-5 (เลื่อนตัวชี้ ❯ ไปยังขั้นตอนถัดไปอัตโนมัติ)
+    • ตรวจสอบความพร้อมจริง 3 ชั้น: ติดตั้ง CLI แล้ว + Login บัญชีแล้ว + เลือก Model แล้ว
+    • ดึงรายชื่อ Model จาก CLI ที่ติดตั้งในเครื่องโดยตรง (Codex models_cache.json / Gemini / Claude)
 #>
 param(
     [Parameter(Position=0)]
@@ -35,6 +33,80 @@ $Script:READY_COUNT = 0
 $Script:ALL_READY = $false
 $Script:UX_STAGE = 1
 
+function Test-ProviderInstalled([string]$Provider) {
+    return [bool](Get-Command $Provider -ErrorAction SilentlyContinue)
+}
+
+function Test-ProviderLoggedIn([string]$Provider) {
+    if (-not (Test-ProviderInstalled $Provider)) { return $false }
+    switch ($Provider) {
+        "claude" {
+            if ($env:ANTHROPIC_API_KEY) { return $true }
+            $out = (& claude auth status 2>$null) -join " "
+            return ($out -match '"loggedIn"\s*:\s*true')
+        }
+        "gemini" {
+            if ($env:GEMINI_API_KEY -or $env:GOOGLE_GENAI_USE_VERTEXAI) { return $true }
+            $oauthFile = Join-Path $HOME ".gemini\oauth_creds.json"
+            if (Test-Path $oauthFile) { return $true }
+            $settingsFile = Join-Path $HOME ".gemini\settings.json"
+            if (Test-Path $settingsFile) {
+                $raw = Get-Content $settingsFile -Raw -ErrorAction SilentlyContinue
+                return ($raw -match '"selectedType"\s*:\s*"[^"]+"')
+            }
+            return $false
+        }
+        "codex" {
+            if ($env:OPENAI_API_KEY) { return $true }
+            $out = (& codex login status 2>&1) -join " "
+            if ($out -match "Logged in") { return $true }
+            return (Test-Path (Join-Path $HOME ".codex\auth.json"))
+        }
+    }
+    return $false
+}
+
+function Get-CliDefaultModel([string]$Provider) {
+    switch ($Provider) {
+        "claude" {
+            $sf = Join-Path $HOME ".claude\settings.json"
+            if (Test-Path $sf) {
+                $raw = Get-Content $sf -Raw -ErrorAction SilentlyContinue
+                if ($raw -match '"model"\s*:\s*"([^"]+)"') { return $Matches[1] }
+            }
+            return "sonnet"
+        }
+        "codex" {
+            $cf = Join-Path $HOME ".codex\config.toml"
+            if (Test-Path $cf) {
+                $lines = Get-Content $cf -ErrorAction SilentlyContinue
+                foreach ($l in $lines) {
+                    if ($l -match '^\s*model\s*=\s*"([^"]+)"') { return $Matches[1] }
+                }
+            }
+            $mc = Join-Path $HOME ".codex\models_cache.json"
+            if (Test-Path $mc) {
+                try {
+                    $json = Get-Content $mc -Raw | ConvertFrom-Json
+                    foreach ($m in $json.models) {
+                        if ($m.visibility -eq "list" -and $m.slug) { return $m.slug }
+                    }
+                } catch {}
+            }
+            return "o3"
+        }
+        "gemini" {
+            $gf = Join-Path $HOME ".gemini\settings.json"
+            if (Test-Path $gf) {
+                $raw = Get-Content $gf -Raw -ErrorAction SilentlyContinue
+                if ($raw -match '"model"\s*:\s*"([^"]+)"') { return $Matches[1] }
+            }
+            return "gemini-2.5-pro"
+        }
+    }
+    return "default"
+}
+
 function Load-RoleConfig {
     $Script:ROLE_PO = "gemini";   $Script:MODEL_PO = "default"
     $Script:ROLE_ARCH = "claude"; $Script:MODEL_ARCH = "default"
@@ -60,6 +132,11 @@ function Load-RoleConfig {
             }
         }
     }
+
+    if ($Script:ROLE_QA -eq "codex" -and $Script:MODEL_QA -eq "o3") {
+        $realCodex = Get-CliDefaultModel "codex"
+        if ($realCodex -and $realCodex -ne "o3") { $Script:MODEL_QA = $realCodex }
+    }
 }
 
 function Save-RoleConfig([string]$TargetFile) {
@@ -79,16 +156,12 @@ MODEL_QA="$($Script:MODEL_QA)"
     Set-Content -Path $TargetFile -Value $content -Encoding UTF8
 }
 
-function Test-ProviderInstalled([string]$Provider) {
-    return [bool](Get-Command $Provider -ErrorAction SilentlyContinue)
-}
-
 function Test-ModelExplicitlySet([string]$Model) {
     return (-not [string]::IsNullOrWhiteSpace($Model) -and $Model -ne "default" -and $Model -ne "unconfigured")
 }
 
 function Test-RoleReady([string]$Provider, [string]$Model) {
-    return ((Test-ProviderInstalled $Provider) -and (Test-ModelExplicitlySet $Model))
+    return ((Test-ProviderInstalled $Provider) -and (Test-ProviderLoggedIn $Provider) -and (Test-ModelExplicitlySet $Model))
 }
 
 function Update-ReadinessState {
@@ -112,25 +185,28 @@ function Update-ReadinessState {
 }
 
 function Get-RoleStatusText([string]$Provider, [string]$Model) {
-    if (-not (Test-ProviderInstalled $Provider)) { return "✖ ยังไม่ติดตั้ง CLI" }
-    if (-not (Test-ModelExplicitlySet $Model))    { return "▲ รอเลือกโมเดล" }
-    return "● พร้อมใช้งาน"
+    if (-not (Test-ProviderInstalled $Provider)) { return "✖ ยังไม่ติดตั้ง CLI (กด [3])" }
+    if (-not (Test-ProviderLoggedIn $Provider))  { return "▲ ยังไม่ Login บัญชี (กด [3])" }
+    if (-not (Test-ModelExplicitlySet $Model))    { return "▲ รอเลือกโมเดล (กด [1]/[2])" }
+    return "● พร้อมใช้งาน (Login แล้ว)"
 }
 
 function Invoke-QuickPresetMenu {
-    $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (กำหนดค่ายและ Model ให้ครบทั้ง 4 ตำแหน่งในคลิกเดียว)" 0 @(
-        "1|★ ชุดแนะนำ Multi-Vendor — @po=gemini(2.5-pro), @arch=claude(opus), @dev=claude(sonnet), @qa=codex(o3)",
+    $codexDef = Get-CliDefaultModel "codex"
+    $geminiDef = Get-CliDefaultModel "gemini"
+    $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก CLI ในเครื่องโดยตรง)" 0 @(
+        "1|★ ชุดแนะนำ Multi-Vendor — @po=gemini($geminiDef), @arch=claude(opus), @dev=claude(sonnet), @qa=codex($codexDef)",
         "2|All-Claude Preset       — ใช้ Claude ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)",
-        "3|All-Gemini Preset       — ใช้ Gemini ทั้ง 4 ตำแหน่ง (gemini-2.5-pro ทั้ง 4 ตำแหน่ง)",
-        "4|All-Codex Preset        — ใช้ Codex ทั้ง 4 ตำแหน่ง (o3 ทั้ง 4 ตำแหน่ง)",
+        "3|All-Gemini Preset       — ใช้ Gemini ทั้ง 4 ตำแหน่ง ($geminiDef ทั้ง 4 ตำแหน่ง)",
+        "4|All-Codex Preset        — ใช้ Codex ทั้ง 4 ตำแหน่ง ($codexDef จาก CLI ทั้ง 4 ตำแหน่ง)",
         "b|ย้อนกลับ"
     )
     switch ($choice) {
         "1" {
-            $Script:ROLE_PO="gemini";   $Script:MODEL_PO="gemini-2.5-pro"
+            $Script:ROLE_PO="gemini";   $Script:MODEL_PO=$geminiDef
             $Script:ROLE_ARCH="claude"; $Script:MODEL_ARCH="opus"
             $Script:ROLE_DEV="claude";  $Script:MODEL_DEV="sonnet"
-            $Script:ROLE_QA="codex";    $Script:MODEL_QA="o3"
+            $Script:ROLE_QA="codex";    $Script:MODEL_QA=$codexDef
             Save-RoleConfig $GlobalRolesConf
         }
         "2" {
@@ -141,17 +217,17 @@ function Invoke-QuickPresetMenu {
             Save-RoleConfig $GlobalRolesConf
         }
         "3" {
-            $Script:ROLE_PO="gemini";   $Script:MODEL_PO="gemini-2.5-pro"
-            $Script:ROLE_ARCH="gemini"; $Script:MODEL_ARCH="gemini-2.5-pro"
-            $Script:ROLE_DEV="gemini";  $Script:MODEL_DEV="gemini-2.5-pro"
-            $Script:ROLE_QA="gemini";   $Script:MODEL_QA="gemini-2.5-pro"
+            $Script:ROLE_PO="gemini";   $Script:MODEL_PO=$geminiDef
+            $Script:ROLE_ARCH="gemini"; $Script:MODEL_ARCH=$geminiDef
+            $Script:ROLE_DEV="gemini";  $Script:MODEL_DEV=$geminiDef
+            $Script:ROLE_QA="gemini";   $Script:MODEL_QA=$geminiDef
             Save-RoleConfig $GlobalRolesConf
         }
         "4" {
-            $Script:ROLE_PO="codex";   $Script:MODEL_PO="o3"
-            $Script:ROLE_ARCH="codex"; $Script:MODEL_ARCH="o3"
-            $Script:ROLE_DEV="codex";  $Script:MODEL_DEV="o3"
-            $Script:ROLE_QA="codex";   $Script:MODEL_QA="o3"
+            $Script:ROLE_PO="codex";   $Script:MODEL_PO=$codexDef
+            $Script:ROLE_ARCH="codex"; $Script:MODEL_ARCH=$codexDef
+            $Script:ROLE_DEV="codex";  $Script:MODEL_DEV=$codexDef
+            $Script:ROLE_QA="codex";   $Script:MODEL_QA=$codexDef
             Save-RoleConfig $GlobalRolesConf
         }
     }
@@ -216,11 +292,11 @@ function Print-DashboardHeader {
     Write-Host " ╚═╝      ╚═╝  ╚═╝ ╚══════╝ ╚══════╝ ╚═╝  ╚═╝    ╚═╝   RELAY v1.0 • Multi-Agent Handoff Hub" -ForegroundColor DarkBlue
     Write-Host "╭────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
     if ($Script:UX_STAGE -eq 1) {
-        Write-Host ("│ ลำดับงาน : ● [ขั้นที่ 1: ตั้งค่า AI ({0}/4)] ──➔ ○ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ○ ขั้นที่ 3: เริ่มสั่งงาน" -f $Script:READY_COUNT) -ForegroundColor Blue
+        Write-Host ("│ ลำดับงาน : ● [ขั้นที่ 1: ตั้งค่า & Login AI ({0}/4)] ──➔ ○ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ○ ขั้นที่ 3: เริ่มสั่งงาน" -f $Script:READY_COUNT) -ForegroundColor Blue
     } elseif ($Script:UX_STAGE -eq 2) {
-        Write-Host "│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า AI (4/4) ──➔ ● [ขั้นที่ 2: เตรียมโปรเจกต์] ──➔ ○ ขั้นที่ 3: เริ่มสั่งงาน" -ForegroundColor Blue
+        Write-Host "│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า & Login AI (4/4) ──➔ ● [ขั้นที่ 2: เตรียมโปรเจกต์] ──➔ ○ ขั้นที่ 3: เริ่มสั่งงาน" -ForegroundColor Blue
     } else {
-        Write-Host "│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า AI (4/4) ──➔ ✓ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ● [ขั้นที่ 3: เริ่มสั่งงาน]" -ForegroundColor Blue
+        Write-Host "│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า & Login AI (4/4) ──➔ ✓ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ● [ขั้นที่ 3: เริ่มสั่งงาน]" -ForegroundColor Blue
     }
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
     Write-Host ("│ 1. @po (Product)    ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_PO, $Script:MODEL_PO, (Get-RoleStatusText $Script:ROLE_PO $Script:MODEL_PO))
@@ -229,7 +305,7 @@ function Print-DashboardHeader {
     Write-Host ("│ 4. @qa & @sec       ➔ {0,-6} │ {1,-18} │ {2}" -f $Script:ROLE_QA, $Script:MODEL_QA, (Get-RoleStatusText $Script:ROLE_QA $Script:MODEL_QA))
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
     if ($Script:UX_STAGE -eq 1) {
-        Write-Host "│ 👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3): กด Enter ที่ข้อ [1] เพื่อตั้งค่า AI ครบทั้ง 4 ตำแหน่งในคลิกเดียว" -ForegroundColor Blue
+        Write-Host "│ 👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 1/3): ตั้งค่าและ Login บัญชี CLI ให้ครบ 4 ตำแหน่ง" -ForegroundColor Blue
     } elseif ($Script:UX_STAGE -eq 2) {
         Write-Host ("│ 👉 สิ่งที่ต้องทำตอนนี้ (ขั้นที่ 2/3): เตรียมโครงสร้าง .relay/ สำหรับโปรเจกต์ '{0}' (กด Enter ที่ข้อ [1])" -f $ProjectName) -ForegroundColor Blue
     } else {
@@ -243,11 +319,13 @@ if ($SubCommand -eq "status") { Print-DashboardHeader; exit 0 }
 while ($true) {
     Print-DashboardHeader
     if ($Script:UX_STAGE -eq 1) {
-        $act = Invoke-InteractiveMenu "ขั้นที่ 1/3: ตั้งค่าค่าย AI & Model ให้ครบ 4 ตำแหน่งก่อนเริ่มใช้งาน (พร้อม $($Script:READY_COUNT)/4)" 0 @(
-            "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — แนะนำสำหรับเริ่มต้น)",
+        $act = Invoke-InteractiveMenu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และ Login ให้ครบ 4 ตำแหน่ง (พร้อม $($Script:READY_COUNT)/4)" 0 @(
+            "1|★ ตั้งค่าด่วนครบ 4 ตำแหน่งในคลิกเดียว (Quick Setup — ดึง Model จริงจาก CLI)",
+            "3|เข้าสู่ระบบ (Login) ค่ายที่ยังไม่ได้เชื่อมบัญชี (claude auth login / gemini / codex login)",
             "q|ออกจากโปรแกรม (/quit)"
         )
         if ($act -eq "1") { Invoke-QuickPresetMenu }
+        if ($act -eq "3") { & claude auth login }
         if ($act -eq "q" -or $act -eq "/quit" -or $act -eq "/exit") { exit 0 }
     } elseif ($Script:UX_STAGE -eq 2) {
         $act = Invoke-InteractiveMenu "ขั้นที่ 2/3: เตรียมโครงสร้าง .relay/ สำหรับโปรเจกต์ '$ProjectName'" 0 @(
