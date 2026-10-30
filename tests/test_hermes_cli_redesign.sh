@@ -101,6 +101,42 @@ else
   fail "interactive_menu ไม่ได้แสดง Shortcuts bar:\n$menu_out"
 fi
 
+echo "== AC-4: ทดสอบการจัดเรียงโปรเจกต์ ● [RELAY] ขึ้นก่อน ○ [ทั่วไป] และกฎ On-Demand Per-Project =="
+mkdir -p "$HOME/dev_bos/Alpha_Plain" \
+         "$HOME/dev_bos/Beta_Plain" \
+         "$HOME/dev_bos/Zeta_Relay/.relay/tasks/20261031-auth-flow" \
+         "$HOME/dev_bos/Omega_Relay/.relay"
+echo "# Project State" > "$HOME/dev_bos/Zeta_Relay/.relay/PROJECT_STATE.md"
+echo "# Project State" > "$HOME/dev_bos/Omega_Relay/.relay/PROJECT_STATE.md"
+
+proj_tsv="$(list_workspace_projects_tsv)"
+first_two_flags="$(printf "%s\n" "$proj_tsv" | head -n 2 | cut -f1 | tr '\n' ',')"
+if [ "$first_two_flags" = "1,1," ] && \
+   printf "%s\n" "$proj_tsv" | grep -q "Zeta_Relay.*Task: 20261031-auth-flow" && \
+   printf "%s\n" "$proj_tsv" | grep -q "Omega_Relay.*พร้อมเริ่มงานใหม่"; then
+  pass "list_workspace_projects_tsv จัดเรียงโปรเจกต์ที่มี .relay/ ไว้บนสุดเสมอ พร้อมแสดงสถานะ Task ปัจจุบัน"
+else
+  fail "list_workspace_projects_tsv จัดเรียงหรือแสดงสถานะไม่ถูกต้อง:\n$proj_tsv"
+fi
+
+sel_menu_raw="$(interactive_menu "เลือกโฟลเดอร์โปรเจกต์" 1 \
+  "n|★ สร้างโฟลเดอร์โปรเจกต์ใหม่" \
+  "1|● [RELAY]   Omega_Relay                ~/dev_bos/Omega_Relay (พร้อมเริ่มงานใหม่)" \
+  "2|○ [ทั่วไป]   Alpha_Plain                ~/dev_bos/Alpha_Plain" <<< "b")"
+if printf "%s" "$sel_menu_raw" | grep -q "● \[RELAY\]" && \
+   printf "%s" "$sel_menu_raw" | grep -q "○ \[ทั่วไป\]"; then
+  pass "interactive_menu แสดงป้ายจำแนก ● [RELAY] และ ○ [ทั่วไป] อย่างชัดเจน"
+else
+  fail "interactive_menu ไม่ได้แสดงป้าย ● [RELAY] / ○ [ทั่วไป]"
+fi
+
+if grep -q "เฉพาะในโครงการที่มีโฟลเดอร์ \`.relay/\`" "$REPO_DIR/templates/GLOBAL_AGENTS.md" && \
+   grep -q "กรณีโครงการทั่วไปที่ไม่มีโฟลเดอร์ \`.relay/\`" "$REPO_DIR/templates/GLOBAL_AGENTS.md"; then
+  pass "templates/GLOBAL_AGENTS.md กำหนดขอบเขต On-Demand & Per-Project ชัดเจน ไม่บังคับใช้ทีมในโปรเจกต์ทั่วไป"
+else
+  fail "templates/GLOBAL_AGENTS.md ยังไม่ได้ระบุขอบเขต On-Demand & Per-Project"
+fi
+
 echo ""
 printf "ผลรวม: ผ่าน %d • ไม่ผ่าน %d\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
