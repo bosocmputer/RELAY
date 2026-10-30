@@ -1804,14 +1804,120 @@ get_core_role_extra_prompt() {
   get_core_role_override_field "$role_key" "prompt"
 }
 
+# สร้างสารบัญ Progressive Disclosure ของทักษะ (YAML Frontmatter name/description + พาธ SKILL.md + รายการสคริปต์ใน scripts/)
+# คืนค่าบรรทัดละ: slug \t skill_md_path \t short_description \t script_files
+build_skill_index_tsv() {
+  local requested_skills="${1:-}"
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "${RELAY_DIR:-}/skills" "${GLOBAL_DIR:-$HOME/.agents}/skills" "$requested_skills" <<'PYEOF' 2>/dev/null || true
+import os, re, sys
+
+proj_skills_dir, global_skills_dir, req_raw = sys.argv[1:4]
+req = [s.strip() for s in re.split(r"[\s,]+", req_raw) if s.strip()]
+
+# รวมทักษะเฉพาะของโปรเจกต์ใน .relay/skills/* (ยกเว้น project-learned ที่มีช่องทางแนบแยกอยู่แล้ว)
+if os.path.isdir(proj_skills_dir):
+    for entry in sorted(os.listdir(proj_skills_dir)):
+        if entry == "project-learned" or entry.startswith("."):
+            continue
+        if os.path.isfile(os.path.join(proj_skills_dir, entry, "SKILL.md")) and entry not in req:
+            req.append(entry)
+
+if not req:
+    for d in (proj_skills_dir, global_skills_dir):
+        if os.path.isdir(d):
+            for entry in sorted(os.listdir(d)):
+                if entry == "project-learned" or entry.startswith("."):
+                    continue
+                if os.path.isfile(os.path.join(d, entry, "SKILL.md")) and entry not in req:
+                    req.append(entry)
+
+seen = set()
+for slug in req:
+    if slug in seen:
+        continue
+    seen.add(slug)
+    md_path = ""
+    for base in (proj_skills_dir, global_skills_dir):
+        cand = os.path.join(base, slug, "SKILL.md")
+        if base and os.path.isfile(cand):
+            md_path = cand
+            break
+    if not md_path:
+        continue
+    desc = ""
+    try:
+        txt = open(md_path, encoding="utf-8", errors="ignore").read(4096)
+        m = re.match(r"^---\s*\n(.*?)\n---\s*\n", txt, re.S)
+        if m:
+            for line in m.group(1).splitlines():
+                if line.strip().lower().startswith("description:"):
+                    desc = line.split(":", 1)[1].strip().strip("\"'")
+                    break
+        if not desc:
+            for line in txt.splitlines():
+                s = line.strip()
+                if s and not s.startswith("#") and not s.startswith("---"):
+                    desc = s
+                    break
+    except Exception:
+        pass
+    desc = re.sub(r"\s+", " ", desc).replace("\t", " ").strip()
+    if len(desc) > 80:
+        desc = desc[:77].rstrip() + "..."
+    scripts_dir = os.path.join(os.path.dirname(md_path), "scripts")
+    scripts = []
+    if os.path.isdir(scripts_dir):
+        for sf in sorted(os.listdir(scripts_dir)):
+            if not sf.startswith(".") and os.path.isfile(os.path.join(scripts_dir, sf)):
+                scripts.append(os.path.join(scripts_dir, sf))
+    print(f"{slug}\t{md_path}\t{desc or slug}\t{','.join(scripts)}")
+PYEOF
+}
+
+get_role_progressive_skills_note() {
+  local role_key="$1"
+  local sk_cur="${2:-}"
+  [ -z "$sk_cur" ] && sk_cur="$(get_core_role_skills "$role_key")"
+  local tsv
+  tsv="$(build_skill_index_tsv "$sk_cur")"
+  [ -z "$tsv" ] && return 0
+  local entries=()
+  local slug md_path desc scripts entry
+  while IFS=$'\t' read -r slug md_path desc scripts; do
+    [ -z "$slug" ] && continue
+    entry="${slug} (${md_path}: ${desc}"
+    if [ -n "$scripts" ]; then
+      entry="${entry}; scripts=${scripts}"
+    fi
+    entry="${entry})"
+    entries+=("$entry")
+  done <<< "$tsv"
+  [ "${#entries[@]}" -eq 0 ] && return 0
+  local joined=""
+  local idx=0
+  for entry in "${entries[@]}"; do
+    if [ "$idx" -gt 0 ]; then
+      joined="${joined} | "
+    fi
+    joined="${joined}${entry}"
+    idx=$((idx + 1))
+  done
+  printf " [Progressive Skills Index — เปิดอ่านไฟล์ SKILL.md หรือรันสคริปต์ใน scripts/ เฉพาะเมื่อตรงกับงานนี้เท่านั้น: %s]" "$joined"
+}
+
 get_core_role_prompt_note() {
   local role_key="$1"
-  local ep sk_def sk_cur extra=""
+  local ep sk_def sk_cur prog_idx extra=""
   ep="$(get_core_role_extra_prompt "$role_key")"
   sk_def="$(get_core_role_default_skills "$role_key")"
   sk_cur="$(get_core_role_skills "$role_key")"
   if [ -n "$sk_cur" ] && [ "$sk_cur" != "$sk_def" ]; then
     extra="${extra} (ใช้ชุดทักษะประจำบทบาท: ${sk_cur})"
+  fi
+  prog_idx="$(get_role_progressive_skills_note "$role_key" "$sk_cur")"
+  if [ -n "$prog_idx" ]; then
+    extra="${extra}${prog_idx}"
   fi
   if [ -n "$ep" ]; then
     extra="${extra} (คำสั่งเพิ่มเติมประจำบทบาท: ${ep})"
@@ -4336,6 +4442,28 @@ pending = bullets(read_text(pending_file))
 known |= {norm(r) for r in pending}
 
 candidates = []
+
+# 1. สกัดบทเรียนจากหลักฐานการแก้บั๊กจริง (Evidence-Based Remediation: รอบก่อนหน้า FAIL แล้วแก้จน PASS)
+import glob, json
+before_verdicts = sorted(glob.glob(os.path.join(task_dir, "QA_VERDICT.before-round-*.json")))
+final_verdict_path = os.path.join(task_dir, "QA_VERDICT.json")
+if before_verdicts and os.path.isfile(final_verdict_path):
+    try:
+        final_v = json.load(open(final_verdict_path, encoding="utf-8"))
+        if str(final_v.get("verdict", "")).strip().upper() == "PASS":
+            fix_summary = re.sub(r"\s+", " ", str(final_v.get("summary", "")).strip())
+            for bv_path in before_verdicts:
+                bv = json.load(open(bv_path, encoding="utf-8"))
+                failed_list = bv.get("failed_criteria") or []
+                for fc in failed_list[:2]:
+                    fc_clean = re.sub(r"\s+", " ", str(fc).strip())
+                    if fc_clean:
+                        remed_rule = f"[บทเรียนแก้บั๊กจาก {task_id}] ต้องป้องกันปัญหา '{fc_clean}' (วิธีแก้ไขที่ผ่าน QA: {fix_summary or 'ตรวจและรันชุดทดสอบให้ครบก่อนส่งมอบ'})"
+                        candidates.append(remed_rule[:220])
+    except Exception:
+        pass
+
+# 2. สกัดกฎเชิงสถาปัตยกรรมและข้อควรระวังจาก QA_REPORT.md, ARCH.md, SPEC.md
 for content in (qa_txt, arch_txt, spec_txt):
     for line in content.splitlines():
         s = line.strip()
@@ -4742,7 +4870,11 @@ archive_old_qa_outputs() {
 
 # ข้อกำหนดผลลัพธ์ของ @qa (ใช้ร่วมกันในขั้นตอนที่ 4 และ Auto-Loop)
 get_qa_prompt_contract() {
-  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่าง และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md' "$ACTIVE_TASK"
+  local verify_tool_note=""
+  if [ -x "$GLOBAL_DIR/bin/relay-verify-task" ]; then
+    verify_tool_note=" (สามารถรันสคริปต์ '$GLOBAL_DIR/bin/relay-verify-task .relay/tasks/$ACTIVE_TASK' เพื่อตรวจเพดานบรรทัดเอกสาร, ไฟล์ความลับ และโครงสร้าง JSON อัตโนมัติ)"
+  fi
+  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่าง และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
 }
 
 verdict_source_note() {
@@ -5290,6 +5422,7 @@ run_skills_menu() {
     "2|ติดตั้งชุดทักษะมาตรฐานทั้งหมดลงเครื่อง (install)" \
     "3|อัปเดตทักษะทั้งหมดให้เป็นเวอร์ชันล่าสุดจาก GitHub (update)" \
     "4|เพิ่มทักษะใหม่จากลิงก์ GitHub Repository (add)" \
+    "5|สร้างทักษะเฉพาะทางสำหรับโปรเจกต์นี้ (.relay/skills/<name>/SKILL.md + scripts/)" \
     "b|ย้อนกลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
@@ -5306,6 +5439,18 @@ run_skills_menu() {
         return 0
       fi
       "$skills_cmd" add "$repo_url" "$skill_sub"
+      ;;
+    5)
+      local new_sk_name="" new_sk_desc=""
+      read -r -p "ตั้งชื่อ Skill ใหม่ภาษาอังกฤษ (เช่น api-contract-check หรือพิมพ์ b เพื่อย้อนกลับ): " new_sk_name || true
+      if is_back_input "$new_sk_name" || [ -z "$new_sk_name" ]; then
+        return 0
+      fi
+      read -r -p "ระบุคำอธิบายสั้นๆ ว่าเมื่อไหร่ควรเปิดใช้ Skill นี้ (หรือพิมพ์ b เพื่อย้อนกลับ): " new_sk_desc || true
+      if is_back_input "$new_sk_desc"; then
+        return 0
+      fi
+      "$skills_cmd" create "$new_sk_name" "$new_sk_desc" "$RELAY_DIR/skills"
       ;;
   esac
 }
