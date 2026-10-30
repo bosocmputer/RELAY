@@ -1,0 +1,15 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh",
+    "bash tests/test_hermes_cli_redesign.sh (4/4)",
+    "bash tests/test_quota_display.sh (6/6)",
+    "bash tests/test_custom_agents_and_back_nav.sh (10/10)",
+    "bash tests/test_token_telemetry.sh (8/8)",
+    "bash tests/test_phase5_merge.sh (22/22)",
+    "bash tests/test_auto_loop.sh (24/24)",
+    "bash tests/test_quota_failover_and_handoff.sh (17/17)"
+  ],
+  "summary": "Hermes-Style Split-Header Card, Modular Braille Apple Logo, 4-Level Color Hierarchy, Clean Developer Terminology, and Shortcuts Bar verified with 91/91 assertions passing."
+}
