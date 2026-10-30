@@ -1039,11 +1039,225 @@ format_role_status_cell() {
   fi
 }
 
+get_quota_pool_id() {
+  local p="$1"
+  local m="$2"
+  case "$p" in
+    agy)
+      if [[ "$m" == claude-* ]] || [[ "$m" == gpt-* ]]; then
+        echo "agy_claude"
+      else
+        echo "agy_gemini"
+      fi
+      ;;
+    codex)  echo "codex" ;;
+    claude) echo "claude" ;;
+    *)      echo "$p" ;;
+  esac
+}
+
+get_role_min_quota_pct() {
+  local qpair q5 q7 min_q="-"
+  qpair="$(get_role_quota_pair "$1" "$2")"
+  q5="${qpair%%|*}"
+  q7="${qpair#*|}"
+  if [[ "$q5" =~ ^[0-9]+$ ]] && [[ "$q7" =~ ^[0-9]+$ ]]; then
+    min_q="$q5"
+    [ "$q7" -lt "$min_q" ] && min_q="$q7"
+  elif [[ "$q5" =~ ^[0-9]+$ ]]; then
+    min_q="$q5"
+  elif [[ "$q7" =~ ^[0-9]+$ ]]; then
+    min_q="$q7"
+  fi
+  echo "$min_q"
+}
+
+# คืนค่ารายการกระเป๋าโควต้าทางเลือกที่พร้อมใช้ในเครื่อง เรียงตามเปอร์เซ็นต์คงเหลือสูงสุด -> ต่ำสุด
+# รูปแบบต่อบรรทัด: provider|model|min_pct|pool_label
+list_quota_failover_candidates() {
+  local cur_prov="$1"
+  local cur_model="$2"
+  local role_key="${3:-dev}"
+  local cur_pool
+  cur_pool="$(get_quota_pool_id "$cur_prov" "$cur_model")"
+
+  local agy_gem_m="gemini-4-argon-high"
+  [ "$role_key" = "qa" ] && agy_gem_m="gemini-3.8-flash-high"
+  local agy_cl_m="claude-sonnet-5-5-high"
+  [ "$role_key" = "arch" ] && agy_cl_m="claude-opus-5-5-high"
+  local codex_m
+  codex_m="$(get_cli_default_model codex)"
+  local claude_m="sonnet"
+  [ "$role_key" = "arch" ] && claude_m="opus"
+
+  local raw_lines=""
+  local pool_id c_prov c_mod c_label c_min sort_key
+  for entry in \
+    "agy_gemini|agy|${agy_gem_m}|กระเป๋า Gemini (Google AI Ultra)" \
+    "agy_claude|agy|${agy_cl_m}|กระเป๋า Claude/GPT (Google AI Ultra)" \
+    "codex|codex|${codex_m}|กระเป๋า OpenAI Codex (${CODEX_PLAN:-Plus})" \
+    "claude|claude|${claude_m}|กระเป๋า Anthropic Claude (${CLAUDE_PLAN:-Pro})"
+  do
+    IFS='|' read -r pool_id c_prov c_mod c_label <<<"$entry"
+    [ "$pool_id" = "$cur_pool" ] && continue
+    if is_provider_installed "$c_prov" && is_provider_logged_in "$c_prov"; then
+      c_min="$(get_role_min_quota_pct "$c_prov" "$c_mod")"
+      if [[ "$c_min" =~ ^[0-9]+$ ]]; then
+        sort_key="$c_min"
+      else
+        sort_key="50"
+      fi
+      raw_lines="${raw_lines}${sort_key}|${c_prov}|${c_mod}|${c_min}|${c_label}"$'\n'
+    fi
+  done
+
+  [ -z "$raw_lines" ] && return 0
+  printf "%s" "$raw_lines" | grep -v '^$' | sort -t'|' -k1,1nr | cut -d'|' -f2-
+}
+
+apply_role_provider_model_switch() {
+  local role_key="$1"
+  local new_prov="$2"
+  local new_model="$3"
+  case "$role_key" in
+    po)   ROLE_PO="$new_prov";   MODEL_PO="$new_model" ;;
+    arch) ROLE_ARCH="$new_prov"; MODEL_ARCH="$new_model" ;;
+    dev)  ROLE_DEV="$new_prov";  MODEL_DEV="$new_model" ;;
+    qa)   ROLE_QA="$new_prov";   MODEL_QA="$new_model" ;;
+    *)    return 1 ;;
+  esac
+  local target_conf="$GLOBAL_ROLES_CONF"
+  [ -f "$PROJECT_ROLES_CONF" ] && target_conf="$PROJECT_ROLES_CONF"
+  save_role_config "$target_conf"
+  return 0
+}
+
+prompt_or_auto_switch_role_quota() {
+  local role_key="$1"
+  local role_label="$2"
+  local cur_prov="$3"
+  local cur_model="$4"
+  local min_pct="${5:-20}"
+  local trigger_reason="${6:-low_quota}"
+
+  [ -z "$role_key" ] && return 1
+
+  local cand_list=()
+  local c_line
+  while IFS= read -r c_line; do
+    [ -n "$c_line" ] && cand_list+=("$c_line")
+  done < <(list_quota_failover_candidates "$cur_prov" "$cur_model" "$role_key")
+
+  # 1. กรณีเปิดโหมด Auto-Failover (RELAY_AUTO_FAILOVER=1): สลับไปยังกระเป๋าที่โควต้าสูงสุด (>= 50%) อัตโนมัติทันที
+  if [ "${RELAY_AUTO_FAILOVER:-0}" = "1" ] && [ "${#cand_list[@]}" -gt 0 ]; then
+    local top_cand="${cand_list[0]}"
+    local top_prov top_mod top_pct top_label
+    IFS='|' read -r top_prov top_mod top_pct top_label <<<"$top_cand"
+    local auto_min="${RELAY_AUTO_FAILOVER_MIN_PCT:-50}"
+    if { [[ "$top_pct" =~ ^[0-9]+$ ]] && [ "$top_pct" -ge "$auto_min" ]; } || [ "$top_pct" = "-" ]; then
+      apply_role_provider_model_switch "$role_key" "$top_prov" "$top_mod"
+      local pct_txt="${top_pct}%"
+      [ "$top_pct" = "-" ] && pct_txt="พร้อมใช้"
+      printf "\n%s⚡ [Smart Auto-Failover] สลับตำแหน่ง %s จาก %s/%s ➔ ไปใช้ %s/%s (%s • โควต้าเหลือ %s) อัตโนมัติแล้วทำงานต่อทันที!%s\n" \
+        "$C_OK" "$role_label" "$cur_prov" "$cur_model" "$top_prov" "$top_mod" "$top_label" "$pct_txt" "$C_RESET"
+      if [ -n "${LOOP_LOG_FILE:-}" ]; then
+        echo "- [FAILOVER] สลับ ${role_label} จาก ${cur_prov}/${cur_model} ➔ ${top_prov}/${top_mod} (โควต้าเหลือ ${pct_txt} • สาเหตุ: ${trigger_reason}) (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+      fi
+      return 0
+    fi
+  fi
+
+  # 2. กรณีรันแบบ Non-Interactive (เช่น ชุดทดสอบอัตโนมัติที่ไม่ได้เปิด Auto-Failover หรือบังคับถาม): หยุดทันที
+  if [ ! -t 0 ] && [ "${RELAY_FORCE_QUOTA_PROMPT:-0}" != "1" ]; then
+    return 1
+  fi
+
+  # 3. กรณี Interactive: แสดงทางลัดสลับกระเป๋าโควต้าในคลิกเดียว (หรือฝืนรันต่อด้วยโมเดลเดิม)
+  local menu_items=()
+  local cand_provs=()
+  local cand_mods=()
+  local cand_pcts=()
+  local idx=1
+  for c_line in "${cand_list[@]}"; do
+    local cp cm cq cl
+    IFS='|' read -r cp cm cq cl <<<"$c_line"
+    if [[ "$cq" =~ ^[0-9]+$ ]] && [ "$cq" -lt "$min_pct" ]; then
+      continue
+    fi
+    local q_disp="โควต้าเหลือ ${cq}%"
+    [ "$cq" = "-" ] && q_disp="พร้อมใช้งาน"
+    local star_prefix=""
+    [ "$idx" -eq 1 ] && star_prefix="★ "
+    menu_items+=("${idx}|${star_prefix}สลับไปใช้ ${cp} / ${cm} [${q_disp} — ${cl}] แล้วทำต่อทันที")
+    cand_provs[$idx]="$cp"
+    cand_mods[$idx]="$cm"
+    cand_pcts[$idx]="$q_disp"
+    idx=$((idx + 1))
+  done
+
+  menu_items+=("m|เลือกค่าย AI และโมเดลอื่นด้วยตนเอง แล้วทำต่อทันที")
+  if [ "$trigger_reason" = "mid_step_error" ]; then
+    menu_items+=("r|ลองรันซ้ำด้วยค่ายและโมเดลเดิม (${cur_prov} / ${cur_model})")
+  else
+    menu_items+=("f|ฝืนรันต่อด้วยค่ายและโมเดลเดิม (${cur_prov} / ${cur_model}) ในรอบนี้")
+  fi
+  menu_items+=("b|ย้อนกลับ / หยุดพักงานไว้ก่อน (งานที่ทำไปแล้วใน Worktree ยังอยู่ครบ)")
+
+  interactive_menu "เลือกวิธีดำเนินการต่อสำหรับ ${role_label} (สลับกระเป๋าโควต้าแล้วรับไม้ต่อทันที)" 0 "${menu_items[@]}"
+
+  case "$MENU_RESULT" in
+    [1-9])
+      if [ -n "${cand_provs[$MENU_RESULT]:-}" ]; then
+        local np="${cand_provs[$MENU_RESULT]}"
+        local nm="${cand_mods[$MENU_RESULT]}"
+        local nq="${cand_pcts[$MENU_RESULT]}"
+        apply_role_provider_model_switch "$role_key" "$np" "$nm"
+        printf "\n%s● สลับ %s ไปใช้ %s / %s (%s) เรียบร้อย — กำลังทำงานต่อทันที!%s\n" "$C_OK" "$role_label" "$np" "$nm" "$nq" "$C_RESET"
+        if [ -n "${LOOP_LOG_FILE:-}" ]; then
+          echo "- [FAILOVER] ผู้ใช้สลับ ${role_label} จาก ${cur_prov}/${cur_model} ➔ ${np}/${nm} (${nq}) (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+        fi
+        return 0
+      fi
+      ;;
+    m|M)
+      if choose_provider_interactive "$role_label" "$cur_prov"; then
+        local next_p="$SELECTED_PROVIDER"
+        if choose_model_interactive "$next_p" "$role_label" "$cur_model"; then
+          apply_role_provider_model_switch "$role_key" "$next_p" "$SELECTED_MODEL"
+          printf "\n%s● สลับ %s ไปใช้ %s / %s เรียบร้อย — กำลังทำงานต่อทันที!%s\n" "$C_OK" "$role_label" "$next_p" "$SELECTED_MODEL" "$C_RESET"
+          if [ -n "${LOOP_LOG_FILE:-}" ]; then
+            echo "- [FAILOVER] ผู้ใช้กำหนด ${role_label} เป็น ${next_p}/${SELECTED_MODEL} (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+          fi
+          return 0
+        fi
+      fi
+      ;;
+    f|F|r|R)
+      printf "\n%s▲ ดำเนินการต่อด้วยค่ายและโมเดลเดิม (%s / %s) ในรอบนี้ตามคำสั่งผู้ใช้%s\n" "$C_WARN" "$cur_prov" "$cur_model" "$C_RESET"
+      if [ -n "${LOOP_LOG_FILE:-}" ]; then
+        echo "- [OVERRIDE] ผู้ใช้เลือกใช้ ${cur_prov}/${cur_model} ต่อในรอบนี้ (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+      fi
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 check_role_quota_safe() {
   local provider="$1"
   local model="$2"
   local role_label="$3"
   local min_pct="${4:-20}"
+  local role_key="${5:-}"
+
+  if [ -z "$role_key" ]; then
+    case "$role_label" in
+      *"@po"*)   role_key="po" ;;
+      *"@arch"*) role_key="arch" ;;
+      *"@dev"*)  role_key="dev" ;;
+      *"@qa"*)   role_key="qa" ;;
+    esac
+  fi
 
   update_codex_quota_fast
   local qpair q5 q7
@@ -1068,11 +1282,15 @@ check_role_quota_safe() {
   if [ "$low_flag" -eq 1 ]; then
     echo ""
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
-    printf "%s│%s %s🛑 [Quota Circuit Breaker] หยุดลูปอัตโนมัติเพื่อปกป้องโควต้าของคุณ!%s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s %s🛑 [Quota Circuit Breaker] โควต้าของตำแหน่งนี้ต่ำกว่าเกณฑ์ปลอดภัย (%s%%)!%s\n" "$C_ERR" "$C_RESET" "$C_BOLD" "$min_pct" "$C_RESET"
     printf "%s│%s  • ตำแหน่ง : %s (%s / %s)\n" "$C_ERR" "$C_RESET" "$role_label" "$provider" "$model"
-    printf "%s│%s  • โควต้าคงเหลือปัจจุบัน : 5 ชม. เหลือ %s%% │ รายสัปดาห์ เหลือ %s%% (ต่ำกว่าเกณฑ์ปลอดภัย %s%%)\n" "$C_ERR" "$C_RESET" "$q5" "$q7" "$min_pct"
-    printf "%s│%s  • คำแนะนำ : กด [c] เพื่อสลับตำแหน่งนี้ไปใช้ค่ายอื่นที่ยังมีโควต้าเหลือเยอะ แล้วสั่งรันลูปต่อได้ทันที\n" "$C_ERR" "$C_RESET"
+    printf "%s│%s  • โควต้าคงเหลือปัจจุบัน : 5 ชม. เหลือ %s%% │ รายสัปดาห์ เหลือ %s%% (เกณฑ์ขั้นต่ำ %s%%)\n" "$C_ERR" "$C_RESET" "$q5" "$q7" "$min_pct"
+    printf "%s│%s  • คำแนะนำ : สลับไปใช้กระเป๋าโควต้า/ค่ายอื่นที่ยังมีโควต้าเหลือเยอะ แล้วรับไม้ต่อใน Worktree เดิมได้ทันที\n" "$C_ERR" "$C_RESET"
     printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ERR" "$C_RESET"
+
+    if prompt_or_auto_switch_role_quota "$role_key" "$role_label" "$provider" "$model" "$min_pct" "low_quota"; then
+      return 0
+    fi
     return 1
   fi
   return 0
@@ -3093,6 +3311,29 @@ get_dev_commit_note() {
   printf " เมื่อเขียนโค้ดและรันชุดทดสอบผ่านแล้ว ให้ git add และ git commit งานทั้งหมดในกิ่ง feat/%s ของ Worktree นี้ (ห้าม commit โฟลเดอร์ .relay/)" "$ACTIVE_TASK"
 }
 
+# สรุปสถานะไฟล์ที่ทำค้างไว้ใน Git Worktree ด้วยสคริปต์ระบบ (0 Token) เพื่อให้ Agent ตัวใหม่รับไม้ต่อได้ทันทีเมื่อสลับค่ายหรือทำต่อ
+get_worktree_handoff_context_note() {
+  local wt="${1:-}"
+  [ -n "$wt" ] && [ -d "$wt" ] || return 0
+  git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || return 0
+
+  local dirty_files commits_ahead diff_summary
+  dirty_files="$(git -C "$wt" status --short -- . ':(exclude).relay' 2>/dev/null | head -n 10 | awk '{printf "%s(%s) ", $2, $1}' | sed -E 's/[[:space:]]+$//' || true)"
+  commits_ahead="$(git -C "$wt" log --oneline main..HEAD -- . ':(exclude).relay' 2>/dev/null | head -n 5 | tr '\n' ';' | sed -E 's/;+$//; s/;/, /g' || true)"
+  diff_summary="$(git -C "$wt" diff --shortstat HEAD -- . ':(exclude).relay' 2>/dev/null | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true)"
+
+  if [ -n "$dirty_files" ] || [ -n "$commits_ahead" ]; then
+    printf " [บริบทรับไม้ต่อใน Worktree (0-Token Handoff): "
+    if [ -n "$commits_ahead" ]; then
+      printf "มี commit ก่อนหน้าในกิ่งนี้แล้ว (%s) " "$commits_ahead"
+    fi
+    if [ -n "$dirty_files" ]; then
+      printf "มีไฟล์ที่แก้ไขค้างไว้ยังไม่ commit ได้แก่: %s%s " "$dirty_files" "${diff_summary:+ ($diff_summary)}"
+    fi
+    printf "กรุณาตรวจสอบไฟล์ดังกล่าวด้วย git status / git diff และทำต่อจากจุดที่ค้างไว้ทันทีโดยไม่ต้องเริ่มเขียนใหม่ตั้งแต่ต้น]"
+  fi
+}
+
 ensure_or_create_task() {
   refresh_project_paths
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
@@ -3141,6 +3382,7 @@ run_phase_1_po() {
   if [ -z "$ACTIVE_TASK" ]; then
     create_new_task "${user_goal:-feature}" || return 0
   fi
+  check_role_quota_safe "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po" 20 "po" || return 0
   local role_note
   role_note="$(get_core_role_prompt_note po)"
   local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้}${role_note} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) หากข้อมูลชัดเจนเพียงพอแล้ว ให้สรุปขอบเขตงานและเกณฑ์ตรวจรับ (Acceptance Criteria) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ได้ทันที (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด) แต่หากมีประเด็นสำคัญที่ยังไม่ชัดเจน ให้ถามรวบยอดในครั้งเดียวสั้นๆ ไม่เกิน 3 ข้อก่อนเขียน SPEC.md (ห้ามแก้ไขโค้ดในขั้นตอนนี้)"
@@ -3151,6 +3393,7 @@ run_phase_1_po() {
 run_phase_2_arch() {
   require_all_roles_ready || return 0
   ensure_or_create_task || return 0
+  check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" 20 "arch" || return 0
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note arch)"
@@ -3162,16 +3405,18 @@ run_phase_2_arch() {
 run_phase_3_dev() {
   require_all_roles_ready || return 0
   ensure_or_create_task || return 0
+  check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev" 20 "dev" || return 0
   if ! prepare_task_worktree; then
     [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
     return 0
   fi
 
-  local learned_note commit_note role_note
+  local learned_note commit_note role_note handoff_note
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
+  handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   LAST_COMPLETED_PHASE=3
 }
@@ -3208,16 +3453,18 @@ EOF
     fi
   fi
 
+  check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "โหมดด่วน Fast Track: @dev" 20 "dev" || return 0
   if ! prepare_task_worktree; then
     [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
     return 0
   fi
 
-  local learned_note commit_note role_note
+  local learned_note commit_note role_note handoff_note
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
-  local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
+  handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
+  local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}${handoff_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "โหมดด่วน Fast Track: @dev (ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   if [ -d "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
@@ -3228,6 +3475,7 @@ EOF
 run_phase_4_qa() {
   require_all_roles_ready || return 0
   ensure_or_create_task || return 0
+  check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec" 20 "qa" || return 0
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
   local target_work_dir="$PROJECT_DIR"
   [ -d "$worktree_dir" ] && target_work_dir="$worktree_dir"
@@ -3458,19 +3706,21 @@ run_custom_agent_task() {
 
   local target_dir="$PROJECT_DIR"
   local commit_note=""
+  local handoff_note=""
   if [ "$wmode" = "worktree" ]; then
     if ! prepare_task_worktree; then
       return 1
     fi
     target_dir="$TASK_WORK_DIR"
     commit_note="$(get_dev_commit_note)"
+    handoff_note="$(get_worktree_handoff_context_note "$target_dir")"
   fi
 
   local learned_note skills_note=""
   learned_note="$(get_learned_skills_prompt_note)"
   [ -n "$skills" ] && skills_note=" โดยใช้ชุดทักษะ (Skills): ${skills}"
 
-  local full_prompt="@${slug} (${title}) บทบาทหน้าที่ของคุณคือ: ${role_prompt:-ปฏิบัติงานตามความเชี่ยวชาญของตำแหน่ง}${skills_note}${learned_note} กรุณาอ่านบริบทใน .relay/PROJECT_STATE.md (ถ้ามี) และใบงาน .relay/tasks/$ACTIVE_TASK แล้วดำเนินการตามคำสั่งนี้ให้กระชับตรงประเด็น (ห้ามเขียนเอกสารเยิ่นเย้อเกินจำเป็น): ${user_instruction:-ตามที่กำหนดในบทบาท}${commit_note}"
+  local full_prompt="@${slug} (${title}) บทบาทหน้าที่ของคุณคือ: ${role_prompt:-ปฏิบัติงานตามความเชี่ยวชาญของตำแหน่ง}${skills_note}${learned_note}${handoff_note} กรุณาอ่านบริบทใน .relay/PROJECT_STATE.md (ถ้ามี) และใบงาน .relay/tasks/$ACTIVE_TASK แล้วดำเนินการตามคำสั่งนี้ให้กระชับตรงประเด็น (ห้ามเขียนเอกสารเยิ่นเย้อเกินจำเป็น): ${user_instruction:-ตามที่กำหนดในบทบาท}${commit_note}"
   launch_provider_cli "$prov" "$model" "ตำแหน่ง @${slug} (${title})" "$target_dir" "$full_prompt"
 
   if [ "$wmode" = "worktree" ] && [ -d "$target_dir/.relay/tasks/$ACTIVE_TASK" ]; then
@@ -4169,6 +4419,44 @@ loop_halt() {
   fi
 }
 
+# กู้คืนงานกลางคันเมื่อ CLI จบด้วย error (เช่น โควต้าหมดระหว่างกำลังรันขั้นตอนนั้น)
+try_mid_step_failover() {
+  local rc="$1"
+  local role_key="$2"
+  local role_label="$3"
+  local min_pct="${4:-20}"
+
+  case "$rc" in
+    0|124|130) return 1 ;;
+  esac
+
+  local cur_prov="" cur_mod=""
+  case "$role_key" in
+    po)   cur_prov="$ROLE_PO";   cur_mod="$MODEL_PO" ;;
+    arch) cur_prov="$ROLE_ARCH"; cur_mod="$MODEL_ARCH" ;;
+    dev)  cur_prov="$ROLE_DEV";  cur_mod="$MODEL_DEV" ;;
+    qa)   cur_prov="$ROLE_QA";   cur_mod="$MODEL_QA" ;;
+    *)    return 1 ;;
+  esac
+
+  if [ "${RELAY_AUTO_FAILOVER:-0}" != "1" ] && [ ! -t 0 ] && [ "${RELAY_FORCE_QUOTA_PROMPT:-0}" != "1" ]; then
+    return 1
+  fi
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s %s▲ [Mid-Step Failover Guard] %s จบด้วยข้อผิดพลาด (exit %s)%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$role_label" "$rc" "$C_RESET"
+  printf "%s│%s  • ค่าย/โมเดลที่ใช้ล่าสุด : %s (%s)\n" "$C_WARN" "$C_RESET" "$cur_prov" "$cur_mod"
+  printf "%s│%s  • สาเหตุที่เป็นไปได้     : โควต้าของกระเป๋านี้หมดระหว่างทำงาน หรือการเชื่อมต่อขัดข้อง\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s  • การกู้คืนงาน          : สลับไปใช้กระเป๋าโควต้าอื่นเพื่อรับไม้ต่อใน Worktree เดิมได้ทันที\n" "$C_WARN" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+
+  if prompt_or_auto_switch_role_quota "$role_key" "$role_label" "$cur_prov" "$cur_mod" "$min_pct" "mid_step_error"; then
+    return 0
+  fi
+  return 1
+}
+
 # แปลง exit code ของ agent เป็นเหตุผลการหยุดลูป (คืนค่า 1 เมื่อต้องหยุด)
 loop_check_rc() {
   local rc="$1"
@@ -4183,6 +4471,15 @@ loop_check_rc() {
 }
 
 run_auto_relay_loop() {
+  local auto_confirm="interactive"
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --yes|-y) auto_confirm="--yes" ;;
+      --auto-failover) RELAY_AUTO_FAILOVER=1 ;;
+    esac
+  done
+
   require_all_roles_ready || return 0
   refresh_project_paths
   get_active_task
@@ -4218,18 +4515,23 @@ run_auto_relay_loop() {
   printf "%s│%s  • ขั้นที่ 3 (@dev Worktree): %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$MODEL_DEV"
   printf "%s│%s  • ขั้นที่ 4 (@qa Verifier) : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$MODEL_QA"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s  %sระบบเบรกนิรภัย (Circuit Breakers):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s   1. Quota Guard        : หยุดทันทีหากโควต้า 5h หรือ 7d ของตำแหน่งถัดไปต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
-  printf "%s│%s   2. Max Loop Cap       : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
-  printf "%s│%s   3. Cross-Provider QA  : ผ่านเฉพาะเมื่อ QA_REPORT.md มี VERDICT: PASS ชัดเจน\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s   4. Step Guard         : หยุดเมื่อ agent error / ไม่สร้างไฟล์ผลลัพธ์ / เกิน %s นาทีต่อขั้น\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
+  printf "%s│%s  %sระบบเบรกนิรภัยและการสลับโควต้า (Circuit Breakers & Smart Failover):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s   1. Quota Guard & Failover : เตือนหรือสลับกระเป๋าโควต้าอัตโนมัติเมื่อโควต้าต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
+  printf "%s│%s   2. 0-Token Worktree Handoff: ส่งต่อรายชื่อไฟล์ที่ทำค้างใน Worktree ให้ AI ตัวใหม่ทันที\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s   3. Max Loop Cap           : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
+  printf "%s│%s   4. Step Guard             : หยุดเมื่อ agent ค้างเกิน %s นาทีต่อขั้น หรือไม่สร้างไฟล์ผลลัพธ์\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  if [ "${1:-interactive}" != "--yes" ]; then
+  if [ "$auto_confirm" != "--yes" ]; then
     interactive_menu "ต้องการเริ่มรัน Bounded Auto-Relay Loop สำหรับใบงาน '${ACTIVE_TASK}' เลยหรือไม่?" 0 \
-      "y|★ เริ่มรันลูปอัตโนมัติทันที (2 ➔ 3 ⇄ 4 พร้อมเบรกนิรภัยครบทุกชั้น)" \
+      "y|★ เริ่มรันลูปอัตโนมัติ + เปิดระบบสลับกระเป๋าโควต้าอัตโนมัติเมื่อโควต้า < 20% (Smart Auto-Failover)" \
+      "s|เริ่มรันลูปอัตโนมัติแบบถามยืนยันก่อนสลับค่ายเมื่อโควต้า < 20%" \
       "b|ย้อนกลับสู่หน้าจอหลัก"
-    [ "$MENU_RESULT" != "y" ] && return 0
+    case "$MENU_RESULT" in
+      y|Y) RELAY_AUTO_FAILOVER=1 ;;
+      s|S) RELAY_AUTO_FAILOVER=0 ;;
+      *)   return 0 ;;
+    esac
   fi
 
   printf "%sกำลังดึงข้อมูลโควต้าสดล่าสุดก่อนเริ่มลูป...%s\n" "$C_MUTED" "$C_RESET"
@@ -4239,7 +4541,7 @@ run_auto_relay_loop() {
     echo "# บันทึกการทำงานอัตโนมัติ (Bounded Auto-Relay Loop Log — $ACTIVE_TASK)"
     echo ""
     echo "- เริ่มต้นลูปเมื่อ: \`$(date '+%Y-%m-%d %H:%M:%S')\`"
-    echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\` │ เพดานเวลาต่อขั้น: \`${step_timeout} วินาที\`"
+    echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\` │ เพดานเวลาต่อขั้น: \`${step_timeout} วินาที\` │ Auto-Failover: \`${RELAY_AUTO_FAILOVER:-0}\`"
     echo ""
   } > "$LOOP_LOG_FILE"
 
@@ -4254,13 +4556,17 @@ run_auto_relay_loop() {
 
   # 1. ขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
   if [ ! -f "$task_dir/PLAN.md" ]; then
-    if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct"; then
+    if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct" "arch"; then
       loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
     local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ) โดยไม่ต้องรอถามโต้ตอบ: 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
     rc=0
     exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
+    if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "arch" "ขั้นตอนที่ 2 (@arch)" "$min_quota_pct"; then
+      rc=0
+      exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (รับไม้ต่อหลังสลับค่าย)" "$PROJECT_DIR" "$arch_prompt" || rc=$?
+    fi
     loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
     if [ ! -f "$task_dir/PLAN.md" ]; then
       loop_halt "@arch ทำงานจบแต่ไม่ได้สร้าง .relay/tasks/$ACTIVE_TASK/PLAN.md"
@@ -4287,24 +4593,32 @@ run_auto_relay_loop() {
     echo ""
     printf "%s═══ ⚡ [Auto-Relay Loop] รอบที่ %d/%d : ขั้นตอนที่ 3 (@dev) ⇄ ขั้นตอนที่ 4 (@qa) ═══%s\n" "$C_SEL" "$round" "$max_rounds" "$C_RESET"
 
-    if ! check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "@dev (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
+    if ! check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "@dev (รอบที่ $round/$max_rounds)" "$min_quota_pct" "dev"; then
       loop_halt "โควต้าของ @dev ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
     fi
 
+    local handoff_note=""
+    handoff_note="$(get_worktree_handoff_context_note "$worktree_dir")"
     local dev_prompt=""
     if [ "$round" -eq 1 ]; then
-      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี)${learned_note}${dev_role_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter และก่อน commit ต้องรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และ Unit Test ให้ผ่านจริง)${commit_note}"
+      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี)${learned_note}${dev_role_note}${handoff_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter และก่อน commit ต้องรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และ Unit Test ให้ผ่านจริง)${commit_note}"
     else
-      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และ QA_VERDICT.json ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note} แล้วแก้ไขโค้ดและรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และ QA_VERDICT.json ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note}${handoff_note} แล้วแก้ไขโค้ดและรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     fi
 
     rc=0
     exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds)" "$worktree_dir" "$dev_prompt" || rc=$?
+    if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "dev" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" "$min_quota_pct"; then
+      handoff_note="$(get_worktree_handoff_context_note "$worktree_dir")"
+      dev_prompt="@dev กรุณารับไม้ต่อใน Git Worktree นี้ โดยอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี)${learned_note}${dev_role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดที่ค้างอยู่ต่อทันทีและรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      rc=0
+      exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds — รับไม้ต่อหลังสลับค่าย)" "$worktree_dir" "$dev_prompt" || rc=$?
+    fi
     loop_check_rc "$rc" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" || return 1
     LAST_COMPLETED_PHASE=3
 
-    if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct"; then
+    if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct" "qa"; then
       loop_halt "โควต้าของ @qa ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
     fi
@@ -4315,6 +4629,10 @@ run_auto_relay_loop() {
     local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
+    if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "qa" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" "$min_quota_pct"; then
+      rc=0
+      exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds — รับไม้ต่อหลังสลับค่าย)" "$worktree_dir" "$qa_prompt" || rc=$?
+    fi
     loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1
 
     if [ -d "$wt_task_dir" ]; then
@@ -4641,7 +4959,8 @@ case "$SUBCOMMAND" in
     exit 0
     ;;
   loop|auto)
-    run_auto_relay_loop "${2:-interactive}"
+    shift
+    run_auto_relay_loop "$@"
     exit 0
     ;;
   learn|distill)
