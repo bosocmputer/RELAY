@@ -14,25 +14,24 @@ echo "⚙️ [RELAY Init] กำลังเตรียมโครงสร้
 mkdir -p "$TARGET_ABS/.relay/tasks" "$TARGET_ABS/.relay/archive"
 touch "$TARGET_ABS/.relay/archive/.gitkeep"
 
-# 2. สร้างไฟล์ PROJECT_STATE.md ตั้งต้น (หากยังไม่มี)
+# 2. สร้างไฟล์ PROJECT_STATE.md ตั้งต้น (หากยังไม่มี) — ใช้ printf เพื่อไม่ให้อักขระพิเศษในชื่อโฟลเดอร์ถูกตีความเป็นคำสั่ง
 STATE_FILE="$TARGET_ABS/.relay/PROJECT_STATE.md"
 if [ ! -f "$STATE_FILE" ]; then
-  cat << EOF > "$STATE_FILE"
-# สถานะปัจจุบันของโครงการ (PROJECT_STATE.md)
-- **ชื่อโครงการ:** $PROJECT_NAME
-- **วันที่อัปเดตล่าสุด:** $(date +%Y-%m-%d)
-- **คำแนะนำ:** เอกสารนี้ใช้เก็บสรุปสถาปัตยกรรม โครงสร้างฐานข้อมูล และรายการ API ล่าสุดของโครงการ (ความยาวไม่เกิน 2 หน้า) เพื่อให้ตัวแทน AI เข้าใจบริบทของระบบโดยไม่ต้องอ่านใบงานเก่าทั้งหมด
-
-## 1. ภาพรวมและเทคโนโลยีที่ใช้ (Tech Stack & Overview)
-- (ระบุภาษา เฟรมเวิร์ก และฐานข้อมูลที่ใช้ หรือสั่งให้ @arch สแกนโค้ดเพื่อสรุปข้อมูลลงในส่วนนี้)
-
-## 2. โครงสร้างโมดูลและไฟล์สำคัญ (Core Modules & Architecture)
-- (ระบุโฟลเดอร์หลักและหน้าที่ของแต่ละส่วน)
-
-## 3. คำสั่งสำคัญสำหรับการตรวจสอบและทดสอบ (Build & Test Commands)
-- โครงการ Web / Node.js: \`npm test\` (หรือ \`pnpm test\`) และ \`npm run build\`
-- โครงการ Flutter / Dart: \`flutter analyze\` และ \`flutter test\`
-EOF
+  TMP_STATE="${STATE_FILE}.tmp.$$"
+  {
+    printf "# สถานะปัจจุบันของโครงการ (PROJECT_STATE.md)\n"
+    printf -- "- **ชื่อโครงการ:** %s\n" "$PROJECT_NAME"
+    printf -- "- **วันที่อัปเดตล่าสุด:** %s\n" "$(date +%Y-%m-%d)"
+    printf -- "- **คำแนะนำ:** เอกสารนี้ใช้เก็บสรุปสถาปัตยกรรม โครงสร้างฐานข้อมูล และรายการ API ล่าสุดของโครงการ (ความยาวไม่เกิน 2 หน้า) เพื่อให้ตัวแทน AI เข้าใจบริบทของระบบโดยไม่ต้องอ่านใบงานเก่าทั้งหมด\n\n"
+    printf "## 1. ภาพรวมและเทคโนโลยีที่ใช้ (Tech Stack & Overview)\n"
+    printf -- "- (ระบุภาษา เฟรมเวิร์ก และฐานข้อมูลที่ใช้ หรือสั่งให้ @arch สแกนโค้ดเพื่อสรุปข้อมูลลงในส่วนนี้)\n\n"
+    printf "## 2. โครงสร้างโมดูลและไฟล์สำคัญ (Core Modules & Architecture)\n"
+    printf -- "- (ระบุโฟลเดอร์หลักและหน้าที่ของแต่ละส่วน)\n\n"
+    printf "## 3. คำสั่งสำคัญสำหรับการตรวจสอบและทดสอบ (Build & Test Commands)\n"
+    printf -- "- โครงการ Web / Node.js: \`npm test\` (หรือ \`pnpm test\`) และ \`npm run build\`\n"
+    printf -- "- โครงการ Flutter / Dart: \`flutter analyze\` และ \`flutter test\`\n"
+  } > "$TMP_STATE"
+  mv -f "$TMP_STATE" "$STATE_FILE"
   echo "✅ สร้างไฟล์ตั้งต้น: $STATE_FILE"
 else
   echo "ℹ️ พบไฟล์ $STATE_FILE อยู่แล้ว (ข้ามการเขียนทับ)"
