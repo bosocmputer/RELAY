@@ -1581,6 +1581,10 @@ interactive_menu() {
       local label="${entry#*|}"
       if [ "$idx" -eq "$selected" ]; then
         printf "  %s❯ [%s] %s%s\n" "$C_SEL" "$key" "$label" "$C_RESET"
+      elif [[ "$label" == "● [RELAY]"* ]]; then
+        printf "    %s[%s]%s %s● [RELAY]%s%s\n" "$C_MUTED" "$key" "$C_RESET" "$C_OK" "$C_RESET" "${label#● \[RELAY\]}"
+      elif [[ "$label" == "○ [ทั่วไป]"* ]]; then
+        printf "    %s[%s]%s %s○ [ทั่วไป]%s%s\n" "$C_MUTED" "$key" "$C_RESET" "$C_MUTED" "$C_RESET" "${label#○ \[ทั่วไป\]}"
       else
         printf "    %s[%s]%s %s\n" "$C_MUTED" "$key" "$C_RESET" "$label"
       fi
@@ -1623,6 +1627,10 @@ interactive_menu() {
       printf "\033[2K\r"
       if [ "$i" -eq "$selected" ]; then
         printf "  %s❯ [%s] %s%s\n" "$C_SEL" "$key" "$label" "$C_RESET"
+      elif [[ "$label" == "● [RELAY]"* ]]; then
+        printf "    %s[%s]%s %s● [RELAY]%s%s\n" "$C_MUTED" "$key" "$C_RESET" "$C_OK" "$C_RESET" "${label#● \[RELAY\]}"
+      elif [[ "$label" == "○ [ทั่วไป]"* ]]; then
+        printf "    %s[%s]%s %s○ [ทั่วไป]%s%s\n" "$C_MUTED" "$key" "$C_RESET" "$C_MUTED" "$C_RESET" "${label#○ \[ทั่วไป\]}"
       else
         printf "    %s[%s]%s %s\n" "$C_MUTED" "$key" "$C_RESET" "$label"
       fi
@@ -1633,7 +1641,7 @@ interactive_menu() {
     if [ -n "$has_shortcuts" ]; then
       print_shortcuts_bar_lines
     else
-      printf "\033[2K\r  %s↑/↓ เลื่อน • Enter ยืนยัน [%s] • b/ESC ย้อนกลับ • / พิมพ์คำสั่ง%s\n" "$C_MUTED" "$cur_key" "$C_RESET"
+      printf "\033[2K\r  %s↑/↓ เลื่อน • Enter เลือก [%s] • b/ESC ย้อนกลับ • / พิมพ์เมนู%s\n" "$C_MUTED" "$cur_key" "$C_RESET"
     fi
 
     local k1=""
@@ -2499,36 +2507,74 @@ run_quick_preset_menu() {
 }
 
 # ─── 7. ตัวช่วยเลือกหรือสร้างโฟลเดอร์โปรเจกต์ (เมื่อรันใน Home ~ หรือกด [f]) ───
+# คืนค่ารายการโปรเจกต์ในเครื่องเป็น TSV: has_relay(1|0) \t dir_name \t full_path \t status_note
+# เรียงโปรเจกต์ที่ติดตั้ง .relay/ แล้ว (has_relay=1) ไว้ด้านบนสุดเสมอ เพื่อไม่ให้ถูกตัดตกขอบ
+list_workspace_projects_tsv() {
+  local roots=("$@")
+  if [ "${#roots[@]}" -eq 0 ]; then
+    roots=("$HOME/dev_bos" "$HOME/Projects" "$HOME/workspace" "$HOME/Developer")
+  fi
+  local relay_rows=()
+  local std_rows=()
+  local search_root d dname active_t
+  for search_root in "${roots[@]}"; do
+    [ -d "$search_root" ] || continue
+    for d in "$search_root"/*; do
+      [ -d "$d" ] || continue
+      dname="$(basename "$d")"
+      [[ "$dname" == .* ]] && continue
+      if [ -f "$d/.relay/PROJECT_STATE.md" ] || [ -d "$d/.relay/tasks" ]; then
+        active_t="$(ls -1 "$d/.relay/tasks" 2>/dev/null | grep -v '^\.' | sort | tail -n 1 || true)"
+        if [ -n "$active_t" ]; then
+          relay_rows+=("1"$'\t'"$dname"$'\t'"$d"$'\t'"Task: $active_t")
+        else
+          relay_rows+=("1"$'\t'"$dname"$'\t'"$d"$'\t'"พร้อมเริ่มงานใหม่")
+        fi
+      else
+        std_rows+=("0"$'\t'"$dname"$'\t'"$d"$'\t'"โปรเจกต์ทั่วไป")
+      fi
+    done
+  done
+  local r
+  for r in "${relay_rows[@]}"; do
+    printf "%s\n" "$r"
+  done
+  for r in "${std_rows[@]}"; do
+    printf "%s\n" "$r"
+  done
+}
+
 select_or_create_project_dir() {
   local base_workspace="$HOME/dev_bos"
   [ ! -d "$base_workspace" ] && base_workspace="$HOME/Projects"
 
   local folder_items=()
   local folder_paths=()
-  folder_items+=("n|★ สร้างโฟลเดอร์โปรเจกต์ใหม่ตั้งแต่ศูนย์ (สร้างโฟลเดอร์ + git init + .relay/ อัตโนมัติ)")
+  folder_items+=("n|★ สร้างโปรเจกต์ใหม่ตั้งแต่ศูนย์ (สร้างโฟลเดอร์ + git init + .relay/ อัตโนมัติ)")
 
   local idx=1
-  for search_root in "$HOME/dev_bos" "$HOME/Projects" "$HOME/workspace" "$HOME/Developer"; do
-    if [ -d "$search_root" ]; then
-      for d in "$search_root"/*; do
-        [ -d "$d" ] || continue
-        local dname
-        dname="$(basename "$d")"
-        [[ "$dname" == .* ]] && continue
-        local r_stat="ยังไม่มี .relay/"
-        [ -f "$d/.relay/PROJECT_STATE.md" ] && r_stat="● มี .relay/ พร้อมทำงาน"
-        folder_items+=("${idx}|เปิดโปรเจกต์: ~${d#$HOME} (${r_stat})")
-        folder_paths[$idx]="$d"
-        idx=$((idx + 1))
-        [ "$idx" -gt 7 ] && break 2
-      done
+  local has_relay dname d status_note short_name disp_path
+  while IFS=$'\t' read -r has_relay dname d status_note; do
+    [ -z "$d" ] && continue
+    short_name="$dname"
+    if [ "${#short_name}" -gt 26 ]; then
+      short_name="${short_name:0:23}..."
     fi
-  done
+    disp_path="~${d#$HOME}"
+    if [ "$has_relay" = "1" ]; then
+      folder_items+=("${idx}|$(printf "● [RELAY]   %-26s  %s (%s)" "$short_name" "$disp_path" "$status_note")")
+    else
+      folder_items+=("${idx}|$(printf "○ [ทั่วไป]   %-26s  %s" "$short_name" "$disp_path")")
+    fi
+    folder_paths[$idx]="$d"
+    idx=$((idx + 1))
+    [ "$idx" -gt 9 ] && break
+  done < <(list_workspace_projects_tsv)
 
-  folder_items+=("p|พิมพ์ระบุตำแหน่งโฟลเดอร์ (Path) ด้วยตนเอง")
+  folder_items+=("p|พิมพ์ระบุ Path ของโฟลเดอร์โปรเจกต์ด้วยตนเอง")
   folder_items+=("b|ย้อนกลับ")
 
-  interactive_menu "เลือกโฟลเดอร์โปรเจกต์ที่ต้องการทำงาน หรือสร้างโปรเจกต์ใหม่" 0 "${folder_items[@]}"
+  interactive_menu "เลือกโปรเจกต์ที่ต้องการเปิดใช้ RELAY (● ติดตั้ง .relay/ แล้ว • ○ โปรเจกต์ทั่วไปในเครื่อง)" 0 "${folder_items[@]}"
 
   case "$MENU_RESULT" in
     n|N)
@@ -2546,8 +2592,8 @@ select_or_create_project_dir() {
       CURRENT_TASK=""
       printf "\n%s● สร้างและเข้าสู่โปรเจกต์ใหม่เรียบร้อย: %s%s\n" "$C_OK" "$PROJECT_DIR" "$C_RESET"
       ;;
-    [1-7])
-      local chosen_dir="${folder_paths[$MENU_RESULT]}"
+    [1-9])
+      local chosen_dir="${folder_paths[$MENU_RESULT]:-}"
       if [ -n "$chosen_dir" ] && [ -d "$chosen_dir" ]; then
         PROJECT_DIR="$chosen_dir"
         cd "$PROJECT_DIR" || true
@@ -5552,12 +5598,12 @@ while true; do
     # ขั้นที่ 2/3: เตรียมโฟลเดอร์โปรเจกต์ (.relay/PROJECT_STATE.md)
     # ═══════════════════════════════════════════════════════════════════════════
     if [ "$IN_HOME_DIR" -eq 1 ]; then
-      interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ที่จะทำงาน (ปัจจุบันคุณอยู่ใน Home ~)" 0 \
-        "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที (แนะนำ)" \
+      interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ (ปัจจุบันอยู่ใน Home ~)" 0 \
+        "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที" \
         "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
-        "t|ทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
-        "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
-        "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \
+        "t|ทดสอบความพร้อมของ Agent ทุกบทบาท (/test)" \
+        "g|จัดการบทบาท Agent, Prompt และชุดทักษะ Skills (/agents)" \
+        "c|ตั้งค่าค่าย AI และเลือก Model ของแต่ละบทบาท (/model)" \
         "d|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (/connect)" \
         "q|ออกจากโปรแกรม (เพื่อพิมพ์ cd เข้าโฟลเดอร์โปรเจกต์เอง)"
 
