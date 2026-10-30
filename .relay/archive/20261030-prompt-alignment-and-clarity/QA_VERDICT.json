@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh (9/9 PASS)",
+    "bash tests/test_token_telemetry.sh (8/8 PASS)",
+    "bash tests/test_quota_display.sh (6/6 PASS)",
+    "bash tests/test_phase5_merge.sh (22/22 PASS)",
+    "bash tests/test_auto_loop.sh (24/24 PASS)"
+  ],
+  "summary": "Aligned all role prompts across templates/GLOBAL_AGENTS.md and relay.sh, resolved all 5 prompt conflicts, and verified 69/69 automated test assertions."
+}
