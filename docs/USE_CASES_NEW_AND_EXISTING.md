@@ -13,7 +13,7 @@
   2. **ขั้นตอนที่ 2 (`@arch & @pm` — การออกแบบและวางแผน):** `agy` (`claude-opus-5-5-high`)
   3. **ขั้นตอนที่ 3 (`@dev` — การพัฒนาโค้ดใน Git Worktree):** `agy` (`claude-sonnet-5-5-high`)
   4. **ขั้นตอนที่ 4 (`@qa & @sec` — การตรวจสอบคุณภาพและความปลอดภัย):** `codex` (`gpt-6.1-terra`)
-- **ชุด All-Google AI Ultra (`100% agy`):** ใช้โควต้า Google AI Ultra ครบทั้ง 4 ตำแหน่ง (`@po=gemini-4-argon-high`, `@arch=claude-opus-5-5-high`, `@dev=claude-sonnet-5-5-high`, `@qa=gpt-oss-120b-medium`)
+- **ชุด All-Google AI Ultra (`ใช้ agy ทุกตำแหน่ง`):** ใช้โควต้า Google AI Ultra ครบทั้ง 4 ตำแหน่ง (`@po=gemini-4-argon-high`, `@arch=claude-opus-5-5-high`, `@dev=claude-sonnet-5-5-high`, `@qa=gpt-oss-120b-medium`)
 - **ชุด Multi-Vendor (`agy` + `claude` + `codex`):** ผสมค่ายอิสระตามแพ็กเกจที่คุณมี
 - **การตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ (`[u]` / `/quota` หรือ `relay quota`):**
   - หน้าจอ `relay` แสดงเปอร์เซ็นต์โควต้าคงเหลือทั้งแบบ **5 ชั่วโมง (`5h`)** และ **รายสัปดาห์ (`7d`)** ของทั้ง `agy (Gemini Models)`, `agy (Claude & GPT)`, `codex`, และ `claude` ให้เห็นทันทีในตารางตำแหน่งและแถบสรุปโควต้า

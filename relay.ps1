@@ -266,7 +266,7 @@ function Invoke-QuickPresetMenu {
     $codexDef = Get-CliDefaultModel "codex"
     $choice = Invoke-InteractiveMenu "เลือกชุดการตั้งค่าด่วน (ดึง Model จริงจาก Google AI Ultra / CLI ในเครื่องโดยตรง)" 0 @(
         "1|★ ชุดแนะนำ Google AI Ultra + Codex — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex($codexDef)",
-        "2|All-Google AI Ultra (100% agy) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gpt-oss-120b-medium",
+        "2|All-Google AI Ultra (ใช้ agy ทุกตำแหน่ง) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gpt-oss-120b-medium",
         "3|Multi-Vendor แยกค่ายอิสระ      — @po=agy(gemini-4-argon-high), @arch=claude(opus), @dev=claude(sonnet), @qa=codex($codexDef)",
         "4|All-Claude CLI Preset          — ใช้ Claude CLI ทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus)",
         "5|All-Codex CLI Preset           — ใช้ Codex CLI ทั้ง 4 ตำแหน่ง ($codexDef จาก CLI ทั้ง 4 ตำแหน่ง)",
