@@ -13,18 +13,21 @@ export PATH="$HOME/.gemini/bin:$HOME/.local/bin:$HOME/.agents/bin:$PATH"
 
 GLOBAL_DIR="$HOME/.agents"
 GLOBAL_ROLES_CONF="$GLOBAL_DIR/relay-roles.conf"
+GLOBAL_AGENTS_CONF="$GLOBAL_DIR/custom-agents.json"
 AGY_MODELS_CACHE="$GLOBAL_DIR/agy-models.cache"
 QUOTA_CACHE_FILE="$GLOBAL_DIR/relay-quota.cache"
 PROJECT_DIR="$(pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 RELAY_DIR="$PROJECT_DIR/.relay"
 PROJECT_ROLES_CONF="$RELAY_DIR/roles.conf"
+PROJECT_AGENTS_CONF="$RELAY_DIR/custom-agents.json"
 LAST_COMPLETED_PHASE=0
 
 refresh_project_paths() {
   PROJECT_NAME="$(basename "$PROJECT_DIR")"
   RELAY_DIR="$PROJECT_DIR/.relay"
   PROJECT_ROLES_CONF="$RELAY_DIR/roles.conf"
+  PROJECT_AGENTS_CONF="$RELAY_DIR/custom-agents.json"
 }
 
 # ─── ระบบสี Minimalist High-Contrast (อ่านคมชัดทั้งบนพื้นขาวและพื้นดำ) ─────────
@@ -1124,7 +1127,7 @@ get_active_task() {
     ACTIVE_TASK=""
     return
   fi
-  if [ -n "$CURRENT_TASK" ] && [ -d "$RELAY_DIR/tasks/$CURRENT_TASK" ]; then
+  if [ -n "${CURRENT_TASK:-}" ] && [ -d "$RELAY_DIR/tasks/$CURRENT_TASK" ]; then
     ACTIVE_TASK="$CURRENT_TASK"
     return
   fi
@@ -1224,7 +1227,7 @@ interactive_menu() {
   fi
 
   printf "\n%s%s%s\n" "$C_BOLD" "$title" "$C_RESET"
-  printf "%sใช้ปุ่มลูกศร ↑/↓ เลื่อนเลือก • กด Enter ยืนยัน • หรือกดคีย์ลัด [...] ได้ทันที%s\n" "$C_MUTED" "$C_RESET"
+  printf "%sใช้ปุ่มลูกศร ↑/↓ เลื่อนเลือก • กด Enter ยืนยัน • กด b หรือ ESC เพื่อย้อนกลับ%s\n" "$C_MUTED" "$C_RESET"
 
   tput civis 2>/dev/null || true
   trap 'tput cnorm 2>/dev/null || true' EXIT INT TERM
@@ -1253,7 +1256,7 @@ interactive_menu() {
 
     local cur_key="${items[$selected]%%|*}"
     printf "\033[2K\r%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-    printf "\033[2K\r%s│%s %s❯%s คำสั่งที่เลือก: %s[%s]%s  %s(↑/↓ เลื่อน • Enter ยืนยัน • กด / พิมพ์ /model, /connect, /test)%s\n" "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$cur_key" "$C_RESET" "$C_MUTED" "$C_RESET"
+    printf "\033[2K\r%s│%s %s❯%s คำสั่งที่เลือก: %s[%s]%s  %s(↑/↓ เลื่อน • Enter ยืนยัน • b/ESC ย้อนกลับ • / พิมพ์คำสั่ง)%s\n" "$C_ACCENT" "$C_RESET" "$C_SEL" "$C_RESET" "$C_SEL" "$cur_key" "$C_RESET" "$C_MUTED" "$C_RESET"
     printf "\033[2K\r%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
     local k1=""
@@ -1266,7 +1269,7 @@ interactive_menu() {
 
     if [ "$k1" = $'\x1b' ]; then
       local k23=""
-      IFS= read -rsn2 -t 1 k23 2>/dev/null || true
+      IFS= read -rsn2 -t 0.1 k23 2>/dev/null || IFS= read -rsn2 -t 1 k23 2>/dev/null || true
       case "$k23" in
         "[A"|"OA")
           selected=$(((selected - 1 + count) % count))
@@ -1275,6 +1278,11 @@ interactive_menu() {
         "[B"|"OB")
           selected=$(((selected + 1) % count))
           continue
+          ;;
+        "")
+          MENU_RESULT="b"
+          tput cnorm 2>/dev/null || true
+          return 0
           ;;
         *)
           continue
@@ -1306,9 +1314,285 @@ interactive_menu() {
       fi
       match_idx=$((match_idx + 1))
     done
+    if [ "$lower_k1" = "b" ]; then
+      MENU_RESULT="b"
+      tput cnorm 2>/dev/null || true
+      return 0
+    fi
   done
 
   tput cnorm 2>/dev/null || true
+}
+
+# ตรวจสอบว่าคำที่ผู้ใช้พิมพ์คือคำสั่งขอย้อนกลับหรือไม่ (b, B, back, /back)
+is_back_input() {
+  local val="${1:-}"
+  case "$val" in
+    b|B|back|BACK|/back|/b) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ─── 3.5 การจัดการข้อมูลบทบาท Agent, คำสั่ง Prompt และทักษะ (Custom Agents & Overrides) ───
+get_active_agents_conf() {
+  refresh_project_paths
+  if [ -f "$PROJECT_AGENTS_CONF" ]; then
+    echo "$PROJECT_AGENTS_CONF"
+  else
+    echo "$GLOBAL_AGENTS_CONF"
+  fi
+}
+
+get_agents_conf_scope_label() {
+  refresh_project_paths
+  if [ -f "$PROJECT_AGENTS_CONF" ]; then
+    echo "Project (.relay/custom-agents.json)"
+  else
+    echo "Global (~/.agents/custom-agents.json)"
+  fi
+}
+
+get_core_role_default_title() {
+  case "$1" in
+    po)   echo "Product Owner" ;;
+    arch) echo "System Architect & Planner" ;;
+    dev)  echo "Full-Stack Developer" ;;
+    qa)   echo "QA & Security Auditor" ;;
+    *)    echo "$1" ;;
+  esac
+}
+
+get_core_role_default_skills() {
+  case "$1" in
+    po)   echo "brainstorming founder-skill" ;;
+    arch) echo "writing-plans supabase-postgres-best-practices" ;;
+    dev)  echo "impeccable vercel-react-best-practices lucide-icons simple-icons test-driven-development systematic-debugging" ;;
+    qa)   echo "verification-before-completion differential-review semgrep playwright-qa" ;;
+    *)    echo "" ;;
+  esac
+}
+
+get_core_role_override_field() {
+  local role_key="$1"
+  local field="$2"
+  local conf_file="${3:-$(get_active_agents_conf)}"
+  [ -f "$conf_file" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$conf_file" "$role_key" "$field" <<'PYEOF' 2>/dev/null || true
+import json, sys
+path, role_key, field = sys.argv[1:4]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+    val = ((data.get("overrides") or {}).get(role_key) or {}).get(field, "")
+    if isinstance(val, str) and val.strip():
+        print(val.strip())
+except Exception:
+    pass
+PYEOF
+}
+
+get_core_role_title() {
+  local role_key="$1"
+  local custom_t
+  custom_t="$(get_core_role_override_field "$role_key" "title")"
+  if [ -n "$custom_t" ]; then
+    echo "$custom_t"
+  else
+    get_core_role_default_title "$role_key"
+  fi
+}
+
+get_core_role_skills() {
+  local role_key="$1"
+  local custom_s
+  custom_s="$(get_core_role_override_field "$role_key" "skills")"
+  if [ -n "$custom_s" ]; then
+    echo "$custom_s"
+  else
+    get_core_role_default_skills "$role_key"
+  fi
+}
+
+get_core_role_extra_prompt() {
+  local role_key="$1"
+  get_core_role_override_field "$role_key" "prompt"
+}
+
+get_core_role_prompt_note() {
+  local role_key="$1"
+  local ep sk_def sk_cur extra=""
+  ep="$(get_core_role_extra_prompt "$role_key")"
+  sk_def="$(get_core_role_default_skills "$role_key")"
+  sk_cur="$(get_core_role_skills "$role_key")"
+  if [ -n "$sk_cur" ] && [ "$sk_cur" != "$sk_def" ]; then
+    extra="${extra} (ใช้ชุดทักษะประจำบทบาท: ${sk_cur})"
+  fi
+  if [ -n "$ep" ]; then
+    extra="${extra} (คำสั่งเพิ่มเติมประจำบทบาท: ${ep})"
+  fi
+  printf "%s" "$extra"
+}
+
+set_core_role_override() {
+  local conf_file="$1"
+  local role_key="$2"
+  local field="$3"
+  local val="${4:-}"
+  command -v python3 >/dev/null 2>&1 || return 1
+  mkdir -p "$(dirname "$conf_file")"
+  python3 - "$conf_file" "$role_key" "$field" "$val" <<'PYEOF'
+import json, os, sys
+path, role_key, field, val = sys.argv[1:5]
+data = {"overrides": {}, "agents": []}
+if os.path.isfile(path):
+    try:
+        loaded = json.load(open(path, encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data.update(loaded)
+    except Exception:
+        pass
+ov = data.setdefault("overrides", {})
+if field == "reset":
+    ov.pop(role_key, None)
+else:
+    r = ov.setdefault(role_key, {})
+    if val.strip():
+        r[field] = val.strip()
+    else:
+        r.pop(field, None)
+    if not r:
+        ov.pop(role_key, None)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+PYEOF
+}
+
+# คืนค่ารายการ Custom Agents เป็นบรรทัดละ: slug \t title \t provider \t model \t work_mode \t skills \t prompt
+list_custom_agents_tsv() {
+  local conf_file="${1:-$(get_active_agents_conf)}"
+  [ -f "$conf_file" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$conf_file" <<'PYEOF' 2>/dev/null || true
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+    for a in data.get("agents") or []:
+        if not isinstance(a, dict) or not a.get("slug"):
+            continue
+        vals = [
+            str(a.get("slug", "")).replace("\t", " ").replace("\n", " ").strip(),
+            str(a.get("title", "")).replace("\t", " ").replace("\n", " ").strip() or a.get("slug", ""),
+            str(a.get("provider", "agy")).replace("\t", " ").strip(),
+            str(a.get("model", "")).replace("\t", " ").strip(),
+            str(a.get("work_mode", "project")).replace("\t", " ").strip(),
+            str(a.get("skills", "")).replace("\t", " ").replace("\n", " ").strip(),
+            str(a.get("prompt", "")).replace("\t", " ").replace("\n", " ").strip(),
+        ]
+        print("\t".join(vals))
+except Exception:
+    pass
+PYEOF
+}
+
+get_custom_agent_field() {
+  local slug="$1"
+  local field="$2"
+  local conf_file="${3:-$(get_active_agents_conf)}"
+  [ -f "$conf_file" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$conf_file" "$slug" "$field" <<'PYEOF' 2>/dev/null || true
+import json, sys
+path, slug, field = sys.argv[1:4]
+slug = slug.lstrip("@").strip().lower()
+try:
+    data = json.load(open(path, encoding="utf-8"))
+    for a in data.get("agents") or []:
+        if isinstance(a, dict) and str(a.get("slug", "")).strip().lower() == slug:
+            print(str(a.get(field, "")).strip())
+            break
+except Exception:
+    pass
+PYEOF
+}
+
+upsert_custom_agent() {
+  local conf_file="$1"
+  local slug="$2"
+  local title="$3"
+  local provider="$4"
+  local model="$5"
+  local work_mode="$6"
+  local skills="$7"
+  local prompt="$8"
+  command -v python3 >/dev/null 2>&1 || return 1
+  mkdir -p "$(dirname "$conf_file")"
+  python3 - "$conf_file" "$slug" "$title" "$provider" "$model" "$work_mode" "$skills" "$prompt" <<'PYEOF'
+import json, os, re, sys
+path, slug, title, provider, model, work_mode, skills, prompt = sys.argv[1:9]
+slug = re.sub(r"[^a-z0-9_-]+", "-", slug.lstrip("@").strip().lower()).strip("-")
+if not slug:
+    sys.exit(1)
+data = {"overrides": {}, "agents": []}
+if os.path.isfile(path):
+    try:
+        loaded = json.load(open(path, encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data.update(loaded)
+    except Exception:
+        pass
+agents = data.setdefault("agents", [])
+entry = {
+    "slug": slug,
+    "title": title.strip() or slug,
+    "provider": provider.strip() or "agy",
+    "model": model.strip(),
+    "work_mode": "worktree" if work_mode.strip() == "worktree" else "project",
+    "skills": skills.strip(),
+    "prompt": prompt.strip(),
+}
+replaced = False
+for idx, a in enumerate(agents):
+    if isinstance(a, dict) and str(a.get("slug", "")).lower() == slug:
+        agents[idx] = entry
+        replaced = True
+        break
+if not replaced:
+    agents.append(entry)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+PYEOF
+}
+
+delete_custom_agent() {
+  local conf_file="$1"
+  local slug="$2"
+  [ -f "$conf_file" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$conf_file" "$slug" <<'PYEOF'
+import json, sys
+path, slug = sys.argv[1:3]
+slug = slug.lstrip("@").strip().lower()
+try:
+    data = json.load(open(path, encoding="utf-8"))
+    agents = [a for a in (data.get("agents") or []) if not (isinstance(a, dict) and str(a.get("slug", "")).lower() == slug)]
+    data["agents"] = agents
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+except Exception:
+    pass
+PYEOF
+}
+
+list_available_skill_names() {
+  {
+    if [ -d "$GLOBAL_DIR/skills" ]; then
+      for d in "$GLOBAL_DIR/skills"/*; do
+        [ -d "$d" ] && basename "$d"
+      done
+    fi
+    if [ -d "$RELAY_DIR/skills" ]; then
+      for d in "$RELAY_DIR/skills"/*; do
+        [ -d "$d" ] && basename "$d"
+      done
+    fi
+  } 2>/dev/null | sort -u
 }
 
 # ─── 4. แสดงหัวกระดาษพร้อมแถบนำทาง 3 ขั้นตอน (3-Stage Progress Stepper) ──────
@@ -1414,6 +1698,15 @@ print_dashboard_header() {
   printf "%s│%s 2. @arch & @pm      ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$m_arch" "$s_arch"
   printf "%s│%s 3. @dev (Worktree)  ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$m_dev" "$s_dev"
   printf "%s│%s 4. @qa & @sec       ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$m_qa" "$s_qa"
+  local ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt
+  while IFS=$'\t' read -r ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt; do
+    [ -z "$ca_slug" ] && continue
+    local ca_col ca_m ca_s
+    ca_col="$(printf "+  @%-15s" "${ca_slug}" | cut -c1-19)"
+    ca_m="$(format_role_model_text "$ca_prov" "$ca_mod")"
+    ca_s="$(format_role_status_cell "$ca_prov" "$ca_mod")"
+    printf "%s│%s %s ➔ %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ca_col" "$ca_prov" "$ca_m" "$ca_s"
+  done < <(list_custom_agents_tsv)
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s %sสถานะ CLI:%s %b   %b   %b\n" \
     "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET" "$agy_b" "$codex_b" "$claude_b"
@@ -1477,7 +1770,7 @@ print_dashboard_header() {
   RENDER_NOW=""
 }
 
-# ─── 4.5 ศูนย์ตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ ([u] / /quota / relay quota) ─────
+# ─── 4.5 การตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ ([u] / /quota / relay quota) ─────
 print_quota_report_box() {
   RENDER_NOW="$(date +%s)"
   local g5 g7 a5 a7 x5 x7 c5 c7
@@ -1689,7 +1982,10 @@ select_or_create_project_dir() {
   case "$MENU_RESULT" in
     n|N)
       echo ""
-      read -r -p "ตั้งชื่อโฟลเดอร์โปรเจกต์ใหม่ (ภาษาอังกฤษ เช่น my-saas-app หรือ booking-web): " new_proj_name
+      read -r -p "ตั้งชื่อโฟลเดอร์โปรเจกต์ใหม่ (ภาษาอังกฤษ เช่น my-saas-app หรือพิมพ์ b เพื่อย้อนกลับ): " new_proj_name || true
+      if is_back_input "$new_proj_name"; then
+        return 0
+      fi
       new_proj_name="$(echo "${new_proj_name:-my-relay-app}" | tr ' ' '-' | sed -E 's/[^a-zA-Z0-9_-]+/-/g; s/^-|-$//g')"
       mkdir -p "$base_workspace/$new_proj_name"
       PROJECT_DIR="$base_workspace/$new_proj_name"
@@ -1711,7 +2007,10 @@ select_or_create_project_dir() {
       ;;
     p|P)
       echo ""
-      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/dev_bos/my-app): " custom_path
+      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/dev_bos/my-app หรือพิมพ์ b เพื่อย้อนกลับ): " custom_path || true
+      if is_back_input "$custom_path" || [ -z "$custom_path" ]; then
+        return 0
+      fi
       custom_path="${custom_path/#\~/$HOME}"
       if [ -n "$custom_path" ]; then
         mkdir -p "$custom_path" 2>/dev/null || true
@@ -1730,9 +2029,13 @@ select_or_create_project_dir() {
 }
 
 # ─── 8. เมนูเลือกค่าย AI และดึงรายชื่อ Model จาก CLI โดยตรง (ลูกศร ↑/↓) ────────
+PROVIDER_CHOICE_CANCELLED=0
+MODEL_CHOICE_CANCELLED=0
+
 choose_provider_interactive() {
   local role_label="$1"
   local current_p="$2"
+  PROVIDER_CHOICE_CANCELLED=0
   refresh_cli_auth_cache
 
   local a_stat x_stat c_stat
@@ -1744,14 +2047,20 @@ choose_provider_interactive() {
     "1|agy    — Google AI Ultra / Antigravity CLI [${a_stat}]" \
     "2|codex  — OpenAI Codex CLI                  [${x_stat}]" \
     "3|claude — Anthropic Claude Code CLI         [${c_stat}]" \
-    "b|คงค่าเดิม (${current_p})"
+    "m|คงค่ายเดิม (${current_p}) และเลือกเฉพาะ Model" \
+    "b|ย้อนกลับ (ไม่เปลี่ยนแปลงค่า)"
 
   local chosen_p="$current_p"
   case "$MENU_RESULT" in
     1) chosen_p="agy" ;;
     2) chosen_p="codex" ;;
     3) chosen_p="claude" ;;
-    *) chosen_p="$current_p" ;;
+    m|M) chosen_p="$current_p" ;;
+    *)
+      PROVIDER_CHOICE_CANCELLED=1
+      SELECTED_PROVIDER="$current_p"
+      return 1
+      ;;
   esac
 
   if ! is_provider_installed "$chosen_p"; then
@@ -1759,31 +2068,51 @@ choose_provider_interactive() {
     [ "$chosen_p" = "claude" ] && pkg="@anthropic-ai/claude-code"
 
     interactive_menu "ค่าย '${chosen_p}' ยังไม่ได้ติดตั้งในเครื่อง ต้องการติดตั้งเลยหรือไม่?" 0 \
-      "1|ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ (npm install -g ${pkg}) และเปิดหน้า Login" \
-      "2|บันทึกชื่อค่ายไว้ก่อน (ติดตั้งภายหลัง)"
-    if [ "$MENU_RESULT" = "1" ]; then
-      npm install -g "$pkg"
-      if is_provider_installed "$chosen_p"; then
-        login_single_provider "$chosen_p"
-      fi
-    fi
+      "1|ติดตั้ง ${chosen_p} อัตโนมัติเดี๋ยวนี้ (npm install -g ${pkg}) และเปิดหน้าเข้าสู่ระบบ" \
+      "2|บันทึกชื่อค่ายไว้ก่อน (ติดตั้งภายหลัง)" \
+      "b|ย้อนกลับ"
+    case "$MENU_RESULT" in
+      1)
+        npm install -g "$pkg"
+        if is_provider_installed "$chosen_p"; then
+          login_single_provider "$chosen_p"
+        fi
+        ;;
+      2) ;;
+      *)
+        PROVIDER_CHOICE_CANCELLED=1
+        SELECTED_PROVIDER="$current_p"
+        return 1
+        ;;
+    esac
   elif ! is_provider_logged_in "$chosen_p"; then
-    interactive_menu "ค่าย '${chosen_p}' ติดตั้งแล้วแต่ยังไม่ได้ Login ต้องการเข้าสู่ระบบเลยหรือไม่?" 0 \
-      "1|★ เปิดหน้า Login ของ ${chosen_p} เดี๋ยวนี้" \
-      "2|เลือกโมเดลไว้ก่อน (ค่อย Login ภายหลัง)"
-    if [ "$MENU_RESULT" = "1" ]; then
-      login_single_provider "$chosen_p"
-    fi
+    interactive_menu "ค่าย '${chosen_p}' ติดตั้งแล้วแต่ยังไม่ได้เข้าสู่ระบบ ต้องการดำเนินการเลยหรือไม่?" 0 \
+      "1|★ เปิดหน้าเข้าสู่ระบบของ ${chosen_p} เดี๋ยวนี้" \
+      "2|เลือกโมเดลไว้ก่อน (เข้าสู่ระบบภายหลัง)" \
+      "b|ย้อนกลับ"
+    case "$MENU_RESULT" in
+      1) login_single_provider "$chosen_p" ;;
+      2) ;;
+      *)
+        PROVIDER_CHOICE_CANCELLED=1
+        SELECTED_PROVIDER="$current_p"
+        return 1
+        ;;
+    esac
   fi
 
   SELECTED_PROVIDER="$chosen_p"
+  return 0
 }
 
 choose_model_interactive() {
   local provider="$1"
   local role_label="$2"
+  local current_m="${3:-}"
+  MODEL_CHOICE_CANCELLED=0
   local cli_def
   cli_def="$(get_cli_default_model "$provider")"
+  local fallback_m="${current_m:-$cli_def}"
 
   local menu_items=()
   local model_ids=()
@@ -1795,18 +2124,32 @@ choose_model_interactive() {
     idx=$((idx + 1))
   done < <(get_cli_live_models "$provider")
 
-  menu_items+=("c|กำหนดชื่อโมเดลเอง            — พิมพ์รหัส Model ID ที่ต้องการด้วยตนเอง")
+  menu_items+=("c|กำหนดรหัสโมเดลด้วยตนเอง    — พิมพ์ชื่อ Model ID ที่ต้องการ")
+  menu_items+=("b|ย้อนกลับ                    — คงค่าโมเดลเดิม (${fallback_m})")
 
   interactive_menu "เลือก Model ของค่าย [${provider}] สำหรับ ${role_label} (ดึงจาก CLI ในเครื่องโดยตรง)" 0 "${menu_items[@]}"
 
-  if [ "$MENU_RESULT" = "c" ] || [ "$MENU_RESULT" = "C" ]; then
-    read -r -p "ระบุชื่อ Model ของ ${provider}: " custom_m
-    SELECTED_MODEL="${custom_m:-$cli_def}"
+  if [ "$MENU_RESULT" = "b" ] || [ "$MENU_RESULT" = "B" ]; then
+    MODEL_CHOICE_CANCELLED=1
+    SELECTED_MODEL="$fallback_m"
+    return 1
+  elif [ "$MENU_RESULT" = "c" ] || [ "$MENU_RESULT" = "C" ]; then
+    local custom_m=""
+    read -r -p "ระบุชื่อ Model ของ ${provider} (หรือพิมพ์ b เพื่อย้อนกลับ): " custom_m || true
+    if is_back_input "$custom_m" || [ -z "$custom_m" ]; then
+      MODEL_CHOICE_CANCELLED=1
+      SELECTED_MODEL="$fallback_m"
+      return 1
+    fi
+    SELECTED_MODEL="$custom_m"
   elif [ -n "${model_ids[$MENU_RESULT]:-}" ]; then
     SELECTED_MODEL="${model_ids[$MENU_RESULT]}"
   else
-    SELECTED_MODEL="$cli_def"
+    MODEL_CHOICE_CANCELLED=1
+    SELECTED_MODEL="$fallback_m"
+    return 1
   fi
+  return 0
 }
 
 login_single_provider() {
@@ -1822,7 +2165,7 @@ login_single_provider() {
       ;;
     claude)
       if is_provider_installed claude; then
-        printf "\n%sกำลังเปิดหน้า Login ของ Claude Code (claude auth login)...%s\n" "$C_ACCENT" "$C_RESET"
+        printf "\n%sกำลังเปิดหน้าเข้าสู่ระบบของ Claude Code (claude auth login)...%s\n" "$C_ACCENT" "$C_RESET"
         claude auth login || claude || true
       else
         printf "%s✖ ยังไม่ได้ติดตั้ง claude%s\n" "$C_ERR" "$C_RESET"
@@ -1830,7 +2173,7 @@ login_single_provider() {
       ;;
     codex)
       if is_provider_installed codex; then
-        printf "\n%sกำลังเปิดหน้า Login ของ OpenAI Codex (codex login)...%s\n" "$C_ACCENT" "$C_RESET"
+        printf "\n%sกำลังเปิดหน้าเข้าสู่ระบบของ OpenAI Codex (codex login)...%s\n" "$C_ACCENT" "$C_RESET"
         codex login || true
       else
         printf "%s✖ ยังไม่ได้ติดตั้ง codex%s\n" "$C_ERR" "$C_RESET"
@@ -1840,7 +2183,7 @@ login_single_provider() {
   refresh_cli_auth_cache
 }
 
-# ─── 9. ศูนย์ตั้งค่าจับคู่ค่าย AI, เลือก Model และการเชื่อมต่อ CLI ([c] / /model) ───
+# ─── 9. การตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง ([c] / /model) ───────────
 configure_roles_menu() {
   load_role_config
   local target_conf="$GLOBAL_ROLES_CONF"
@@ -1858,47 +2201,65 @@ configure_roles_menu() {
     if is_role_ready "$ROLE_DEV" "$MODEL_DEV"; then r3_stat="● พร้อมแล้ว"; elif ! is_provider_logged_in "$ROLE_DEV"; then r3_stat="▲ ยังไม่ Login"; fi
     if is_role_ready "$ROLE_QA" "$MODEL_QA"; then r4_stat="● พร้อมแล้ว"; elif ! is_provider_logged_in "$ROLE_QA"; then r4_stat="▲ ยังไม่ Login"; fi
 
-    interactive_menu "ตั้งค่าค่าย AI & เลือก Model ให้ครบ 4 ตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
-      "p|★ ตั้งค่าด่วนรวดเดียวครบ 4 ตำแหน่ง (Google AI Ultra agy + Codex)" \
+    interactive_menu "ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง [พร้อม ${READY_ROLE_COUNT}/4 • ${scope_label}]" 0 \
+      "p|★ ตั้งค่าด่วนครบ 4 ตำแหน่ง (Google AI Ultra agy + Codex)" \
       "1|ขั้นตอนที่ 1 (@po)       ➔ ค่าย: ${ROLE_PO} | โมเดล: ${MODEL_PO} (${r1_stat})" \
       "2|ขั้นตอนที่ 2 (@arch/@pm) ➔ ค่าย: ${ROLE_ARCH} | โมเดล: ${MODEL_ARCH} (${r2_stat})" \
       "3|ขั้นตอนที่ 3 (@dev)      ➔ ค่าย: ${ROLE_DEV} | โมเดล: ${MODEL_DEV} (${r3_stat})" \
       "4|ขั้นตอนที่ 4 (@qa/@sec)  ➔ ค่าย: ${ROLE_QA} | โมเดล: ${MODEL_QA} (${r4_stat})" \
+      "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
       "r|อัปเดตรายชื่อโมเดล Google AI Ultra ล่าสุดจาก 'agy models'" \
-      "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (agy / codex / claude)" \
+      "d|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (agy / codex / claude)" \
       "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่ายในไฟล์ระบบ CLI" \
       "s|สลับไฟล์บันทึกการตั้งค่า (Global ~/.agents/ ↔ Project .relay/roles.conf)" \
-      "t|บันทึกและทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งทันที (/test)" \
-      "b|บันทึกการตั้งค่าและกลับสู่หน้าจอหลัก"
+      "t|บันทึกและทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
+      "b|ย้อนกลับสู่หน้าจอหลัก"
 
     case "$MENU_RESULT" in
       1)
-        choose_provider_interactive "ขั้นตอนที่ 1 (@po)" "$ROLE_PO"
-        ROLE_PO="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_PO" "ขั้นตอนที่ 1 (@po)"
-        MODEL_PO="$SELECTED_MODEL"
-        save_role_config "$target_conf"
+        if choose_provider_interactive "ขั้นตอนที่ 1 (@po)" "$ROLE_PO"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "ขั้นตอนที่ 1 (@po)" "$MODEL_PO"; then
+            ROLE_PO="$next_p"
+            MODEL_PO="$SELECTED_MODEL"
+            save_role_config "$target_conf"
+          fi
+        fi
         ;;
       2)
-        choose_provider_interactive "ขั้นตอนที่ 2 (@arch/@pm)" "$ROLE_ARCH"
-        ROLE_ARCH="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_ARCH" "ขั้นตอนที่ 2 (@arch/@pm)"
-        MODEL_ARCH="$SELECTED_MODEL"
-        save_role_config "$target_conf"
+        if choose_provider_interactive "ขั้นตอนที่ 2 (@arch/@pm)" "$ROLE_ARCH"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "ขั้นตอนที่ 2 (@arch/@pm)" "$MODEL_ARCH"; then
+            ROLE_ARCH="$next_p"
+            MODEL_ARCH="$SELECTED_MODEL"
+            save_role_config "$target_conf"
+          fi
+        fi
         ;;
       3)
-        choose_provider_interactive "ขั้นตอนที่ 3 (@dev)" "$ROLE_DEV"
-        ROLE_DEV="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_DEV" "ขั้นตอนที่ 3 (@dev)"
-        MODEL_DEV="$SELECTED_MODEL"
-        save_role_config "$target_conf"
+        if choose_provider_interactive "ขั้นตอนที่ 3 (@dev)" "$ROLE_DEV"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "ขั้นตอนที่ 3 (@dev)" "$MODEL_DEV"; then
+            ROLE_DEV="$next_p"
+            MODEL_DEV="$SELECTED_MODEL"
+            save_role_config "$target_conf"
+          fi
+        fi
         ;;
       4)
-        choose_provider_interactive "ขั้นตอนที่ 4 (@qa/@sec)" "$ROLE_QA"
-        ROLE_QA="$SELECTED_PROVIDER"
-        choose_model_interactive "$ROLE_QA" "ขั้นตอนที่ 4 (@qa/@sec)"
-        MODEL_QA="$SELECTED_MODEL"
+        if choose_provider_interactive "ขั้นตอนที่ 4 (@qa/@sec)" "$ROLE_QA"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "ขั้นตอนที่ 4 (@qa/@sec)" "$MODEL_QA"; then
+            ROLE_QA="$next_p"
+            MODEL_QA="$SELECTED_MODEL"
+            save_role_config "$target_conf"
+          fi
+        fi
+        ;;
+      g|G)
         save_role_config "$target_conf"
+        run_agents_manager_menu
+        load_role_config
         ;;
       p|P)
         run_quick_preset_menu
@@ -1944,25 +2305,27 @@ configure_provider_defaults_menu() {
 
     case "$MENU_RESULT" in
       1)
-        choose_model_interactive "claude" "ค่าเริ่มต้นของ Claude Code CLI"
-        set_cli_default_model "claude" "$SELECTED_MODEL"
+        if choose_model_interactive "claude" "ค่าเริ่มต้นของ Claude Code CLI" "$cm"; then
+          set_cli_default_model "claude" "$SELECTED_MODEL"
+        fi
         ;;
       2)
-        choose_model_interactive "codex" "ค่าเริ่มต้นของ OpenAI Codex CLI"
-        set_cli_default_model "codex" "$SELECTED_MODEL"
+        if choose_model_interactive "codex" "ค่าเริ่มต้นของ OpenAI Codex CLI" "$xm"; then
+          set_cli_default_model "codex" "$SELECTED_MODEL"
+        fi
         ;;
       *) break ;;
     esac
   done
 }
 
-# ─── 11. ศูนย์จัดการการเชื่อมต่อ CLI, ติดตั้ง และ Login (RELAY Doctor / /connect) ─
+# ─── 11. การจัดการเชื่อมต่อ CLI และการเข้าสู่ระบบ (RELAY Doctor / /connect) ────
 run_doctor_menu() {
   while true; do
     refresh_cli_auth_cache
     echo ""
     printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-    printf "%s│%s %sสถานะการติดตั้ง CLI, การ Login บัญชี และโมเดลเริ่มต้นของแต่ละค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s %sสถานะการติดตั้ง CLI, การเข้าสู่ระบบ และโมเดลเริ่มต้นของแต่ละค่าย%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
     for p in agy codex claude; do
       local pkg="Antigravity App (~/.gemini/bin/agy)"
       [ "$p" = "claude" ] && pkg="@anthropic-ai/claude-code"
@@ -1985,13 +2348,13 @@ run_doctor_menu() {
     done
     printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-    interactive_menu "เลือกการจัดการ Login บัญชีผู้ใช้งาน หรืออัปเดตโมเดล/CLI" 0 \
+    interactive_menu "เลือกการจัดการเข้าสู่ระบบ หรืออัปเดตโมเดลและ CLI" 0 \
       "1|อัปเดตรายชื่อโมเดล Google AI Ultra ล่าสุดจาก 'agy models'" \
       "2|เข้าสู่ระบบ OpenAI Codex (รัน codex login)" \
       "3|เข้าสู่ระบบ Claude Code แยกต่างหาก (รัน claude auth login)" \
-      "4|ติดตั้ง / อัปเดต CLI (codex + claude)" \
+      "4|ติดตั้งหรืออัปเดต CLI (codex + claude)" \
       "m|ตั้งค่า Default Model เริ่มต้นของแต่ละค่ายในไฟล์ระบบ CLI" \
-      "b|กลับสู่หน้าจอหลัก"
+      "b|ย้อนกลับสู่หน้าจอหลัก"
 
     case "$MENU_RESULT" in
       1) refresh_agy_models_live ;;
@@ -2009,7 +2372,7 @@ check_role_skills_status() {
   local skills_list="$1"
   local output=""
   for sk in $skills_list; do
-    if [ -d "$GLOBAL_DIR/skills/$sk" ] || { [ "$sk" = "founder-skill" ] && [ -d "$GLOBAL_DIR/skills/founder-plan" ]; }; then
+    if [ -d "$GLOBAL_DIR/skills/$sk" ] || [ -d "$RELAY_DIR/skills/$sk" ] || { [ "$sk" = "founder-skill" ] && [ -d "$GLOBAL_DIR/skills/founder-plan" ]; }; then
       output="${output}${C_OK}[✓] ${sk}${C_RESET}  "
     else
       output="${output}${C_MUTED}[•] ${sk}${C_RESET}  "
@@ -2038,7 +2401,7 @@ ping_single_role_agent() {
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s กำลังทดสอบรายงานตัวของ: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_title" "$C_RESET"
+  printf "%s│%s กำลังทดสอบการรายงานตัวของ: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_title" "$C_RESET"
   printf "%s│%s  • ค่าย / โมเดล : %s (%s) • สถานะ: %s\n" "$C_ACCENT" "$C_RESET" "$provider" "$configured_model" "$(get_provider_auth_detail "$provider")"
   printf "%s│%s  • ทักษะประจำตัว: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$expected_skills" "$C_RESET"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -2062,7 +2425,7 @@ ping_single_role_agent() {
 1. รายงานบทบาทของคุณคือ '$role_title' (เรียกใช้งานผ่าน CLI ค่าย $provider)
 2. สรุปหน้าที่หลักของคุณในระบบ RELAY ($expected_duty)
 3. ยืนยันชุดทักษะ (Skills) ประจำตำแหน่งของคุณ ได้แก่: $expected_skills
-4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน 100%'"
+4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน'"
 
   printf "%sกำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_MUTED" "$provider" "$configured_model" "$C_RESET"
   local exit_code=0
@@ -2079,7 +2442,7 @@ ping_single_role_agent() {
   esac
 
   if [ "$exit_code" -eq 0 ]; then
-    printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งาน 100%%!%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งานเรียบร้อย%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
   else
     printf "%s✖ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
   fi
@@ -2087,69 +2450,93 @@ ping_single_role_agent() {
 
 run_agent_readiness_test() {
   check_all_roles_ready
-  local po_skills="brainstorming founder-skill"
-  local arch_skills="writing-plans supabase-postgres-best-practices"
-  local dev_skills="impeccable vercel-react-best-practices lucide-icons simple-icons test-driven-development systematic-debugging"
-  local qa_skills="verification-before-completion differential-review semgrep playwright-qa"
+  local po_title arch_title dev_title qa_title
+  po_title="$(get_core_role_title po)"
+  arch_title="$(get_core_role_title arch)"
+  dev_title="$(get_core_role_title dev)"
+  qa_title="$(get_core_role_title qa)"
+
+  local po_skills arch_skills dev_skills qa_skills
+  po_skills="$(get_core_role_skills po)"
+  arch_skills="$(get_core_role_skills arch)"
+  dev_skills="$(get_core_role_skills dev)"
+  qa_skills="$(get_core_role_skills qa)"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %sตรวจสอบบทบาท โมเดล การ Login และทักษะประจำตำแหน่ง (RELAY Agent Readiness)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %sตรวจสอบบทบาท โมเดล การเข้าสู่ระบบ และทักษะประจำตำแหน่ง (RELAY Agent Readiness)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s1. ขั้นตอนที่ 1: @po (Product Owner — สร้าง SPEC.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s1. ขั้นตอนที่ 1: @po (%s — สร้าง SPEC.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$po_title" "$C_RESET"
   printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_PO" "$(format_role_model_text "$ROLE_PO" "$MODEL_PO")" "$(format_role_status_cell "$ROLE_PO" "$MODEL_PO")"
   printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_PO")"
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$po_skills")"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s2. ขั้นตอนที่ 2: @arch & @pm (Architect & Planner — สร้าง ARCH & PLAN)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s2. ขั้นตอนที่ 2: @arch & @pm (%s — สร้าง ARCH & PLAN)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$arch_title" "$C_RESET"
   printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_ARCH" "$(format_role_model_text "$ROLE_ARCH" "$MODEL_ARCH")" "$(format_role_status_cell "$ROLE_ARCH" "$MODEL_ARCH")"
   printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_ARCH")"
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$arch_skills")"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s3. ขั้นตอนที่ 3: @dev (Full-Stack Developer — พัฒนาโค้ดใน Git Worktree)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s3. ขั้นตอนที่ 3: @dev (%s — พัฒนาโค้ดใน Git Worktree)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$dev_title" "$C_RESET"
   printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$(format_role_model_text "$ROLE_DEV" "$MODEL_DEV")" "$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
   printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_DEV")"
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$dev_skills")"
   printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s %s4. ขั้นตอนที่ 4: @qa & @sec (QA & Security Auditor — สร้าง QA_REPORT.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s4. ขั้นตอนที่ 4: @qa & @sec (%s — สร้าง QA_REPORT.md)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$qa_title" "$C_RESET"
   printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$(format_role_model_text "$ROLE_QA" "$MODEL_QA")" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
   printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_QA")"
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$qa_skills")"
+
+  local ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt
+  local ca_idx=5
+  while IFS=$'\t' read -r ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt; do
+    [ -z "$ca_slug" ] && continue
+    printf "%s│%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s %s%d. ตำแหน่งเพิ่มเติม: @%s (%s — โหมด: %s)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ca_idx" "$ca_slug" "$ca_title" "$ca_wmode" "$C_RESET"
+    printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ca_prov" "$(format_role_model_text "$ca_prov" "$ca_mod")" "$(format_role_status_cell "$ca_prov" "$ca_mod")"
+    printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "${ca_skills:--}")"
+    ca_idx=$((ca_idx + 1))
+  done < <(list_custom_agents_tsv)
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
-  interactive_menu "เลือกตำแหน่งที่ต้องการยิงทดสอบให้ AI รายงานบทบาทและ Skills จริง" 0 \
-    "1|★ ทดสอบรวดเดียวครบทั้ง 4 ตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec)" \
+  interactive_menu "เลือกตำแหน่งที่ต้องการทดสอบให้ AI รายงานบทบาทและทักษะจริง" 0 \
+    "1|★ ทดสอบครบทุกตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec และตำแหน่งเพิ่มเติม)" \
     "2|ทดสอบเฉพาะ ขั้นตอนที่ 1 (@po        ➔ ${ROLE_PO} / ${MODEL_PO})" \
     "3|ทดสอบเฉพาะ ขั้นตอนที่ 2 (@arch/@pm  ➔ ${ROLE_ARCH} / ${MODEL_ARCH})" \
     "4|ทดสอบเฉพาะ ขั้นตอนที่ 3 (@dev       ➔ ${ROLE_DEV} / ${MODEL_DEV})" \
     "5|ทดสอบเฉพาะ ขั้นตอนที่ 4 (@qa/@sec   ➔ ${ROLE_QA} / ${MODEL_QA})" \
-    "c|ไปที่หน้าตั้งค่าค่าย AI & เปลี่ยน Model" \
-    "b|กลับสู่หน้าจอหลัก"
+    "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
+    "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \
+    "b|ย้อนกลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
     1)
-      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po (Product Owner)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md" || true
-      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md" || true
-      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด" || true
-      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
+      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po ($po_title)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md $(get_core_role_extra_prompt po)" || true
+      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm ($arch_title)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md $(get_core_role_extra_prompt arch)" || true
+      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev ($dev_title)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด $(get_core_role_extra_prompt dev)" || true
+      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec ($qa_title)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md $(get_core_role_extra_prompt qa)" || true
+      while IFS=$'\t' read -r ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt; do
+        [ -z "$ca_slug" ] && continue
+        ping_single_role_agent "@${ca_slug}" "ตำแหน่ง @${ca_slug} (${ca_title})" "$ca_prov" "$ca_mod" "${ca_skills:-ไม่ระบุ}" "${ca_prompt:-ปฏิบัติงานตามบทบาทที่กำหนด}" || true
+      done < <(list_custom_agents_tsv)
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
     2)
-      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po (Product Owner)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md" || true
+      ping_single_role_agent "@po" "ขั้นตอนที่ 1: @po ($po_title)" "$ROLE_PO" "$MODEL_PO" "$po_skills" "ซักถามความต้องการและสรุปเป็นเอกสาร SPEC.md $(get_core_role_extra_prompt po)" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
     3)
-      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm (System Architect & Planner)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md" || true
+      ping_single_role_agent "@arch/@pm" "ขั้นตอนที่ 2: @arch & @pm ($arch_title)" "$ROLE_ARCH" "$MODEL_ARCH" "$arch_skills" "อ่าน PROJECT_STATE.md และ SPEC.md เพื่อออกแบบ ARCH.md และจัดทำ PLAN.md $(get_core_role_extra_prompt arch)" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
     4)
-      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev (Full-Stack Developer)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด" || true
+      ping_single_role_agent "@dev" "ขั้นตอนที่ 3: @dev ($dev_title)" "$ROLE_DEV" "$MODEL_DEV" "$dev_skills" "เขียนโค้ดและชุดทดสอบภายใน Git Worktree ตามแผนที่กำหนด $(get_core_role_extra_prompt dev)" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
     5)
-      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md" || true
+      ping_single_role_agent "@qa/@sec" "ขั้นตอนที่ 4: @qa & @sec ($qa_title)" "$ROLE_QA" "$MODEL_QA" "$qa_skills" "รันชุดทดสอบจริง ตรวจสอบความปลอดภัย และสรุปลงใน QA_REPORT.md $(get_core_role_extra_prompt qa)" || true
       read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
       ;;
+    g|G) run_agents_manager_menu ;;
     c|C) configure_roles_menu ;;
   esac
 }
@@ -2711,8 +3098,9 @@ ensure_or_create_task() {
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
   get_active_task
   if [ -z "$ACTIVE_TASK" ]; then
-    create_new_task
+    create_new_task || return 1
   fi
+  return 0
 }
 
 create_new_task() {
@@ -2721,7 +3109,10 @@ create_new_task() {
   local raw_input="${1:-}"
   if [ -z "$raw_input" ]; then
     echo ""
-    read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือ pos-cafe): " raw_input
+    read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือพิมพ์ b เพื่อย้อนกลับ): " raw_input || true
+    if is_back_input "$raw_input"; then
+      return 1
+    fi
   fi
   local slug
   slug="$(printf "%s" "${raw_input:-feature}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed -E 's/^-+|-+$//g' | cut -c1-24 | sed -E 's/-+$//')"
@@ -2733,6 +3124,7 @@ create_new_task() {
   ACTIVE_TASK="$CURRENT_TASK"
   LAST_COMPLETED_PHASE=0
   printf "%s● สร้างใบงานใหม่เรียบร้อย: .relay/tasks/%s%s\n" "$C_OK" "$ACTIVE_TASK" "$C_RESET"
+  return 0
 }
 
 run_phase_1_po() {
@@ -2741,38 +3133,46 @@ run_phase_1_po() {
   mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
   get_active_task
   echo ""
-  read -r -p "อธิบายฟีเจอร์หรือความต้องการคร่าวๆ ที่ต้องการให้ @po วิเคราะห์: " user_goal
-  if [ -z "$ACTIVE_TASK" ]; then
-    create_new_task "${user_goal:-feature}"
+  local user_goal=""
+  read -r -p "อธิบายฟีเจอร์หรือความต้องการที่ต้องการให้ @po วิเคราะห์ (หรือพิมพ์ b เพื่อย้อนกลับ): " user_goal || true
+  if is_back_input "$user_goal"; then
+    return 0
   fi
-  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ให้กระชับตรงประเด็น (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด เพื่อประหยัด Token ของขั้นตอนถัดไป)"
-  launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po (Product Owner)" "$PROJECT_DIR" "$prompt"
+  if [ -z "$ACTIVE_TASK" ]; then
+    create_new_task "${user_goal:-feature}" || return 0
+  fi
+  local role_note
+  role_note="$(get_core_role_prompt_note po)"
+  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้}${role_note} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ให้กระชับตรงประเด็น (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด เพื่อประหยัด Token ของขั้นตอนถัดไป)"
+  launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po ($(get_core_role_title po))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=1
 }
 
 run_phase_2_arch() {
   require_all_roles_ready || return 0
-  ensure_or_create_task
-  local learned_note
+  ensure_or_create_task || return 0
+  local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง)"
-  launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (Architect & Planner)" "$PROJECT_DIR" "$prompt"
+  role_note="$(get_core_role_prompt_note arch)"
+  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง)"
+  launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm ($(get_core_role_title arch))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
 }
 
 run_phase_3_dev() {
   require_all_roles_ready || return 0
-  ensure_or_create_task
+  ensure_or_create_task || return 0
   if ! prepare_task_worktree; then
     [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
     return 0
   fi
 
-  local learned_note commit_note
+  local learned_note commit_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_commit_note)"
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้${commit_note}"
-  launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (Full-Stack Developer ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
+  role_note="$(get_core_role_prompt_note dev)"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note}${role_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้${commit_note}"
+  launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   LAST_COMPLETED_PHASE=3
 }
 
@@ -2787,10 +3187,13 @@ run_fast_track_dev() {
   if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
     if [ -z "$fast_goal" ]; then
       echo ""
-      read -r -p "⚡ [Fast Track] ระบุงานย่อยหรือบั๊กที่ต้องการให้ @dev แก้ไขทันที: " fast_goal
+      read -r -p "⚡ [Fast Track] ระบุงานย่อยหรือบั๊กที่ต้องการให้ @dev แก้ไขทันที (หรือพิมพ์ b เพื่อย้อนกลับ): " fast_goal || true
+      if is_back_input "$fast_goal"; then
+        return 0
+      fi
     fi
     if [ -z "$ACTIVE_TASK" ]; then
-      create_new_task "${fast_goal:-fast-fix}"
+      create_new_task "${fast_goal:-fast-fix}" || return 0
     fi
     if [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
       cat <<EOF > "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md"
@@ -2810,10 +3213,11 @@ EOF
     return 0
   fi
 
-  local learned_note commit_note
+  local learned_note commit_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_commit_note)"
-  local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
+  role_note="$(get_core_role_prompt_note dev)"
+  local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "โหมดด่วน Fast Track: @dev (ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   if [ -d "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
@@ -2823,20 +3227,522 @@ EOF
 
 run_phase_4_qa() {
   require_all_roles_ready || return 0
-  ensure_or_create_task
+  ensure_or_create_task || return 0
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
   local target_work_dir="$PROJECT_DIR"
   [ -d "$worktree_dir" ] && target_work_dir="$worktree_dir"
 
-  local learned_note
+  local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
-  launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$target_work_dir" "$prompt"
+  role_note="$(get_core_role_prompt_note qa)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
+  launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec ($(get_core_role_title qa))" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
   LAST_COMPLETED_PHASE=4
+}
+
+# ─── 13.4 การจัดการบทบาท Agent, คำสั่ง Prompt และทักษะ ([g] / /agents / relay agents) ───
+SELECTED_SKILLS=""
+choose_skills_interactive() {
+  local role_label="$1"
+  local current_skills="$2"
+  SELECTED_SKILLS="$current_skills"
+
+  local avail=()
+  local sname
+  while IFS= read -r sname; do
+    [ -n "$sname" ] && avail+=("$sname")
+  done < <(list_available_skill_names)
+
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sเลือกชุดทักษะ (Skills) สำหรับ %s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_label" "$C_RESET"
+  printf "%s│%s  • ทักษะที่ใช้อยู่ปัจจุบัน: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "${current_skills:-ไม่มี}" "$C_RESET"
+  if [ "${#avail[@]}" -gt 0 ]; then
+    printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s  %sรายการทักษะที่ติดตั้งในเครื่อง (%d รายการ):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "${#avail[@]}" "$C_RESET"
+    local i=0
+    while [ "$i" -lt "${#avail[@]}" ]; do
+      local sk="${avail[$i]}"
+      local mark="[ ]"
+      case " $current_skills " in
+        *" $sk "*) mark="${C_OK}[✓]${C_RESET}" ;;
+      esac
+      printf "%s│%s   %2d. %b %s\n" "$C_ACCENT" "$C_RESET" "$((i + 1))" "$mark" "$sk"
+      i=$((i + 1))
+    done
+  fi
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  interactive_menu "เลือกวิธีระบุทักษะ (Skills) สำหรับ ${role_label}" 0 \
+    "1|เลือกจากหมายเลขทักษะด้านบน (เช่น 1,3,5) หรือพิมพ์ชื่อทักษะคั่นด้วยเว้นวรรค" \
+    "2|เพิ่มทักษะต่อท้ายจากรายการเดิม (${current_skills:-ไม่มี})" \
+    "b|ย้อนกลับ (คงทักษะเดิม)"
+
+  case "$MENU_RESULT" in
+    1)
+      local raw_sel=""
+      read -r -p "ระบุหมายเลขทักษะ (เช่น 1,3) หรือชื่อทักษะ (หรือพิมพ์ b เพื่อย้อนกลับ): " raw_sel || true
+      if is_back_input "$raw_sel" || [ -z "$raw_sel" ]; then
+        return 1
+      fi
+      SELECTED_SKILLS="$(python3 - "$raw_sel" "${avail[@]}" <<'PYEOF'
+import re, sys
+raw = sys.argv[1].strip()
+avail = sys.argv[2:]
+tokens = [t for t in re.split(r"[\s,]+", raw) if t]
+out = []
+for t in tokens:
+    if t.isdigit() and 1 <= int(t) <= len(avail):
+        sk = avail[int(t) - 1]
+    else:
+        sk = t
+    if sk and sk not in out:
+        out.append(sk)
+print(" ".join(out))
+PYEOF
+)"
+      return 0
+      ;;
+    2)
+      local raw_add=""
+      read -r -p "ระบุหมายเลขหรือชื่อทักษะที่ต้องการเพิ่ม (หรือพิมพ์ b เพื่อย้อนกลับ): " raw_add || true
+      if is_back_input "$raw_add" || [ -z "$raw_add" ]; then
+        return 1
+      fi
+      SELECTED_SKILLS="$(python3 - "$current_skills" "$raw_add" "${avail[@]}" <<'PYEOF'
+import re, sys
+cur = sys.argv[1].split()
+raw = sys.argv[2].strip()
+avail = sys.argv[3:]
+out = list(cur)
+for t in [x for x in re.split(r"[\s,]+", raw) if x]:
+    sk = avail[int(t) - 1] if (t.isdigit() and 1 <= int(t) <= len(avail)) else t
+    if sk and sk not in out:
+        out.append(sk)
+print(" ".join(out))
+PYEOF
+)"
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+edit_core_role_menu() {
+  local role_key="$1"
+  local target_agents_conf="$2"
+  local target_roles_conf="$3"
+  local role_code="@${role_key}"
+  [ "$role_key" = "arch" ] && role_code="@arch/@pm"
+  [ "$role_key" = "qa" ] && role_code="@qa/@sec"
+
+  while true; do
+    load_role_config
+    local cur_prov cur_mod cur_title cur_skills cur_prompt
+    case "$role_key" in
+      po)   cur_prov="$ROLE_PO";   cur_mod="$MODEL_PO" ;;
+      arch) cur_prov="$ROLE_ARCH"; cur_mod="$MODEL_ARCH" ;;
+      dev)  cur_prov="$ROLE_DEV";  cur_mod="$MODEL_DEV" ;;
+      qa)   cur_prov="$ROLE_QA";   cur_mod="$MODEL_QA" ;;
+    esac
+    cur_title="$(get_core_role_title "$role_key")"
+    cur_skills="$(get_core_role_skills "$role_key")"
+    cur_prompt="$(get_core_role_extra_prompt "$role_key")"
+
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s %sตั้งค่าบทบาทหลัก: %s (%s)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$role_code" "$cur_title" "$C_RESET"
+    printf "%s│%s  • ค่าย AI / โมเดล : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$cur_prov" "$cur_mod"
+    printf "%s│%s  • ทักษะ (Skills)  : %s\n" "$C_ACCENT" "$C_RESET" "${cur_skills:-ไม่มี}"
+    printf "%s│%s  • คำสั่ง Prompt เพิ่ม: %s\n" "$C_ACCENT" "$C_RESET" "${cur_prompt:-(ใช้ค่ามาตรฐานของระบบ)}"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+    interactive_menu "เลือกรายการที่ต้องการแก้ไขสำหรับ ${role_code}" 0 \
+      "1|เปลี่ยนค่าย AI และเลือก Model (${cur_prov} / ${cur_mod})" \
+      "2|กำหนดคำสั่ง Prompt บทบาทหน้าที่เพิ่มเติม (Custom Role Prompt)" \
+      "3|เลือกหรือแก้ไขชุดทักษะ (Skills) ประจำตำแหน่ง" \
+      "4|แก้ไขชื่อแสดงผลของตำแหน่ง (${cur_title})" \
+      "r|รีเซ็ตชื่อ Prompt และทักษะกลับเป็นค่ามาตรฐาน" \
+      "b|ย้อนกลับ"
+
+    case "$MENU_RESULT" in
+      1)
+        if choose_provider_interactive "${role_code} (${cur_title})" "$cur_prov"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "${role_code} (${cur_title})" "$cur_mod"; then
+            case "$role_key" in
+              po)   ROLE_PO="$next_p";   MODEL_PO="$SELECTED_MODEL" ;;
+              arch) ROLE_ARCH="$next_p"; MODEL_ARCH="$SELECTED_MODEL" ;;
+              dev)  ROLE_DEV="$next_p";  MODEL_DEV="$SELECTED_MODEL" ;;
+              qa)   ROLE_QA="$next_p";   MODEL_QA="$SELECTED_MODEL" ;;
+            esac
+            save_role_config "$target_roles_conf"
+          fi
+        fi
+        ;;
+      2)
+        echo ""
+        local new_p=""
+        read -r -p "ระบุคำสั่ง Prompt เพิ่มเติมสำหรับ ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_p || true
+        if ! is_back_input "$new_p"; then
+          set_core_role_override "$target_agents_conf" "$role_key" "prompt" "$new_p"
+          printf "%s● บันทึกคำสั่ง Prompt ของ %s เรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
+        fi
+        ;;
+      3)
+        if choose_skills_interactive "${role_code} (${cur_title})" "$cur_skills"; then
+          set_core_role_override "$target_agents_conf" "$role_key" "skills" "$SELECTED_SKILLS"
+          printf "%s● บันทึกชุดทักษะของ %s เรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
+        fi
+        ;;
+      4)
+        echo ""
+        local new_t=""
+        read -r -p "ระบุชื่อแสดงผลของตำแหน่ง ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_t || true
+        if ! is_back_input "$new_t" && [ -n "$new_t" ]; then
+          set_core_role_override "$target_agents_conf" "$role_key" "title" "$new_t"
+          printf "%s● บันทึกชื่อตำแหน่ง %s เรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
+        fi
+        ;;
+      r|R)
+        set_core_role_override "$target_agents_conf" "$role_key" "reset" ""
+        printf "%s● รีเซ็ต %s กลับเป็นค่ามาตรฐานเรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
+}
+
+run_custom_agent_task() {
+  local slug="${1:-}"
+  local user_instruction="${2:-}"
+  slug="${slug#@}"
+  [ -z "$slug" ] && return 1
+
+  local title prov model wmode skills role_prompt
+  title="$(get_custom_agent_field "$slug" "title")"
+  prov="$(get_custom_agent_field "$slug" "provider")"
+  model="$(get_custom_agent_field "$slug" "model")"
+  wmode="$(get_custom_agent_field "$slug" "work_mode")"
+  skills="$(get_custom_agent_field "$slug" "skills")"
+  role_prompt="$(get_custom_agent_field "$slug" "prompt")"
+
+  if [ -z "$prov" ] || [ -z "$model" ]; then
+    printf "%s✖ ไม่พบการตั้งค่าของตำแหน่ง @%s%s\n" "$C_ERR" "$slug" "$C_RESET"
+    return 1
+  fi
+
+  refresh_project_paths
+  mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
+  get_active_task
+
+  if [ -z "$user_instruction" ]; then
+    echo ""
+    read -r -p "ระบุงานที่ต้องการสั่งให้ @${slug} (${title}) ดำเนินการ (หรือพิมพ์ b เพื่อย้อนกลับ): " user_instruction || true
+    if is_back_input "$user_instruction"; then
+      return 0
+    fi
+  fi
+
+  if [ -z "$ACTIVE_TASK" ]; then
+    create_new_task "${user_instruction:-$slug}" || return 0
+  fi
+
+  local target_dir="$PROJECT_DIR"
+  local commit_note=""
+  if [ "$wmode" = "worktree" ]; then
+    if ! prepare_task_worktree; then
+      return 1
+    fi
+    target_dir="$TASK_WORK_DIR"
+    commit_note="$(get_dev_commit_note)"
+  fi
+
+  local learned_note skills_note=""
+  learned_note="$(get_learned_skills_prompt_note)"
+  [ -n "$skills" ] && skills_note=" โดยใช้ชุดทักษะ (Skills): ${skills}"
+
+  local full_prompt="@${slug} (${title}) บทบาทหน้าที่ของคุณคือ: ${role_prompt:-ปฏิบัติงานตามความเชี่ยวชาญของตำแหน่ง}${skills_note}${learned_note} กรุณาอ่านบริบทใน .relay/PROJECT_STATE.md (ถ้ามี) และใบงาน .relay/tasks/$ACTIVE_TASK แล้วดำเนินการตามคำสั่งนี้: ${user_instruction:-ตามที่กำหนดในบทบาท}${commit_note}"
+  launch_provider_cli "$prov" "$model" "ตำแหน่ง @${slug} (${title})" "$target_dir" "$full_prompt"
+
+  if [ "$wmode" = "worktree" ] && [ -d "$target_dir/.relay/tasks/$ACTIVE_TASK" ]; then
+    sync_task_docs_from_worktree "$target_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
+  fi
+  return 0
+}
+
+add_custom_agent_wizard() {
+  local target_conf="$1"
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sเพิ่มตำแหน่ง Agent ใหม่ (พิมพ์ b ในขั้นตอนใดก็ได้เพื่อย้อนกลับ)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  local raw_slug=""
+  read -r -p "1. รหัสตำแหน่งภาษาอังกฤษ (เช่น ux, devops, data, sec-audit หรือพิมพ์ b เพื่อย้อนกลับ): " raw_slug || true
+  if is_back_input "$raw_slug" || [ -z "$raw_slug" ]; then
+    return 0
+  fi
+  local slug
+  slug="$(printf "%s" "${raw_slug#@}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_-' '-' | sed -E 's/^-+|-+$//g')"
+  if [ -z "$slug" ]; then
+    return 0
+  fi
+
+  local title=""
+  read -r -p "2. ชื่อบทบาท (เช่น UX/UI Designer หรือ DevOps Engineer • พิมพ์ b เพื่อย้อนกลับ): " title || true
+  if is_back_input "$title"; then
+    return 0
+  fi
+  [ -z "$title" ] && title="$slug"
+
+  local role_prompt=""
+  read -r -p "3. คำสั่ง Prompt บทบาทหน้าที่หลักของ @${slug} (พิมพ์ b เพื่อย้อนกลับ): " role_prompt || true
+  if is_back_input "$role_prompt"; then
+    return 0
+  fi
+  [ -z "$role_prompt" ] && role_prompt="วิเคราะห์และปฏิบัติงานในฐานะ ${title} อย่างรอบคอบ"
+
+  local skills=""
+  if choose_skills_interactive "@${slug} (${title})" ""; then
+    skills="$SELECTED_SKILLS"
+  fi
+
+  interactive_menu "5. เลือกโหมดโฟลเดอร์ทำงานสำหรับ @${slug} (${title})" 0 \
+    "1|Project Root — ทำงานในโฟลเดอร์หลักของโปรเจกต์ (เหมาะสำหรับงานวิเคราะห์ / ออกแบบ / เอกสาร)" \
+    "2|Git Worktree — แยกกิ่งโค้ดอิสระอัตโนมัติ (เหมาะสำหรับงานแก้ไขโค้ด)" \
+    "b|ย้อนกลับ (ยกเลิกการสร้าง)"
+  local wmode="project"
+  case "$MENU_RESULT" in
+    1) wmode="project" ;;
+    2) wmode="worktree" ;;
+    *) return 0 ;;
+  esac
+
+  if ! choose_provider_interactive "@${slug} (${title})" "agy"; then
+    return 0
+  fi
+  local prov="$SELECTED_PROVIDER"
+
+  if ! choose_model_interactive "$prov" "@${slug} (${title})" "$(get_cli_default_model "$prov")"; then
+    return 0
+  fi
+  local mod="$SELECTED_MODEL"
+
+  upsert_custom_agent "$target_conf" "$slug" "$title" "$prov" "$mod" "$wmode" "$skills" "$role_prompt"
+  printf "\n%s● เพิ่มตำแหน่ง @%s (%s ➔ %s / %s) เรียบร้อยแล้ว%s\n" "$C_OK" "$slug" "$title" "$prov" "$mod" "$C_RESET"
+}
+
+manage_single_custom_agent_menu() {
+  local slug="$1"
+  local target_conf="$2"
+
+  while true; do
+    local title prov mod wmode skills role_prompt
+    title="$(get_custom_agent_field "$slug" "title" "$target_conf")"
+    prov="$(get_custom_agent_field "$slug" "provider" "$target_conf")"
+    mod="$(get_custom_agent_field "$slug" "model" "$target_conf")"
+    wmode="$(get_custom_agent_field "$slug" "work_mode" "$target_conf")"
+    skills="$(get_custom_agent_field "$slug" "skills" "$target_conf")"
+    role_prompt="$(get_custom_agent_field "$slug" "prompt" "$target_conf")"
+    [ -z "$prov" ] && return 0
+
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s %sข้อมูลตำแหน่ง: @%s (%s)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$slug" "$title" "$C_RESET"
+    printf "%s│%s  • ค่าย AI / โมเดล : %s (%s) • โหมดทำงาน: %s\n" "$C_ACCENT" "$C_RESET" "$prov" "$mod" "$wmode"
+    printf "%s│%s  • ทักษะ (Skills)  : %s\n" "$C_ACCENT" "$C_RESET" "${skills:-ไม่ระบุ}"
+    printf "%s│%s  • คำสั่ง Prompt   : %s\n" "$C_ACCENT" "$C_RESET" "${role_prompt:-ไม่ระบุ}"
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+    interactive_menu "เลือกการดำเนินการสำหรับตำแหน่ง @${slug} (${title})" 0 \
+      "1|★ สั่งงาน Agent ตำแหน่ง @${slug} ทันที" \
+      "2|ทดสอบความพร้อมและให้ @${slug} รายงานตัว (/test)" \
+      "3|เปลี่ยนค่าย AI และเลือก Model (${prov} / ${mod})" \
+      "4|แก้ไขคำสั่ง Prompt บทบาทหน้าที่" \
+      "5|เลือกหรือแก้ไขชุดทักษะ (Skills)" \
+      "6|สลับโหมดโฟลเดอร์ทำงาน (ปัจจุบัน: ${wmode})" \
+      "7|แก้ไขชื่อบทบาท (${title})" \
+      "d|ลบตำแหน่ง @${slug}" \
+      "b|ย้อนกลับ"
+
+    case "$MENU_RESULT" in
+      1)
+        run_custom_agent_task "$slug"
+        ;;
+      2)
+        ping_single_role_agent "@${slug}" "ตำแหน่ง @${slug} (${title})" "$prov" "$mod" "${skills:-ไม่ระบุ}" "${role_prompt:-ปฏิบัติงานตามบทบาท}" || true
+        [ -t 0 ] && { read -r -p "กด Enter เพื่อย้อนกลับ..." _ || true; }
+        ;;
+      3)
+        if choose_provider_interactive "@${slug} (${title})" "$prov"; then
+          local next_p="$SELECTED_PROVIDER"
+          if choose_model_interactive "$next_p" "@${slug} (${title})" "$mod"; then
+            upsert_custom_agent "$target_conf" "$slug" "$title" "$next_p" "$SELECTED_MODEL" "$wmode" "$skills" "$role_prompt"
+          fi
+        fi
+        ;;
+      4)
+        local new_p=""
+        read -r -p "ระบุคำสั่ง Prompt บทบาทหน้าที่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_p || true
+        if ! is_back_input "$new_p" && [ -n "$new_p" ]; then
+          upsert_custom_agent "$target_conf" "$slug" "$title" "$prov" "$mod" "$wmode" "$skills" "$new_p"
+        fi
+        ;;
+      5)
+        if choose_skills_interactive "@${slug} (${title})" "$skills"; then
+          upsert_custom_agent "$target_conf" "$slug" "$title" "$prov" "$mod" "$wmode" "$SELECTED_SKILLS" "$role_prompt"
+        fi
+        ;;
+      6)
+        local next_w="worktree"
+        [ "$wmode" = "worktree" ] && next_w="project"
+        upsert_custom_agent "$target_conf" "$slug" "$title" "$prov" "$mod" "$next_w" "$skills" "$role_prompt"
+        ;;
+      7)
+        local new_t=""
+        read -r -p "ระบุชื่อบทบาทใหม่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_t || true
+        if ! is_back_input "$new_t" && [ -n "$new_t" ]; then
+          upsert_custom_agent "$target_conf" "$slug" "$new_t" "$prov" "$mod" "$wmode" "$skills" "$role_prompt"
+        fi
+        ;;
+      d|D)
+        delete_custom_agent "$target_conf" "$slug"
+        printf "%s● ลบตำแหน่ง @%s เรียบร้อยแล้ว%s\n" "$C_OK" "$slug" "$C_RESET"
+        return 0
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
+}
+
+run_agents_manager_menu() {
+  local sub="${1:-interactive}"
+  refresh_project_paths
+  load_role_config
+
+  local target_conf="$GLOBAL_AGENTS_CONF"
+  local scope_label="Global (~/.agents/custom-agents.json)"
+  if [ -f "$PROJECT_AGENTS_CONF" ]; then
+    target_conf="$PROJECT_AGENTS_CONF"
+    scope_label="Project (.relay/custom-agents.json)"
+  fi
+
+  local target_roles_conf="$GLOBAL_ROLES_CONF"
+  [ -f "$PROJECT_ROLES_CONF" ] && target_roles_conf="$PROJECT_ROLES_CONF"
+
+  # รองรับการเรียกใช้งานผ่าน CLI Subcommand โดยตรง
+  case "$sub" in
+    list)
+      list_custom_agents_tsv "$target_conf"
+      return 0
+      ;;
+    add)
+      shift
+      upsert_custom_agent "$target_conf" "${1:-}" "${2:-}" "${3:-agy}" "${4:-$(get_cli_default_model "${3:-agy}")}" "${5:-project}" "${6:-}" "${7:-}"
+      return 0
+      ;;
+    remove|delete|rm)
+      shift
+      delete_custom_agent "$target_conf" "${1:-}"
+      return 0
+      ;;
+    run)
+      shift
+      run_custom_agent_task "${1:-}" "${2:-}"
+      return 0
+      ;;
+  esac
+
+  while true; do
+    load_role_config
+    echo ""
+    printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s %sการจัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s  • ขอบเขตการบันทึกปัจจุบัน : %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$scope_label" "$C_RESET"
+    printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%s│%s  %sตำแหน่งมาตรฐาน 4 ขั้นตอน:%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+    printf "%s│%s   • @po       (%s) ➔ %s/%s │ ทักษะ: %s\n" "$C_ACCENT" "$C_RESET" "$(get_core_role_title po)" "$ROLE_PO" "$MODEL_PO" "$(get_core_role_skills po)"
+    printf "%s│%s   • @arch/@pm (%s) ➔ %s/%s │ ทักษะ: %s\n" "$C_ACCENT" "$C_RESET" "$(get_core_role_title arch)" "$ROLE_ARCH" "$MODEL_ARCH" "$(get_core_role_skills arch)"
+    printf "%s│%s   • @dev      (%s) ➔ %s/%s │ ทักษะ: %s\n" "$C_ACCENT" "$C_RESET" "$(get_core_role_title dev)" "$ROLE_DEV" "$MODEL_DEV" "$(get_core_role_skills dev)"
+    printf "%s│%s   • @qa/@sec  (%s) ➔ %s/%s │ ทักษะ: %s\n" "$C_ACCENT" "$C_RESET" "$(get_core_role_title qa)" "$ROLE_QA" "$MODEL_QA" "$(get_core_role_skills qa)"
+
+    local menu_items=()
+    local custom_slugs=()
+    local c_idx=1
+    local ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt
+    while IFS=$'\t' read -r ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt; do
+      [ -z "$ca_slug" ] && continue
+      if [ "$c_idx" -eq 1 ]; then
+        printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+        printf "%s│%s  %sตำแหน่ง Agent ที่เพิ่มใหม่:%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+      fi
+      printf "%s│%s   • @%-10s (%s) ➔ %s/%s [%s] │ ทักษะ: %s\n" "$C_ACCENT" "$C_RESET" "$ca_slug" "$ca_title" "$ca_prov" "$ca_mod" "$ca_wmode" "${ca_skills:-ไม่ระบุ}"
+      menu_items+=("${c_idx}|สั่งงานหรือแก้ไขตำแหน่ง @${ca_slug} (${ca_title} ➔ ${ca_prov}/${ca_mod})")
+      custom_slugs[$c_idx]="$ca_slug"
+      c_idx=$((c_idx + 1))
+    done < <(list_custom_agents_tsv "$target_conf")
+    printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+    menu_items+=("a|★ เพิ่มตำแหน่ง Agent ใหม่ (กำหนดรหัส @slug, Prompt บทบาท, ทักษะ Skills และเลือก Model)")
+    menu_items+=("p|ปรับแต่งตำแหน่งที่ 1: @po (Prompt / ทักษะ Skills / ค่าย & Model)")
+    menu_items+=("h|ปรับแต่งตำแหน่งที่ 2: @arch & @pm (Prompt / ทักษะ Skills / ค่าย & Model)")
+    menu_items+=("v|ปรับแต่งตำแหน่งที่ 3: @dev (Prompt / ทักษะ Skills / ค่าย & Model)")
+    menu_items+=("q|ปรับแต่งตำแหน่งที่ 4: @qa & @sec (Prompt / ทักษะ Skills / ค่าย & Model)")
+    menu_items+=("s|สลับขอบเขตไฟล์บันทึก (Global ~/.agents/ ↔ Project .relay/custom-agents.json)")
+    menu_items+=("b|ย้อนกลับสู่หน้าจอหลัก")
+
+    interactive_menu "เลือกตำแหน่ง Agent ที่ต้องการสั่งงาน ปรับแต่ง หรือเพิ่มตำแหน่งใหม่" 0 "${menu_items[@]}"
+
+    case "$MENU_RESULT" in
+      [1-9])
+        if [ -n "${custom_slugs[$MENU_RESULT]:-}" ]; then
+          manage_single_custom_agent_menu "${custom_slugs[$MENU_RESULT]}" "$target_conf"
+        fi
+        ;;
+      a|A)
+        add_custom_agent_wizard "$target_conf"
+        ;;
+      p|P)
+        edit_core_role_menu "po" "$target_conf" "$target_roles_conf"
+        ;;
+      h|H)
+        edit_core_role_menu "arch" "$target_conf" "$target_roles_conf"
+        ;;
+      v|V)
+        edit_core_role_menu "dev" "$target_conf" "$target_roles_conf"
+        ;;
+      q|Q)
+        edit_core_role_menu "qa" "$target_conf" "$target_roles_conf"
+        ;;
+      s|S)
+        if [ "$target_conf" = "$GLOBAL_AGENTS_CONF" ]; then
+          mkdir -p "$RELAY_DIR"
+          [ -f "$GLOBAL_AGENTS_CONF" ] && [ ! -f "$PROJECT_AGENTS_CONF" ] && cp "$GLOBAL_AGENTS_CONF" "$PROJECT_AGENTS_CONF" 2>/dev/null || true
+          [ ! -f "$PROJECT_AGENTS_CONF" ] && echo '{"overrides":{},"agents":[]}' > "$PROJECT_AGENTS_CONF"
+          target_conf="$PROJECT_AGENTS_CONF"
+          scope_label="Project (.relay/custom-agents.json)"
+        else
+          target_conf="$GLOBAL_AGENTS_CONF"
+          scope_label="Global (~/.agents/custom-agents.json)"
+        fi
+        printf "%s● สลับขอบเขตการบันทึกเป็น %s เรียบร้อยแล้ว%s\n" "$C_OK" "$scope_label" "$C_RESET"
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
 }
 
 # ─── 13.5 ระบบสกัดบทเรียนสะสมเฉพาะโปรเจกต์อัตโนมัติ (Self-Learning Project Skills) ─
@@ -3050,8 +3956,8 @@ review_pending_learned_rules() {
   grep -E '^[[:space:]]*-[[:space:]]+' "$pending_file" | sed -E 's/^[[:space:]]*-[[:space:]]+//' | awk '{ printf "  [%d] %s\n", NR, $0 }'
   echo ""
   local sel=""
-  read -r -p "พิมพ์หมายเลขที่อนุมัติ (เช่น 1,3) • a = อนุมัติทั้งหมด • x = ปฏิเสธทั้งหมด • Enter = ข้ามไว้ก่อน: " sel || true
-  if [ -z "$sel" ]; then
+  read -r -p "พิมพ์หมายเลขที่อนุมัติ (เช่น 1,3) • a = อนุมัติทั้งหมด • x = ปฏิเสธทั้งหมด • b หรือ Enter = ย้อนกลับ: " sel || true
+  if [ -z "$sel" ] || is_back_input "$sel"; then
     printf "%sเก็บกฎไว้ในคิวรออนุมัติตามเดิม%s\n" "$C_MUTED" "$C_RESET"
     return 0
   fi
@@ -3322,7 +4228,7 @@ run_auto_relay_loop() {
   if [ "${1:-interactive}" != "--yes" ]; then
     interactive_menu "ต้องการเริ่มรัน Bounded Auto-Relay Loop สำหรับใบงาน '${ACTIVE_TASK}' เลยหรือไม่?" 0 \
       "y|★ เริ่มรันลูปอัตโนมัติทันที (2 ➔ 3 ⇄ 4 พร้อมเบรกนิรภัยครบทุกชั้น)" \
-      "n|ยกเลิก — กลับสู่หน้าจอหลัก"
+      "b|ย้อนกลับสู่หน้าจอหลัก"
     [ "$MENU_RESULT" != "y" ] && return 0
   fi
 
@@ -3341,13 +4247,18 @@ run_auto_relay_loop() {
   local loop_started_at
   loop_started_at="$(date +%s)"
 
+  local arch_role_note dev_role_note qa_role_note
+  arch_role_note="$(get_core_role_prompt_note arch)"
+  dev_role_note="$(get_core_role_prompt_note dev)"
+  qa_role_note="$(get_core_role_prompt_note qa)"
+
   # 1. ขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
   if [ ! -f "$task_dir/PLAN.md" ]; then
     if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct"; then
       loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
-    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md ให้เสร็จสมบูรณ์โดยไม่ต้องรอถามโต้ตอบ"
+    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md ให้เสร็จสมบูรณ์โดยไม่ต้องรอถามโต้ตอบ"
     rc=0
     exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
@@ -3383,9 +4294,9 @@ run_auto_relay_loop() {
 
     local dev_prompt=""
     if [ "$round" -eq 1 ]; then
-      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note}${dev_role_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     else
-      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     fi
 
     rc=0
@@ -3401,7 +4312,7 @@ run_auto_relay_loop() {
     # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
     archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1
@@ -3518,7 +4429,7 @@ run_phase_5_merge() {
   if ! git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 || ! git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$branch_name"; then
     interactive_menu "ใบงาน ${task} ไม่มีกิ่งโค้ด ${branch_name} — ต้องการปิดใบงานโดยไม่ผสานโค้ดหรือไม่?" 1 \
       "y|ปิดใบงาน: สกัดบทเรียน + ย้ายเข้า .relay/archive/ (ไม่มีโค้ดให้ผสาน)" \
-      "n|ยกเลิก — กลับสู่หน้าจอหลัก"
+      "b|ย้อนกลับสู่หน้าจอหลัก"
     if [ "$MENU_RESULT" = "y" ]; then
       distill_project_learned_skills "$task" "auto" || true
       archive_active_task
@@ -3583,7 +4494,7 @@ run_phase_5_merge() {
     printf "%s▲ กิ่ง %s ไม่มีโค้ดใหม่ให้ผสาน — ระบบจะไม่ลบ Worktree หรือกิ่งใดๆ%s\n" "$C_WARN" "$branch_name" "$C_RESET"
     items+=("a|ปิดใบงานโดยไม่ผสาน (เก็บกิ่งและ Worktree ไว้ตรวจสอบภายหลัง)")
   fi
-  items+=("n|ยกเลิก — กลับสู่หน้าจอหลัก (ไม่มีการเปลี่ยนแปลงใดๆ)")
+  items+=("b|ย้อนกลับสู่หน้าจอหลัก (ไม่มีการเปลี่ยนแปลงใดๆ)")
 
   interactive_menu "เลือกการดำเนินการสำหรับใบงาน ${task}" 0 "${items[@]}"
 
@@ -3609,14 +4520,14 @@ run_phase_5_merge() {
   if [ "$qa_v" != "PASS" ]; then
     interactive_menu "ใบงานนี้ยังไม่ผ่านการตรวจรับ (${qa_v}) — ยืนยันจะผสานเข้า ${base} หรือไม่?" 1 \
       "y|ยืนยันผสานแม้ยังไม่ผ่าน QA (รับผิดชอบเอง)" \
-      "n|ยกเลิก — กลับไปแก้ไขก่อน"
+      "b|ย้อนกลับ — กลับไปแก้ไขก่อน"
     [ "$MENU_RESULT" != "y" ] && return 0
   fi
 
   if [ "$base" != "main" ] && [ "$base" != "master" ]; then
     interactive_menu "ยืนยันผสานเข้ากิ่ง '${base}' (ไม่ใช่ main/master)?" 1 \
       "y|ยืนยันผสานเข้า ${base}" \
-      "n|ยกเลิก"
+      "b|ย้อนกลับ"
     [ "$MENU_RESULT" != "y" ] && return 0
   fi
 
@@ -3698,15 +4609,21 @@ run_skills_menu() {
     "2|ติดตั้งชุดทักษะมาตรฐานทั้งหมดลงเครื่อง (install)" \
     "3|อัปเดตทักษะทั้งหมดให้เป็นเวอร์ชันล่าสุดจาก GitHub (update)" \
     "4|เพิ่มทักษะใหม่จากลิงก์ GitHub Repository (add)" \
-    "b|กลับสู่หน้าจอหลัก"
+    "b|ย้อนกลับสู่หน้าจอหลัก"
 
   case "$MENU_RESULT" in
     1) "$skills_cmd" list ;;
     2) "$skills_cmd" install ;;
     3) "$skills_cmd" update ;;
     4)
-      read -r -p "ระบุ GitHub Repo URL: " repo_url
-      read -r -p "ระบุชื่อ Skill ย่อย (หรือกด Enter หากติดตั้งทั้ง Repo): " skill_sub
+      read -r -p "ระบุ GitHub Repo URL (หรือพิมพ์ b เพื่อย้อนกลับ): " repo_url || true
+      if is_back_input "$repo_url" || [ -z "$repo_url" ]; then
+        return 0
+      fi
+      read -r -p "ระบุชื่อ Skill ย่อย (หรือกด Enter หากติดตั้งทั้ง Repo • พิมพ์ b เพื่อย้อนกลับ): " skill_sub || true
+      if is_back_input "$skill_sub"; then
+        return 0
+      fi
       "$skills_cmd" add "$repo_url" "$skill_sub"
       ;;
   esac
@@ -3737,6 +4654,11 @@ case "$SUBCOMMAND" in
     ;;
   fast|quick|x)
     run_fast_track_dev "${2:-}"
+    exit 0
+    ;;
+  agents|agent|roles)
+    shift
+    run_agents_manager_menu "${@}"
     exit 0
     ;;
   config|model)
@@ -3770,17 +4692,19 @@ while true; do
     # ═══════════════════════════════════════════════════════════════════════════
     # ขั้นที่ 1/3: ตั้งค่า AI & Login บัญชีให้ครบ 4 ตำแหน่ง
     # ═══════════════════════════════════════════════════════════════════════════
-    interactive_menu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และ Login ให้ครบ 4 ตำแหน่ง (พร้อมใช้งานจริง ${READY_ROLE_COUNT}/4)" 0 \
+    interactive_menu "ขั้นที่ 1/3: ตั้งค่าค่าย AI, เลือก Model และเข้าสู่ระบบให้ครบ 4 ตำแหน่ง (พร้อมใช้งานจริง ${READY_ROLE_COUNT}/4)" 0 \
       "1|★ [แนะนำ] ตั้งค่าด่วนด้วยโควตา Google AI Ultra (agy) + Codex พร้อมใช้ทันที" \
       "2|เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)" \
-      "3|จัดการการเชื่อมต่อ CLI & Login บัญชี (agy / codex / claude)" \
-      "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
-      "t|ตรวจสอบสถานะความพร้อม Agent & Skills ประจำตำแหน่ง (/test)" \
+      "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
+      "3|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (agy / codex / claude)" \
+      "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+      "t|ตรวจสอบสถานะความพร้อม Agent และทักษะประจำตำแหน่ง (/test)" \
       "q|ออกจากโปรแกรม (/quit)"
 
     case "$MENU_RESULT" in
       1) run_quick_preset_menu ;;
       2|c|C|/model|/config) configure_roles_menu ;;
+      g|G|/agents|/agent|/roles) run_agents_manager_menu ;;
       3|d|D|/connect|/doctor|/login) run_doctor_menu ;;
       u|U|/quota|/usage) run_quota_dashboard ;;
       t|T|/test) run_agent_readiness_test ;;
@@ -3798,15 +4722,17 @@ while true; do
     if [ "$IN_HOME_DIR" -eq 1 ]; then
       interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ที่จะทำงาน (ปัจจุบันคุณอยู่ใน Home ~)" 0 \
         "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที (แนะนำ)" \
-        "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
-        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่งด้วยโควตา Google AI Ultra + Codex (/test)" \
-        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
-        "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
+        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+        "t|ทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
+        "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
+        "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \
+        "d|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (/connect)" \
         "q|ออกจากโปรแกรม (เพื่อพิมพ์ cd เข้าโฟลเดอร์โปรเจกต์เอง)"
 
       case "$MENU_RESULT" in
         1|f|F|i|I|/init) select_or_create_project_dir ;;
         u|U|/quota|/usage) run_quota_dashboard ;;
+        g|G|/agents|/agent|/roles) run_agents_manager_menu ;;
         c|C|m|M|/model|/config) configure_roles_menu ;;
         d|D|/connect|/doctor) run_doctor_menu ;;
         t|T|/test) run_agent_readiness_test ;;
@@ -3821,9 +4747,10 @@ while true; do
         "1|★ เริ่มโปรเจกต์ใหม่ตั้งแต่ศูนย์ในโฟลเดอร์นี้ (Greenfield — สร้าง .relay/ ทันที)" \
         "2|นำ RELAY มาใช้กับโปรเจกต์เดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนสร้าง PROJECT_STATE.md)" \
         "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
-        "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
-        "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
-        "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
+        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+        "t|ทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
+        "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
+        "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \
         "q|ออกจากโปรแกรม (/quit)"
 
       case "$MENU_RESULT" in
@@ -3831,6 +4758,7 @@ while true; do
         2) run_init_brownfield ;;
         f|F) select_or_create_project_dir ;;
         u|U|/quota|/usage) run_quota_dashboard ;;
+        g|G|/agents|/agent|/roles) run_agents_manager_menu ;;
         c|C|m|M|/model|/config) configure_roles_menu ;;
         d|D|/connect|/doctor) run_doctor_menu ;;
         t|T|/test) run_agent_readiness_test ;;
@@ -3873,13 +4801,14 @@ while true; do
       "a|${pa_label}" \
       "x|⚡ โหมดด่วน Fast Track: ข้าม @po/@arch ➔ ส่ง @dev ทำใน Worktree ทันที (สำหรับงานเล็ก/แก้บั๊ก) (/fast)" \
       "v|📊 ดูตัวชี้วัดความเร็ว + Token ที่ใช้จริง รายขั้นตอนและรายโมเดล (/stats)" \
+      "g|จัดการบทบาท Agent, คำสั่ง Prompt, ทักษะ และเพิ่มตำแหน่งใหม่ (/agents)" \
       "l|${pl_label}" \
       "n|สร้างใบงานใหม่ (New Task) (/new)" \
       "f|สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)" \
-      "u|เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
-      "c|ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)" \
-      "t|ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)" \
-      "d|จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)" \
+      "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+      "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \
+      "t|ทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
+      "d|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (/connect)" \
       "s|จัดการและอัปเดตชุดทักษะ Skills (/skills)" \
       "q|ออกจากโปรแกรม (/quit)"
 
@@ -3892,8 +4821,10 @@ while true; do
       a|A|/loop|/auto)      run_auto_relay_loop ;;
       x|X|/fast|/quick)     run_fast_track_dev ;;
       v|V|/stats|/tokens)   run_task_stats_view ;;
+      g|G|/agents|/agent|/roles) run_agents_manager_menu ;;
+      /@*)                  run_custom_agent_task "${MENU_RESULT#/@}" ;;
       l|L|/learn|/distill)  run_learned_skills_menu ;;
-      n|N|/new)             create_new_task ;;
+      n|N|/new)             create_new_task || true ;;
       f|F)                  select_or_create_project_dir ;;
       i|I|/init)            run_init_project ;;
       u|U|/quota|/usage)    run_quota_dashboard ;;

@@ -27,7 +27,7 @@
 
 | องค์ประกอบหลัก | เครื่องมือมาตรฐานที่ใช้ | หน้าที่ความรับผิดชอบในระบบ |
 | :--- | :--- | :--- |
-| **1. หน้าจอควบคุมกลางแบบนำทาง 3 ขั้นตอน** | คำสั่ง **`relay`** (`relay.sh` / `relay.ps1`) + ไฟล์ **`relay-roles.conf`** | ศูนย์กลางการสั่งงานในหน้าต่าง Terminal เดียว ตรวจสอบสถานะการ Login จริง ดึงรายชื่อโมเดลสดจาก CLI และนำทางผู้ใช้ตั้งแต่ตั้งค่า AI ➔ เตรียมโปรเจกต์ ➔ สั่งงาน 4 ขั้นตอน |
+| **1. หน้าจอควบคุมกลางแบบนำทาง 3 ขั้นตอน** | คำสั่ง **`relay`** (`relay.sh` / `relay.ps1`) + ไฟล์ **`relay-roles.conf`** | หน้าจอหลักสำหรับควบคุมการทำงานในหน้าต่าง Terminal เดียว ตรวจสอบสถานะการ Login จริง ดึงรายชื่อโมเดลสดจาก CLI และนำทางผู้ใช้ตั้งแต่ตั้งค่า AI ➔ เตรียมโปรเจกต์ ➔ สั่งงาน 4 ขั้นตอน |
 | **2. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | โฟลเดอร์ **`.relay/`** (ไฟล์ `.md` & `.json` มาตรฐาน)<br/>*(เปิดอ่านด้วย VS Code / Editor ใดก็ได้ หรือใช้ **Obsidian** เป็นตัวเลือกเสริม)* | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`), รายงานผล (`QA_REPORT.md`, `QA_VERDICT.json`) และบันทึกการทำงาน (`RUN_LOG.jsonl`) โดยไม่ต้องพึ่งพาโปรแกรมภายนอก |
 | **3. บทบาทตัวแทน AI (สลับค่ายได้อิสระ) และสภาพแวดล้อมแยกอิสระ** | Official CLI (`agy`, `claude`, `codex`) + **`Git Worktree`** + ชุดทักษะ **`Skills`** | ผู้ใช้สามารถ **กด `[c]` เลือกสลับค่าย AI และโมเดลประจำตำแหน่ง (`@po`, `@arch`, `@dev`, `@qa`) ได้อิสระทุกบทบาท** ไม่ล็อกตายตัว พร้อมแยกกิ่งการพัฒนา (`.relay/worktrees/<task-id>`) ออกจากกิ่งหลัก (`main`) อัตโนมัติในขั้นตอนที่ 3 |
 | **4. ระบบตรวจสอบความปลอดภัยและการทดสอบส่วนติดต่อผู้ใช้** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ป้องกันการบันทึกไฟล์ความลับ (`.env`) ด้วยสคริปต์ `pre-commit hook` ของระบบ (ไม่เรียก AI), สแกนช่องโหว่ความปลอดภัย และเมื่อมีการแก้ไข Web UI ให้ใช้ **Playwright MCP** ทดสอบบนเบราว์เซอร์จริงผ่านโควต้าแพ็กเกจรายเดือน |
@@ -137,6 +137,12 @@ cd RELAY
 - **`codex` (OpenAI Codex CLI):** ดึงรายชื่อโมเดลสดจาก `~/.codex/models_cache.json` เช่น `gpt-6.1-terra`, `gpt-6.1-terra-mini`
 - **`claude` (Anthropic Claude Code CLI):** รองรับ `opus`, `sonnet`, `haiku`
 
+### 4.1.1 การจัดการบทบาท Agent, คำสั่ง Prompt, ทักษะ และการเพิ่มตำแหน่งใหม่ (`[g]` / `/agents` หรือ `relay agents`)
+นอกจากการสลับค่ายและโมเดลผ่านปุ่ม `[c]` แล้ว คุณสามารถกดปุ่ม **`g`** (หรือพิมพ์ `/agents` หรือรัน `relay agents`) เพื่อจัดการบทบาทและคำสั่งได้ทั้งระดับ **ใช้ร่วมกันทุกโปรเจกต์ (`~/.agents/custom-agents.json`)** และ **เฉพาะโปรเจกต์นี้ (`.relay/custom-agents.json`)**:
+- **ปรับแต่ง 4 ตำแหน่งหลัก (`@po`, `@arch`, `@dev`, `@qa`):** แก้ไขชื่อบทบาท กำหนดคำสั่ง Prompt เพิ่มเติม เลือกชุดทักษะ (`Skills`) ประจำตำแหน่ง เปลี่ยนค่าย/โมเดล หรือรีเซ็ตกลับเป็นค่าเริ่มต้นได้ตลอดเวลา
+- **เพิ่มและสั่งงาน Agent ตำแหน่งใหม่ (`@ux`, `@devops`, `@data` ฯลฯ):** สร้างตำแหน่งใหม่พร้อมตั้งชื่อ คำสั่ง Prompt ประจำตำแหน่ง เลือกทักษะ (`Skills`) และกำหนดค่าย AI + โมเดล โดยสามารถสั่งรันงานได้ทันทีจากหน้าจอหลัก (เลือกทำงานใน `Project Root` หรือแยก `Git Worktree`), ทดสอบความพร้อมใน `[t]`, และบันทึกสถิติเวลา + Token จริงใน `[v]` (`relay stats`)
+- **รองรับการย้อนกลับทุกเมนู (`[b] ย้อนกลับ` และปุ่ม `ESC`):** ทุกเมนูย่อย หน้าเลือกค่าย AI หน้าเลือกโมเดล และทุกช่องรับข้อความรองรับการกด `b` หรือ `ESC` เพื่อย้อนกลับไปยังหน้าก่อนหน้าโดยไม่เสียค่าที่ตั้งไว้เดิม
+
 ### 4.2 การเปิดหน้าจอควบคุมกลาง (`relay`)
 เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางแบบ **Guided 3-Stage Progressive UX** จะแสดงผลดังนี้:
 
@@ -187,6 +193,7 @@ cd RELAY
     [f] สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)
     [u] เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)
     [c] ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)
+    [g] จัดการบทบาท Agent, คำสั่ง Prompt, ทักษะ และเพิ่มตำแหน่งใหม่ (/agents)
     [t] ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)
     [d] จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)
     [s] จัดการและอัปเดตชุดทักษะ Skills (/skills)
@@ -334,4 +341,4 @@ cd RELAY
 - 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
 - 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
 - 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License
-- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 60 ข้อ): `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
+- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 69 ข้อ): `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่), `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_merge_safety.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
