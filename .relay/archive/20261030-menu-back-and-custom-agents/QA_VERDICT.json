@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh (9/9 PASS)",
+    "bash tests/test_token_telemetry.sh (8/8 PASS)",
+    "bash tests/test_auto_loop.sh (24/24 PASS)",
+    "bash tests/test_merge_safety.sh (22/22 PASS)",
+    "bash tests/test_quota_display.sh (6/6 PASS)"
+  ],
+  "summary": "All 69 automated test assertions across 5 test suites passed. Universal [b]/ESC back navigation, custom agent & core role prompt/skill/model management ([g] / relay agents), and formal Thai wording verified."
+}
