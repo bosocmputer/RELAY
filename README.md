@@ -242,7 +242,7 @@ cd RELAY
 ### 4.7 การทดสอบความพร้อมของตัวแทน AI แต่ละตำแหน่ง (`[t]` หรือ `relay test`)
 คุณสามารถกดปุ่ม **`t`** ในหน้าจอหลัก (หรือพิมพ์คำสั่ง `relay test`) เพื่อตรวจสอบความพร้อมทั้ง 2 ระดับ:
 1. **ตรวจสอบทักษะ การ Login และกฎส่วนกลางในเครื่อง (Static Readiness Check):** แสดงรายการทักษะ (`Skills`) ประจำตำแหน่งของ `@po`, `@arch/@pm`, `@dev`, และ `@qa/@sec` พร้อมสถานะการเชื่อมต่อไฟล์กฎส่วนกลาง (`GLOBAL_AGENTS.md`)
-2. **ยิงคำสั่งทดสอบให้ AI แต่ละตำแหน่งรายงานตัวจริง (Live Agent Handshake):** ส่งคำสั่งทดสอบไปยัง CLI และ Model ที่ตั้งไว้ของแต่ละตำแหน่ง (`agy --model <m> -p`, `codex exec`, `claude -p`) เพื่อให้ตัวแทน AI ตอบกลับมารายงานบทบาทและทักษะของตนเองว่าพร้อมปฏิบัติงานจริง 100%
+2. **ยิงคำสั่งทดสอบให้ AI แต่ละตำแหน่งรายงานตัวจริง (Live Agent Handshake):** ส่งคำสั่งทดสอบไปยัง CLI และ Model ที่ตั้งไว้ของแต่ละตำแหน่ง (`agy --model <m> -p`, `codex exec`, `claude -p`) เพื่อยืนยันว่า CLI และโมเดลนั้นรับคำสั่งและตอบกลับได้จริง
 
 ---
 
@@ -311,10 +311,12 @@ cd RELAY
 
 ---
 
-## 9. ข้อจำกัดที่ควรทราบก่อนใช้งาน
+## 9. ข้อจำกัดและข้อควรพิจารณาเรื่องความเร็ว + Token ก่อนใช้งาน
 
 | หัวข้อ | สถานะปัจจุบัน | คำแนะนำ |
 | :-- | :-- | :-- |
+| **Ceremony Overhead ในงานขนาดเล็ก** | การรันครบ 4 บทบาท (`@po ➔ @arch ➔ @dev ➔ @qa`) ต้องเปิด CLI หลายรอบและเขียนเอกสารส่งต่อ ซึ่งเหมาะกับงานขนาดกลาง–ใหญ่ แต่จะช้าและเปลือง Token เกินจำเป็นหากเป็นงานเล็ก | สำหรับงานเล็กหรือการแก้บั๊ก ให้กด **`[x]` (`relay fast`)** เพื่อข้าม `@po`/`@arch` แล้วส่ง `@dev` ทำใน Worktree ทันที และกด **`[v]` (`relay stats`)** เพื่อดูเวลาและ Token ที่ใช้จริง |
+| **การวัดจำนวน Token จริง** | ดึงตัวเลข Token จากไฟล์ Session Log ในเครื่องของ `agy`, `codex`, และ `claude` หลังจบแต่ละขั้น | ใช้เปรียบเทียบต้นทุนจริงระหว่างโมเดลและระหว่างโหมดปกติกับโหมด `Fast Track` ได้ผ่านปุ่ม `[v]` (`relay stats`) |
 | **ระบบปฏิบัติการ** | ใช้งานได้เต็มรูปแบบบน macOS / Linux • บน Windows (`relay.ps1`) ใช้ได้เฉพาะแดชบอร์ด ตั้งค่า และโควต้า | ผู้ใช้ Windows แนะนำให้ใช้ผ่าน WSL |
 | **การอ่านโควต้า** | อ่านจากช่องทางของ CLI ที่ไม่ใช่ API ทางการ (`agy -p "/usage"`, ไฟล์ session ของ `codex`, `get_usage` ของ `claude`) จึงอาจใช้ไม่ได้เมื่อ CLI อัปเดต | เมื่อดึงไม่สำเร็จ ตารางจะแสดง `? ดึงไม่ได้ • ค่าเมื่อ HH:MM` แทนการแสดงค่าเก่าแบบเงียบ |
 | **Auto-Relay Loop** | ตรรกะของลูปผ่านชุดทดสอบด้วย CLI จำลอง แต่คุณภาพผลงานขึ้นกับโมเดลและ SPEC | รันครั้งแรกกับใบงานเล็กก่อน • ถ้าใช้ `claude` เป็น `@dev` ให้เพิ่ม allow rule ของคำสั่งทดสอบใน `.claude/settings.json` |
@@ -326,10 +328,10 @@ cd RELAY
 
 ## 10. สารบัญเอกสารคู่มือเชิงลึก
 
-- 🐣 **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)** — คู่มือการติดตั้งตั้งแต่เริ่มต้นสำหรับ Windows และ macOS, การเชื่อมโควต้า Google AI Ultra (`agy`) และการเชื่อมต่อโปรแกรม Obsidian
+- 🐣 **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)** — คู่มือการติดตั้งตั้งแต่เริ่มต้นสำหรับ Windows และ macOS, การเชื่อมโควต้า Google AI Ultra (`agy`) และการเชื่อมต่อโปรแกรม Obsidian (ทางเลือกเสริม)
 - 📘 **[`docs/USE_CASES_NEW_AND_EXISTING.md`](./docs/USE_CASES_NEW_AND_EXISTING.md)** — คู่มือการนำ `RELAY` ไปใช้กับโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield) ผ่านระบบนำทาง 3 ขั้นตอนอัตโนมัติ
 - 🏛️ **[`docs/ARCHITECTURE_DEEP_DIVE.md`](./docs/ARCHITECTURE_DEEP_DIVE.md)** — รายละเอียดสถาปัตยกรรม หลักการทำงาน และการจัดการโครงการระยะยาว
 - 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
 - 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
 - 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License
-- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบที่ไม่ใช้โควต้า AI: `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
+- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 60 ข้อ): `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
