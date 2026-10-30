@@ -3,7 +3,7 @@
 # ==============================================================================
 # 🎛️ RELAY Central Terminal Hub (v1.0) — Guided 3-Stage Progressive UX
 # • โทนสี Minimalist 3-Tier (รองรับทั้ง Terminal พื้นหลังสีขาว Light Mode และพื้นดำ Dark Mode)
-# • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด (คลุมครบ 100% ไม่แหว่งสระไทย)
+# • ไฮไลต์บรรทัดที่เลือกด้วย ❯ + สีน้ำเงินครามตัวหนาทั้งบรรทัด (คลุมครบทั้งบรรทัด ไม่แหว่งสระไทย)
 # • รองรับโควตา Google AI Ultra เต็มรูปแบบผ่าน Antigravity CLI (~/.gemini/bin/agy):
 #   ใช้ได้ทั้ง Gemini 4 Argon, Gemini 3.8 Flash, Claude Opus 5.5, Claude Sonnet 5.5
 # • ตรวจสอบความพร้อมจริง 3 ชั้น: ติดตั้ง CLI แล้ว + Login บัญชีแล้ว + เลือก Model แล้ว
@@ -1898,14 +1898,14 @@ run_quick_preset_menu() {
 
   local u_tag="ต้องมี agy + codex" a_tag="ต้องมี agy" x_tag="ยังไม่ Login" c_tag="ยังไม่ Login"
   if is_provider_logged_in agy && is_provider_logged_in codex; then
-    u_tag="● พร้อมใช้ทันที 100%"
+    u_tag="● พร้อมใช้ทันที"
   fi
-  is_provider_logged_in agy    && a_tag="● พร้อมใช้ทันที 100%"
+  is_provider_logged_in agy    && a_tag="● พร้อมใช้ทันที"
   is_provider_logged_in codex  && x_tag="● พร้อมใช้ทันที"
   is_provider_logged_in claude && c_tag="● พร้อมใช้ทันที"
 
   interactive_menu "เลือกชุดการตั้งค่าด่วน (รองรับโควตา Google AI Ultra ผ่าน agy + Codex)" 0 \
-    "1|★ แนะนำสูงสุด (Google AI Ultra + Codex) — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex(${codex_def}) [${u_tag}]" \
+    "1|★ ชุดผสมแนะนำ (Google AI Ultra + Codex) — @po=agy(gemini-4-argon-high), @arch=agy(claude-opus-5-5-high), @dev=agy(claude-sonnet-5-5-high), @qa=codex(${codex_def}) [${u_tag}]" \
     "2|All-Google-AI-Ultra (agy ล้วนทั้ง 4 ตำแหน่ง) — @po=gemini-4-argon-high, @arch=claude-opus-5-5-high, @dev=claude-sonnet-5-5-high, @qa=gemini-3.8-flash-high [${a_tag}]" \
     "3|All-Codex Preset  — ใช้ codex (${codex_def}) ทั้ง 4 ตำแหน่ง [${x_tag}]" \
     "4|All-Claude Preset — ใช้ claude CLI แยกต่างหากทั้ง 4 ตำแหน่ง (@po=sonnet, @arch=opus, @dev=sonnet, @qa=opus) [${c_tag}]" \
@@ -3470,7 +3470,7 @@ run_custom_agent_task() {
   learned_note="$(get_learned_skills_prompt_note)"
   [ -n "$skills" ] && skills_note=" โดยใช้ชุดทักษะ (Skills): ${skills}"
 
-  local full_prompt="@${slug} (${title}) บทบาทหน้าที่ของคุณคือ: ${role_prompt:-ปฏิบัติงานตามความเชี่ยวชาญของตำแหน่ง}${skills_note}${learned_note} กรุณาอ่านบริบทใน .relay/PROJECT_STATE.md (ถ้ามี) และใบงาน .relay/tasks/$ACTIVE_TASK แล้วดำเนินการตามคำสั่งนี้: ${user_instruction:-ตามที่กำหนดในบทบาท}${commit_note}"
+  local full_prompt="@${slug} (${title}) บทบาทหน้าที่ของคุณคือ: ${role_prompt:-ปฏิบัติงานตามความเชี่ยวชาญของตำแหน่ง}${skills_note}${learned_note} กรุณาอ่านบริบทใน .relay/PROJECT_STATE.md (ถ้ามี) และใบงาน .relay/tasks/$ACTIVE_TASK แล้วดำเนินการตามคำสั่งนี้ให้กระชับตรงประเด็น (ห้ามเขียนเอกสารเยิ่นเย้อเกินจำเป็น): ${user_instruction:-ตามที่กำหนดในบทบาท}${commit_note}"
   launch_provider_cli "$prov" "$model" "ตำแหน่ง @${slug} (${title})" "$target_dir" "$full_prompt"
 
   if [ "$wmode" = "worktree" ] && [ -d "$target_dir/.relay/tasks/$ACTIVE_TASK" ]; then
@@ -4258,7 +4258,7 @@ run_auto_relay_loop() {
       loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
-    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md ให้เสร็จสมบูรณ์โดยไม่ต้องรอถามโต้ตอบ"
+    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง) โดยไม่ต้องรอถามโต้ตอบ"
     rc=0
     exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
@@ -4312,7 +4312,7 @@ run_auto_relay_loop() {
     # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
     archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1

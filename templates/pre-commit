@@ -11,4 +11,4 @@ if [ -n "$FORBIDDEN" ]; then
   exit 1
 fi
 
-echo "✅ [RELAY Guard] ไม่พบไฟล์ความลับ ปลอดภัย 100%"
+echo "✅ [RELAY Guard] ไม่พบรูปแบบไฟล์ความลับที่ต้องห้ามในรายการ Staged"
