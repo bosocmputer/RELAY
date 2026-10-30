@@ -30,23 +30,10 @@
     - `prepare_task_worktree` ใช้ร่วมกันในขั้นตอนที่ 3 และ Auto-Loop: หยุดพร้อม error จริงถ้าสร้างไม่ได้, เพิ่ม `.relay/worktrees/` ใน `.gitignore`; Prompt ของ `@dev` สั่งให้ commit ในกิ่ง `feat/<task>`
     - `run_phase_5_merge`: ตรวจ commit/ไฟล์ค้าง/ผล QA ➔ commit อัตโนมัติ (ไม่รวม `.relay/`) ➔ ยืนยันเพิ่มถ้า QA ยังไม่ผ่าน ➔ `merge --no-ff` ➔ `merge --abort` เมื่อล้มเหลว ➔ `record_task_in_project_state` ➔ ลบ Worktree/กิ่งและ archive เฉพาะหลังสำเร็จ
     - `PROJECT_STATE.md` ของกิ่งหลักถูกแก้เฉพาะหลังผสาน (`@qa` ห้ามแก้, ไม่คัดลอกกลับจาก Worktree); `sync_task_docs_from_worktree` ไม่ทับ `LOOP_LOG.md` / `RUN_LOG.jsonl`
-    - ทุกการเรียก agent บันทึกลง `.relay/tasks/<task>/RUN_LOG.jsonl` (`append_run_log`) และสรุปท้าย Auto-Loop
-  - **Windows (`relay.ps1`):** แดชบอร์ด/ตั้งค่า/โควต้าใช้ได้ แต่ `[a]` และ `[l]` ยังเป็นโครงเท่านั้น (งานค้าง C5)
-  - **ระบบสกัดบทเรียนและสร้างทักษะเฉพาะโปรเจกต์อัตโนมัติ (`Self-Learning Project Skills` — `[l]` / `/learn` / `relay learn`):**
-    - สกัดกฎที่เสนอแบบจับคำสำคัญ (ยังไม่ใช้ AI สรุป — งานค้าง M2) ลงคิว `PENDING.md` ➔ ผู้ใช้อนุมัติใน `[l]` (`apply_learned_approval`) ➔ ย้ายเข้า `SKILL.md` (ไม่เกิน 25 ข้อ) ➔ บันทึก `LEDGER.md`
-    - Prompt ของ `@arch`, `@dev`, `@qa` แนบเฉพาะ `SKILL.md` (กฎที่อนุมัติแล้ว) โดยไม่แตะต้อง `~/.agents/GLOBAL_AGENTS.md`
-  - **ตรวจสอบความพร้อมจริง 3 ชั้น (3-Layer CLI Readiness Verification):**
-    1. ตรวจการติดตั้ง CLI (`agy`, `claude`, `codex`)
-    2. ตรวจสถานะการเข้าสู่ระบบจริง (`~/.gemini/jetski-standalone-oauth-token` สำหรับ `agy`, `claude auth status`, และ `codex login status`)
-    3. ดึงรายชื่อ Model จาก CLI ในเครื่องโดยตรง
-  - **ระบบนำทางทีละขั้น (Guided 3-Stage Progressive Disclosure UX):**
-    1. **ขั้นที่ 1 (`ตั้งค่า & Login AI ให้ครบ 4 ตำแหน่ง`)**
-    2. **ขั้นที่ 2 (`เตรียมโฟลเดอร์โปรเจกต์`)**
-    3. **ขั้นที่ 3 (`เริ่มสั่งงานตามใบงาน 1-5`)**
-- **สคริปต์ติดตั้งส่วนกลางและสร้างโครงสร้างโครงการ (`setup-mac.sh`, `setup-win.ps1`, `relay-init.sh`, `relay-init.ps1`):**
-  - ติดตั้ง `~/.agents/GLOBAL_AGENTS.md`, `~/.agents/bin/relay`, `~/.agents/bin/relay-init`, `~/.agents/bin/relay-skills`, เชื่อม Symlink `~/.agents/bin/agy -> ~/.gemini/bin/agy` อัตโนมัติ และเปิดใช้งาน Global Git `pre-commit` Hook
-- **ระบบจัดการและอัปเดตทักษะ (`relay-skills.sh`, `relay-skills.ps1` และ `skills-manifest.txt`):**
-  - รองรับคำสั่ง `install`, `update`, `add <repo>` และ `list`
-- **ชุดทดสอบที่ไม่ใช้โควต้า (`tests/`):** `test_phase5_merge.sh`, `test_auto_loop.sh` (CLI จำลอง), `test_quota_display.sh`
+    - **ระบบวัดผล Token จริง + เวลา + โควต้ารายขั้นตอนและรายโมเดล (`extract_step_token_usage`, `print_step_telemetry_box`, `[v]` / `relay stats`):**
+      - ดึงจำนวน Token จริง (`total`, `input`, `cached`, `output`, `turns`) จากไฟล์ Session Log ของทั้ง 3 ค่าย (`agy`, `codex`, `claude`) โดยไม่นับซ้ำ บันทึกลง `.relay/tasks/<task>/RUN_LOG.jsonl` และแสดงกล่องสรุปทันทีหลังจบทุกขั้นตอน พร้อมแถบยอดสะสมบน Dashboard หลักและตารางเปรียบเทียบรายขั้นตอน/รายโมเดลใน `relay stats` (`[v]`)
+    - **โหมดด่วน `Fast Track` (`[x]` / `relay fast`) และเพดานความยาวเอกสาร:**
+      - สำหรับงานเล็กหรือแก้บั๊ก กด `[x]` เพื่อสร้างใบงาน + Worktree และส่ง `@dev` ทำงานได้ทันทีโดยไม่ต้องผ่าน `@po` และ `@arch` พร้อมกำหนดเพดานความยาวเอกสาร (`SPEC.md` ≤40 บรรทัด, `ARCH.md`+`PLAN.md` ≤60 บรรทัด, `QA_REPORT.md` ≤30 บรรทัด)
+- **ชุดทดสอบที่ไม่ใช้โควต้า (`tests/`):** `test_token_telemetry.sh`, `test_phase5_merge.sh`, `test_auto_loop.sh` (CLI จำลอง), `test_quota_display.sh` (รวม 60/60 ข้อ)
 - **เอกสารคู่มือมาตรฐาน (`README.md`, `docs/` และ `domains/`):**
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield), ชี้แจงชัดเจนว่าโฟลเดอร์ `.relay/` คือกลไกหลักโดย **Obsidian เป็นเพียงทางเลือกเสริม (Optional Viewer)**, ทุกบทบาทสลับค่าย/โมเดล AI ได้อิสระผ่านปุ่ม `[c]`, รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี

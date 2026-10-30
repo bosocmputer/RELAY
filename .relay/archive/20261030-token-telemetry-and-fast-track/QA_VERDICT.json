@@ -1,0 +1,11 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash tests/test_token_telemetry.sh (8/8 passed)",
+    "bash tests/test_phase5_merge.sh (22/22 passed)",
+    "bash tests/test_auto_loop.sh (24/24 passed)",
+    "bash tests/test_quota_display.sh (6/6 passed)"
+  ],
+  "summary": "All 60 automated assertions pass across 4 test suites. Real token telemetry (agy, codex, claude), step & model breakdown stats ([v] / relay stats), Fast Track mode ([x] / relay fast), and honest technical documentation are verified."
+}
