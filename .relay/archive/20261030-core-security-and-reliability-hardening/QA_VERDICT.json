@@ -1,0 +1,16 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh && bash -n relay-init.sh && bash -n relay-skills.sh",
+    "bash tests/test_security_and_hardening.sh",
+    "bash tests/test_hermes_cli_redesign.sh",
+    "bash tests/test_quota_display.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh",
+    "bash tests/test_token_telemetry.sh",
+    "bash tests/test_phase5_merge.sh",
+    "bash tests/test_auto_loop.sh",
+    "bash tests/test_quota_failover_and_handoff.sh"
+  ],
+  "summary": "All 8 security and reliability hardening items (SEC-1..SEC-3, REL-1..REL-5) verified with 109/109 automated test assertions passing."
+}
