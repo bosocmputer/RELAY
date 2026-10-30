@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh setup-mac.sh relay-skills.sh relay-init.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh (10/10 PASS)",
+    "bash tests/test_token_telemetry.sh (8/8 PASS)",
+    "bash tests/test_quota_display.sh (6/6 PASS)",
+    "bash tests/test_phase5_merge.sh (22/22 PASS)",
+    "bash tests/test_auto_loop.sh (24/24 PASS)"
+  ],
+  "summary": "Added flutter-best-practices skill, Ground-Truth/Static-Analysis prompts, and synchronized all setup scripts and documentation across macOS and Windows (70/70 tests passed)."
+}
