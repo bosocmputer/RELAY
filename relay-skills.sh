@@ -15,11 +15,61 @@ show_help() {
   echo "🧰 RELAY Skill Manager (สำหรับ macOS / Linux)"
   echo "=================================================================="
   echo "คำสั่งที่รองรับ:"
-  echo "  ./relay-skills.sh install                     # ติดตั้งชุด Skills มาตรฐานทั้งหมด + Playwright MCP"
-  echo "  ./relay-skills.sh update                      # ดึงอัปเดตเวอร์ชันใหม่ล่าสุดจากผู้พัฒนาต้นทางทุกตัว"
-  echo "  ./relay-skills.sh add <repo_url> [skill_name] # เพิ่มสกิลใหม่เข้าเครื่องและบันทึกลง skills-manifest.txt"
-  echo "  ./relay-skills.sh list                        # แสดงรายการสกิลทั้งหมดในคลัง"
+  echo "  ./relay-skills.sh install                                   # ติดตั้งชุด Skills มาตรฐาน + Script Tools + Playwright MCP"
+  echo "  ./relay-skills.sh update                                    # ดึงอัปเดตเวอร์ชันใหม่ล่าสุดจากผู้พัฒนาต้นทางทุกตัว"
+  echo "  ./relay-skills.sh add <repo_url> [skill_name]               # เพิ่มสกิลใหม่เข้าเครื่องและบันทึกลง skills-manifest.txt"
+  echo "  ./relay-skills.sh create <skill_name> [desc] [target_dir]   # สร้างโฟลเดอร์ Skill มาตรฐาน (SKILL.md + scripts/)"
+  echo "  ./relay-skills.sh list                                      # แสดงรายการสกิลทั้งหมดพร้อมสารบัญ Progressive Disclosure"
   echo "=================================================================="
+}
+
+scaffold_skill_folder() {
+  local raw_name="${1:-}"
+  local desc="${2:-ความเชี่ยวชาญและขั้นตอนมาตรฐานสำหรับงานเฉพาะทางในโปรเจกต์นี้}"
+  local base_dir="${3:-$(pwd)/.relay/skills}"
+  local slug
+  slug="$(printf "%s" "$raw_name" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_-' '-' | sed -E 's/^-+|-+$//g')"
+  if [ -z "$slug" ]; then
+    echo "❌ กรุณาระบุชื่อสกิลภาษาอังกฤษ เช่น: ./relay-skills.sh create api-contract-check \"ตรวจสอบโครงสร้าง API\""
+    exit 1
+  fi
+  local skill_dir="${base_dir%/}/$slug"
+  mkdir -p "$skill_dir/scripts"
+
+  local skill_md="$skill_dir/SKILL.md"
+  if [ ! -f "$skill_md" ]; then
+    local tmp_md="${skill_md}.tmp.$$"
+    {
+      printf -- "---\n"
+      printf -- "name: %s\n" "$slug"
+      printf -- "description: %s\n" "$desc"
+      printf -- "---\n\n"
+      printf -- "# ทักษะเฉพาะทาง: %s\n\n" "$slug"
+      printf -- "## 1. เมื่อไหร่ควรเปิดใช้ทักษะนี้ (When to Use — Progressive Disclosure)\n"
+      printf -- "- เปิดอ่านไฟล์นี้เฉพาะเมื่อได้รับมอบหมายงานที่เกี่ยวข้องกับ: %s\n\n" "$desc"
+      printf -- "## 2. ขั้นตอนการปฏิบัติมาตรฐาน (Procedural Knowledge)\n"
+      printf -- "- ตรวจสอบโครงสร้างโค้ดและข้อกำหนดที่เกี่ยวข้องก่อนแก้ไข\n"
+      printf -- "- รันสคริปต์ช่วยตรวจสอบในโฟลเดอร์ \`scripts/\` เพื่อลดการเขียนคำสั่งซ้ำด้วยมือ\n\n"
+      printf -- "## 3. เครื่องมือสคริปต์ประจำทักษะ (Scripts as Tools)\n"
+      printf -- "- \`bash %s/scripts/run-check.sh\` — สคริปต์ตรวจสอบอัตโนมัติของทักษะนี้\n" "$skill_dir"
+    } > "$tmp_md"
+    mv -f "$tmp_md" "$skill_md"
+  fi
+
+  local script_file="$skill_dir/scripts/run-check.sh"
+  if [ ! -f "$script_file" ]; then
+    cat <<'EOF' > "$script_file"
+#!/usr/bin/env bash
+# สคริปต์ตรวจสอบประจำ Skill (Scripts as Tools — เรียกใช้ซ้ำได้โดยไม่ต้องให้ AI เขียนคำสั่งใหม่ทุกครั้ง)
+set -euo pipefail
+echo "● [Skill Script] รันการตรวจสอบอัตโนมัติสำเร็จ"
+EOF
+    chmod +x "$script_file"
+  fi
+
+  echo "✅ สร้างโครงสร้าง Skill มาตรฐานเรียบร้อย: $skill_dir"
+  echo "   • เอกสารขั้นตอน : $skill_md"
+  echo "   • สคริปต์เครื่องมือ: $script_file"
 }
 
 sync_manifest_skills() {
@@ -47,6 +97,12 @@ sync_manifest_skills() {
   [ -f "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ] && cp "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ~/.agents/skills/flutter-best-practices/SKILL.md || true
   [ -f "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ~/.agents/skills/lucide-icons/SKILL.md || true
   [ -f "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ~/.agents/skills/simple-icons/SKILL.md || true
+  if [ -f "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ]; then
+    mkdir -p ~/.agents/bin ~/.agents/skills/verification-before-completion/scripts
+    cp "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ~/.agents/bin/relay-verify-task
+    cp "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ~/.agents/skills/verification-before-completion/scripts/verify-relay-task.sh
+    chmod +x ~/.agents/bin/relay-verify-task ~/.agents/skills/verification-before-completion/scripts/verify-relay-task.sh
+  fi
   [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
 
   # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
@@ -94,6 +150,9 @@ case "$COMMAND" in
       echo "📝 บันทึกสกิลนี้ลงใน skills-manifest.txt เรียบร้อย (จะถูกอัปเดตอัตโนมัติเมื่อรัน ./relay-skills.sh update)"
     fi
     echo "✅ เพิ่มสกิลใหม่สำเร็จ!"
+    ;;
+  create)
+    scaffold_skill_folder "${2:-}" "${3:-}" "${4:-}"
     ;;
   list)
     echo "📋 รายการ Skills ใน skills-manifest.txt:"
