@@ -306,7 +306,49 @@ refresh_agy_models_live() {
   fi
 }
 
-# ─── 2. โหลดและบันทึกการตั้งค่า Role & Model ─────────────────────────────────
+# ─── 2. โหลดและบันทึกการตั้งค่า Role & Model (Safe Parser & Atomic Write) ────────
+sanitize_model_id() {
+  local raw="${1:-}"
+  printf "%s" "$raw" | tr -cd 'a-zA-Z0-9._:/-'
+}
+
+safe_load_roles_conf() {
+  local conf_file="$1"
+  [ -r "$conf_file" ] || return 0
+  local line k v
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [ -z "$line" ] || [[ "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || continue
+    k="${line%%=*}"
+    v="${line#*=}"
+    k="$(printf "%s" "$k" | tr -d '[:space:]')"
+    v="${v#"${v%%[![:space:]]*}"}"
+    v="${v%"${v##*[![:space:]]}"}"
+    if [[ "$v" == \"*\" ]] && [[ "$v" == *\" ]]; then
+      v="${v:1:${#v}-2}"
+    elif [[ "$v" == \'*\' ]] && [[ "$v" == *\' ]]; then
+      v="${v:1:${#v}-2}"
+    fi
+    # บล็อกค่าที่มีอักขระสั่งรันคำสั่ง Shell ($(), `, ;, |, &, >, <)
+    if [[ "$v" == *'$('* ]] || [[ "$v" == *'`'* ]] || [[ "$v" == *';'* ]] || [[ "$v" == *'|'* ]] || [[ "$v" == *'&'* ]] || [[ "$v" == *'>'* ]] || [[ "$v" == *'<'* ]]; then
+      continue
+    fi
+    case "$k" in
+      ROLE_PO|ROLE_ARCH|ROLE_DEV|ROLE_QA)
+        case "$v" in
+          agy|codex|claude|gemini) printf -v "$k" '%s' "$v" ;;
+        esac
+        ;;
+      MODEL_PO|MODEL_ARCH|MODEL_DEV|MODEL_QA)
+        local clean_m
+        clean_m="$(sanitize_model_id "$v")"
+        [ -n "$clean_m" ] && printf -v "$k" '%s' "$clean_m"
+        ;;
+    esac
+  done < "$conf_file"
+}
+
 load_role_config() {
   refresh_project_paths
   ROLE_PO="agy";     MODEL_PO="gemini-4-argon-high"
@@ -316,12 +358,10 @@ load_role_config() {
   CONFIG_SOURCE="Global (~/.agents/relay-roles.conf)"
 
   if [ -r "$GLOBAL_ROLES_CONF" ]; then
-    # shellcheck disable=SC1090
-    source "$GLOBAL_ROLES_CONF"
+    safe_load_roles_conf "$GLOBAL_ROLES_CONF"
   fi
   if [ -r "$PROJECT_ROLES_CONF" ]; then
-    # shellcheck disable=SC1090
-    source "$PROJECT_ROLES_CONF"
+    safe_load_roles_conf "$PROJECT_ROLES_CONF"
     CONFIG_SOURCE="Project (.relay/roles.conf)"
   fi
 
@@ -344,39 +384,80 @@ load_role_config() {
 save_role_config() {
   local target_file="$1"
   mkdir -p "$(dirname "$target_file")"
-  cat << EOF > "$target_file"
-# RELAY Role-to-Provider & Model Configuration
-ROLE_PO="$ROLE_PO"
-MODEL_PO="${MODEL_PO:-default}"
-ROLE_ARCH="$ROLE_ARCH"
-MODEL_ARCH="${MODEL_ARCH:-default}"
-ROLE_DEV="$ROLE_DEV"
-MODEL_DEV="${MODEL_DEV:-default}"
-ROLE_QA="$ROLE_QA"
-MODEL_QA="${MODEL_QA:-default}"
-EOF
+  local tmp_file="${target_file}.tmp.$$"
+  local m_po m_arch m_dev m_qa
+  m_po="$(sanitize_model_id "${MODEL_PO:-default}")"
+  m_arch="$(sanitize_model_id "${MODEL_ARCH:-default}")"
+  m_dev="$(sanitize_model_id "${MODEL_DEV:-default}")"
+  m_qa="$(sanitize_model_id "${MODEL_QA:-default}")"
+  {
+    printf "# RELAY Role-to-Provider & Model Configuration\n"
+    printf 'ROLE_PO="%s"\n' "${ROLE_PO:-agy}"
+    printf 'MODEL_PO="%s"\n' "${m_po:-default}"
+    printf 'ROLE_ARCH="%s"\n' "${ROLE_ARCH:-agy}"
+    printf 'MODEL_ARCH="%s"\n' "${m_arch:-default}"
+    printf 'ROLE_DEV="%s"\n' "${ROLE_DEV:-agy}"
+    printf 'MODEL_DEV="%s"\n' "${m_dev:-default}"
+    printf 'ROLE_QA="%s"\n' "${ROLE_QA:-codex}"
+    printf 'MODEL_QA="%s"\n' "${m_qa:-default}"
+  } > "$tmp_file" && mv -f "$tmp_file" "$target_file"
 }
 
 set_cli_default_model() {
   local provider="$1"
-  local new_model="$2"
+  local new_model
+  new_model="$(sanitize_model_id "${2:-}")"
   [ -z "$new_model" ] || [ "$new_model" = "default" ] && return 0
 
   case "$provider" in
     claude)
       mkdir -p "$HOME/.claude"
-      if [ -f "$HOME/.claude/settings.json" ] && grep -q '"model"' "$HOME/.claude/settings.json" 2>/dev/null; then
-        sed -i.bak -E "s/\"model\"[[:space:]]*:[[:space:]]*\"[^\"]+\"/\"model\": \"$new_model\"/" "$HOME/.claude/settings.json" && rm -f "$HOME/.claude/settings.json.bak"
-      elif [ ! -f "$HOME/.claude/settings.json" ]; then
-        printf '{\n  "model": "%s"\n}\n' "$new_model" > "$HOME/.claude/settings.json"
+      if command -v python3 >/dev/null 2>&1; then
+        python3 - "$HOME/.claude/settings.json" "$new_model" <<'PYEOF'
+import json, os, sys
+path, model = sys.argv[1:3]
+data = {}
+if os.path.isfile(path):
+    try:
+        loaded = json.load(open(path, encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        pass
+data["model"] = model
+tmp = f"{path}.tmp.{os.getpid()}"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+PYEOF
       fi
       ;;
     codex)
       mkdir -p "$HOME/.codex"
-      if [ -f "$HOME/.codex/config.toml" ] && grep -Eq '^[[:space:]]*model[[:space:]]*=' "$HOME/.codex/config.toml" 2>/dev/null; then
-        sed -i.bak -E "s/^[[:space:]]*model[[:space:]]*=.*/model = \"$new_model\"/" "$HOME/.codex/config.toml" && rm -f "$HOME/.codex/config.toml.bak"
-      else
-        printf 'model = "%s"\n' "$new_model" >> "$HOME/.codex/config.toml"
+      if command -v python3 >/dev/null 2>&1; then
+        python3 - "$HOME/.codex/config.toml" "$new_model" <<'PYEOF'
+import os, re, sys
+path, model = sys.argv[1:3]
+lines = []
+found = False
+if os.path.isfile(path):
+    try:
+        for line in open(path, encoding="utf-8", errors="ignore"):
+            if not found and re.match(r"^\s*model\s*=", line):
+                lines.append(f'model = "{model}"\n')
+                found = True
+            else:
+                lines.append(line)
+    except Exception:
+        pass
+if not found:
+    lines.append(f'model = "{model}"\n')
+tmp = f"{path}.tmp.{os.getpid()}"
+with open(tmp, "w", encoding="utf-8") as f:
+    f.writelines(lines)
+os.replace(tmp, path)
+PYEOF
       fi
       ;;
   esac
@@ -724,16 +805,58 @@ if has_claude:
 else:
     vals["CLAUDE_FETCH_OK"] = "-"
 
-with open(cache_file, "w", encoding="utf-8") as f:
+tmp_cache = f"{cache_file}.tmp.{os.getpid()}"
+with open(tmp_cache, "w", encoding="utf-8") as f:
     for k, v in vals.items():
-        f.write(f'{k}="{v}"\n')
+        clean_v = str(v).replace("\n", " ").replace("\r", " ").replace('"', "").replace("$", "").replace("`", "")
+        f.write(f'{k}="{clean_v}"\n')
+os.replace(tmp_cache, cache_file)
 PYEOF
   fi
 
   if [ -f "$QUOTA_CACHE_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$QUOTA_CACHE_FILE"
+    safe_load_quota_cache "$QUOTA_CACHE_FILE"
   fi
+}
+
+safe_load_quota_cache() {
+  local cache_file="$1"
+  [ -r "$cache_file" ] || return 0
+  local line k v
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [ -z "$line" ] || [[ "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || continue
+    k="${line%%=*}"
+    v="${line#*=}"
+    k="$(printf "%s" "$k" | tr -d '[:space:]')"
+    v="${v#"${v%%[![:space:]]*}"}"
+    v="${v%"${v##*[![:space:]]}"}"
+    if [[ "$v" == \"*\" ]] && [[ "$v" == *\" ]]; then
+      v="${v:1:${#v}-2}"
+    elif [[ "$v" == \'*\' ]] && [[ "$v" == *\' ]]; then
+      v="${v:1:${#v}-2}"
+    fi
+    if [[ "$v" == *'$('* ]] || [[ "$v" == *'`'* ]] || [[ "$v" == *';'* ]] || [[ "$v" == *'|'* ]] || [[ "$v" == *'&'* ]] || [[ "$v" == *'>'* ]] || [[ "$v" == *'<'* ]]; then
+      continue
+    fi
+    case "$k" in
+      QUOTA_UPDATED_EPOCH|QUOTA_UPDATED_AT|\
+      AGY_GEMINI_5H_REM|AGY_GEMINI_5H_RESET|AGY_GEMINI_5H_RESET_EPOCH|\
+      AGY_GEMINI_7D_REM|AGY_GEMINI_7D_RESET|AGY_GEMINI_7D_RESET_EPOCH|\
+      AGY_CLAUDE_5H_REM|AGY_CLAUDE_5H_RESET|AGY_CLAUDE_5H_RESET_EPOCH|\
+      AGY_CLAUDE_7D_REM|AGY_CLAUDE_7D_RESET|AGY_CLAUDE_7D_RESET_EPOCH|\
+      AGY_FETCH_OK|AGY_FETCHED_AT|\
+      CODEX_PLAN|CODEX_5H_REM|CODEX_5H_RESET|CODEX_5H_RESET_EPOCH|\
+      CODEX_7D_REM|CODEX_7D_RESET|CODEX_7D_RESET_EPOCH|\
+      CODEX_FETCH_OK|CODEX_FETCHED_AT|\
+      CLAUDE_PLAN|CLAUDE_5H_REM|CLAUDE_5H_RESET|CLAUDE_5H_RESET_EPOCH|\
+      CLAUDE_7D_REM|CLAUDE_7D_RESET|CLAUDE_7D_RESET_EPOCH|\
+      CLAUDE_FETCH_OK|CLAUDE_FETCHED_AT)
+        printf -v "$k" '%s' "$v"
+        ;;
+    esac
+  done < "$cache_file"
 }
 
 update_codex_quota_fast() {
@@ -772,14 +895,23 @@ load_quota_cache() {
   local now_ts
   now_ts="$(date +%s)"
   if [ -f "$QUOTA_CACHE_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$QUOTA_CACHE_FILE"
+    safe_load_quota_cache "$QUOTA_CACHE_FILE"
   fi
   update_codex_quota_fast
   local age=$((now_ts - ${QUOTA_UPDATED_EPOCH:-0}))
   if [ "${SUBCOMMAND:-hub}" != "quota" ] && [ "${SUBCOMMAND:-hub}" != "usage" ]; then
     if [ ! -f "$QUOTA_CACHE_FILE" ] || [ "$age" -gt 180 ] || [ "${AGY_GEMINI_5H_REM:--}" = "-" ]; then
-      ( refresh_quota_cache --quiet </dev/null >/dev/null 2>&1 & )
+      local q_lock="$GLOBAL_DIR/relay-quota.lock"
+      local lock_pid=""
+      [ -f "$q_lock" ] && lock_pid="$(cat "$q_lock" 2>/dev/null || true)"
+      if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then
+        (
+          mkdir -p "$GLOBAL_DIR" 2>/dev/null || true
+          echo "$$" > "$q_lock" 2>/dev/null || true
+          refresh_quota_cache --quiet </dev/null >/dev/null 2>&1 || true
+          rm -f "$q_lock" 2>/dev/null || true
+        ) >/dev/null 2>&1 &
+      fi
     fi
   fi
 }
@@ -1716,8 +1848,10 @@ else:
         r.pop(field, None)
     if not r:
         ov.pop(role_key, None)
-with open(path, "w", encoding="utf-8") as f:
+tmp = f"{path}.tmp.{os.getpid()}"
+with open(tmp, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+os.replace(tmp, path)
 PYEOF
 }
 
@@ -1811,8 +1945,10 @@ for idx, a in enumerate(agents):
         break
 if not replaced:
     agents.append(entry)
-with open(path, "w", encoding="utf-8") as f:
+tmp = f"{path}.tmp.{os.getpid()}"
+with open(tmp, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+os.replace(tmp, path)
 PYEOF
 }
 
@@ -1821,15 +1957,17 @@ delete_custom_agent() {
   local slug="$2"
   [ -f "$conf_file" ] && command -v python3 >/dev/null 2>&1 || return 0
   python3 - "$conf_file" "$slug" <<'PYEOF'
-import json, sys
+import json, os, sys
 path, slug = sys.argv[1:3]
 slug = slug.lstrip("@").strip().lower()
 try:
     data = json.load(open(path, encoding="utf-8"))
     agents = [a for a in (data.get("agents") or []) if not (isinstance(a, dict) and str(a.get("slug", "")).lower() == slug)]
     data["agents"] = agents
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 except Exception:
     pass
 PYEOF
@@ -2443,6 +2581,7 @@ choose_model_interactive() {
   elif [ "$MENU_RESULT" = "c" ] || [ "$MENU_RESULT" = "C" ]; then
     local custom_m=""
     read -r -p "ระบุชื่อ Model ของ ${provider} (หรือพิมพ์ b เพื่อย้อนกลับ): " custom_m || true
+    custom_m="$(sanitize_model_id "$custom_m")"
     if is_back_input "$custom_m" || [ -z "$custom_m" ]; then
       MODEL_CHOICE_CANCELLED=1
       SELECTED_MODEL="$fallback_m"
@@ -3334,6 +3473,41 @@ worktree_dirty_files() {
   git -C "$wt" status --porcelain -- . ':(exclude).relay' 2>/dev/null || true
 }
 
+# ตรวจหาไฟล์ความลับหรือฐานข้อมูลที่ห้ามบันทึกตามกฎความปลอดภัยข้อที่ 1 (.env*, *.key, *.pem, *.sqlite*, *.db)
+# ครอบคลุมทั้งไฟล์ที่ยังไม่ commit ใน Worktree และไฟล์ที่ถูก commit ไปแล้วในกิ่งของงานนี้เทียบกับกิ่งหลัก
+worktree_forbidden_files() {
+  local wt="$1"
+  local base_ref="${2:-}"
+  local branch_ref="${3:-}"
+  local candidates=""
+  if [ -d "$wt" ]; then
+    candidates="$(git -C "$wt" status --porcelain -- . ':(exclude).relay' 2>/dev/null | sed -E 's/^.. //' | sed -E 's/.* -> //' || true)"
+  fi
+  if [ -n "$base_ref" ] && [ -n "$branch_ref" ]; then
+    local committed=""
+    committed="$(git -C "$PROJECT_DIR" diff --name-only --diff-filter=ACMR "${base_ref}..${branch_ref}" -- . ':(exclude).relay' 2>/dev/null || true)"
+    if [ -n "$committed" ]; then
+      candidates="${candidates}"$'\n'"${committed}"
+    fi
+  fi
+  [ -n "$candidates" ] || return 0
+  local path base_name
+  while IFS= read -r path; do
+    path="${path#\"}"
+    path="${path%\"}"
+    [ -z "$path" ] && continue
+    base_name="$(basename "$path")"
+    case "$base_name" in
+      .env.example|.env.sample|.env.template|.env.schema)
+        continue
+        ;;
+      .env|.env.*|*.key|*.pem|*.sqlite|*.sqlite3|*.db)
+        printf "%s\n" "$path"
+        ;;
+    esac
+  done <<< "$candidates" | sort -u
+}
+
 # สร้างหรือใช้ Worktree ของใบงานปัจจุบัน แล้วตั้งค่า TASK_WORK_DIR
 # คืนค่า 1 พร้อมแสดงข้อความ error จริงเมื่อสร้างไม่ได้ (ห้ามทำงานต่อบนกิ่งหลักแบบเงียบๆ)
 TASK_WORK_DIR=""
@@ -3352,6 +3526,8 @@ prepare_task_worktree() {
   mkdir -p "$RELAY_DIR/worktrees"
 
   if [ ! -d "$worktree_dir" ]; then
+    # ล้างทะเบียน Worktree ค้างที่โฟลเดอร์ถูกลบไปแล้ว เพื่อไม่ให้ติด error 'already checked out'
+    git -C "$PROJECT_DIR" worktree prune >/dev/null 2>&1 || true
     printf "%sกำลังสร้าง Git Worktree แยกอิสระที่ .relay/worktrees/%s (กิ่ง %s)...%s\n" "$C_ACCENT" "$ACTIVE_TASK" "$branch_name" "$C_RESET"
     local wt_err=""
     if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$branch_name"; then
@@ -3449,7 +3625,13 @@ create_new_task() {
   [ -z "$slug" ] && slug="task-$(( $(ls -1 "$RELAY_DIR/tasks" 2>/dev/null | wc -l) + 1 ))"
   local today
   today="$(date +%Y%m%d)"
-  CURRENT_TASK="${today}-${slug}"
+  local candidate="${today}-${slug}"
+  local suffix=2
+  while [ -e "$RELAY_DIR/tasks/$candidate" ] || [ -e "$RELAY_DIR/archive/$candidate" ]; do
+    candidate="${today}-${slug}-${suffix}"
+    suffix=$((suffix + 1))
+  done
+  CURRENT_TASK="$candidate"
   mkdir -p "$RELAY_DIR/tasks/$CURRENT_TASK/screenshots"
   ACTIVE_TASK="$CURRENT_TASK"
   LAST_COMPLETED_PHASE=0
@@ -3530,15 +3712,15 @@ run_fast_track_dev() {
       create_new_task "${fast_goal:-fast-fix}" || return 0
     fi
     if [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
-      cat <<EOF > "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md"
-# ใบงานด่วน (Fast Track SPEC — $ACTIVE_TASK)
-- **โหมด:** Fast Track (ข้าม @po และ @arch เพื่อลด Ceremony Overhead สำหรับงานขนาดเล็ก)
-- **เป้าหมาย:** ${fast_goal:-แก้ไขโค้ดและชุดทดสอบตามคำสั่งของผู้ใช้}
-
-## เกณฑ์การตรวจรับงาน (Acceptance Criteria)
-- [ ] แก้ไขโค้ดตรงตามเป้าหมายและรันชุดทดสอบที่เกี่ยวข้องผ่าน
-- [ ] บันทึก git commit ลงในกิ่ง feat/$ACTIVE_TASK เรียบร้อย
-EOF
+      local safe_goal="${fast_goal:-แก้ไขโค้ดและชุดทดสอบตามคำสั่งของผู้ใช้}"
+      {
+        printf "# ใบงานด่วน (Fast Track SPEC — %s)\n" "$ACTIVE_TASK"
+        printf -- "- **โหมด:** Fast Track (ข้าม @po และ @arch เพื่อลด Ceremony Overhead สำหรับงานขนาดเล็ก)\n"
+        printf -- "- **เป้าหมาย:** %s\n\n" "$safe_goal"
+        printf "## เกณฑ์การตรวจรับงาน (Acceptance Criteria)\n"
+        printf -- "- [ ] แก้ไขโค้ดตรงตามเป้าหมายและรันชุดทดสอบที่เกี่ยวข้องผ่าน\n"
+        printf -- "- [ ] บันทึก git commit ลงในกิ่ง feat/%s เรียบร้อย\n" "$ACTIVE_TASK"
+      } > "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md"
     fi
   fi
 
@@ -4178,11 +4360,13 @@ for c in candidates:
             break
 
 pending = (pending + added)[-30:]
-with open(pending_file, "w", encoding="utf-8") as f:
+tmp_pending = f"{pending_file}.tmp.{os.getpid()}"
+with open(tmp_pending, "w", encoding="utf-8") as f:
     f.write("# กฎที่รออนุมัติ (RELAY Self-Learning — ยังไม่ถูกส่งให้ AI)\n\n")
     f.write("> กด [l] ในหน้าจอ relay เพื่ออนุมัติหรือปฏิเสธ — เฉพาะกฎที่อนุมัติแล้วจะย้ายไปที่ SKILL.md\n\n")
     for p in pending:
         f.write(f"- {p}\n")
+os.replace(tmp_pending, pending_file)
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 if not os.path.exists(ledger_file):
@@ -4250,7 +4434,8 @@ rules = rules[-25:]
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 if rules:
-    with open(skill_file, "w", encoding="utf-8") as f:
+    tmp_skill = f"{skill_file}.tmp.{os.getpid()}"
+    with open(tmp_skill, "w", encoding="utf-8") as f:
         f.write(f"""---
 name: project-learned-{project_name.lower()}
 description: กฎและข้อควรระวังเฉพาะโครงการ {project_name} ที่ผ่านการอนุมัติจากผู้ใช้แล้ว (RELAY Self-Learning)
@@ -4265,10 +4450,13 @@ description: กฎและข้อควรระวังเฉพาะโ�
 """)
         for r in rules:
             f.write(f"- {r}\n")
+    os.replace(tmp_skill, skill_file)
 
-with open(pending_file, "w", encoding="utf-8") as f:
+tmp_pending = f"{pending_file}.tmp.{os.getpid()}"
+with open(tmp_pending, "w", encoding="utf-8") as f:
     f.write("# กฎที่รออนุมัติ (RELAY Self-Learning — ยังไม่ถูกส่งให้ AI)\n\n")
     f.write("> กด [l] ในหน้าจอ relay เพื่ออนุมัติหรือปฏิเสธ — เฉพาะกฎที่อนุมัติแล้วจะย้ายไปที่ SKILL.md\n\n")
+os.replace(tmp_pending, pending_file)
 
 with open(ledger_file, "a", encoding="utf-8") as f:
     f.write(f"## [{now_str}] ผลการทบทวนโดยผู้ใช้ (อนุมัติ {len(approved)} • ปฏิเสธ {len(rejected)})\n")
@@ -4362,16 +4550,87 @@ run_learned_skills_menu() {
 run_with_timeout() {
   local secs="$1"
   shift
+  if command -v python3 >/dev/null 2>&1 && ! declare -F "${1:-}" >/dev/null 2>&1; then
+    local py_rc=0
+    python3 - "$secs" "$@" <<'PYEOF' || py_rc=$?
+import os, signal, subprocess, sys, time
+
+secs = float(sys.argv[1])
+cmd = sys.argv[2:]
+interrupted = False
+
+p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, start_new_session=True)
+
+def _on_sig(signum, frame):
+    global interrupted
+    interrupted = True
+    try:
+        os.kill(p.pid, signal.SIGTERM)
+    except Exception:
+        pass
+    try:
+        os.killpg(p.pid, signal.SIGTERM)
+    except Exception:
+        pass
+
+signal.signal(signal.SIGINT, _on_sig)
+signal.signal(signal.SIGTERM, _on_sig)
+
+try:
+    rc = p.wait(timeout=secs)
+    try:
+        os.killpg(p.pid, signal.SIGTERM)
+    except Exception:
+        pass
+    sys.exit(130 if interrupted else rc)
+except subprocess.TimeoutExpired:
+    try:
+        os.kill(p.pid, signal.SIGTERM)
+    except Exception:
+        pass
+    time.sleep(0.2)
+    try:
+        os.killpg(p.pid, signal.SIGTERM)
+    except Exception:
+        pass
+    try:
+        p.wait(timeout=4.8)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except Exception:
+            pass
+        try:
+            p.wait(timeout=1.0)
+        except Exception:
+            pass
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except Exception:
+        pass
+    sys.exit(130 if interrupted else 124)
+PYEOF
+    return "$py_rc"
+  fi
+
   local marker
   marker="$(mktemp -t relay-timeout.XXXXXX 2>/dev/null || echo "/tmp/relay-timeout.$$")"
   rm -f "$marker" "$marker.int"
 
   "$@" </dev/null &
   local pid=$!
-  ( sleep "$secs"; touch "$marker"; kill -TERM "$pid" 2>/dev/null; sleep 5; kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  (
+    sleep "$secs"
+    touch "$marker"
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 5
+    pkill -KILL -P "$pid" 2>/dev/null || true
+    kill -KILL "$pid" 2>/dev/null || true
+  ) >/dev/null 2>&1 &
   local wd=$!
 
-  trap 'touch "$marker.int"; kill -TERM "$pid" 2>/dev/null' INT TERM
+  trap 'touch "$marker.int"; pkill -TERM -P "$pid" 2>/dev/null || true; kill -TERM "$pid" 2>/dev/null || true' INT TERM
   local rc=0
   wait "$pid" || rc=$?
   if kill -0 "$pid" 2>/dev/null; then
@@ -4806,7 +5065,10 @@ if H in txt:
     txt = before + H + "\n" + "\n".join(items) + "\n" + rest
 else:
     txt = txt.rstrip("\n") + "\n\n" + H + "\n" + entry + "\n"
-open(ps, "w", encoding="utf-8").write(txt)
+tmp_ps = f"{ps}.tmp.{os.getpid()}"
+with open(tmp_ps, "w", encoding="utf-8") as f:
+    f.write(txt)
+os.replace(tmp_ps, ps)
 PYEOF
 }
 
@@ -4861,10 +5123,12 @@ run_phase_5_merge() {
   qa_res="$(qa_verdict "$task_dir")"
   qa_v="${qa_res%%|*}"
 
-  local dirty dirty_count ahead
+  local dirty dirty_count ahead forbidden_files forbidden_count
   dirty="$(worktree_dirty_files "$worktree_dir")"
   dirty_count="$(printf "%s" "$dirty" | grep -c . || true)"
   ahead="$(git -C "$PROJECT_DIR" rev-list --count "${base}..${branch_name}" 2>/dev/null || echo 0)"
+  forbidden_files="$(worktree_forbidden_files "$worktree_dir" "$base" "$branch_name")"
+  forbidden_count="$(printf "%s" "$forbidden_files" | grep -c . || true)"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -4882,6 +5146,10 @@ run_phase_5_merge() {
   else
     printf "%s│%s  • ไฟล์ค้างใน Worktree : ไม่มี\n" "$C_ACCENT" "$C_RESET"
   fi
+  if [ "$forbidden_count" -gt 0 ]; then
+    printf "%s│%s  • %s[Security Block] พบไฟล์ความลับ/ฐานข้อมูลต้องห้าม (%s ไฟล์):%s\n" "$C_ACCENT" "$C_RESET" "$C_ERR" "$forbidden_count" "$C_RESET"
+    printf "%s\n" "$forbidden_files" | head -n 8 | sed "s/^/${C_ACCENT}│${C_RESET}      • /"
+  fi
   local merge_telem
   merge_telem="$(get_task_telemetry_summary_inline "$task")"
   if [ -n "$merge_telem" ]; then
@@ -4891,6 +5159,12 @@ run_phase_5_merge() {
     printf "%s│%s  %s▲ กิ่งปลายทางไม่ใช่ main/master — ระบบจะถามยืนยันอีกครั้ง%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET"
   fi
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+
+  if [ "$forbidden_count" -gt 0 ]; then
+    printf "\n%s✖ ไม่อนุญาตให้ commit หรือผสานกิ่ง %s เนื่องจากพบไฟล์ความลับหรือฐานข้อมูลต้องห้าม (.env*, *.key, *.pem, *.sqlite*, *.db)%s\n" "$C_ERR" "$branch_name" "$C_RESET"
+    printf "%s  กรุณาลบไฟล์ดังกล่าวออกจาก Worktree / กิ่ง หรือเพิ่มเข้า .gitignore ก่อนดำเนินการขั้นตอนที่ 5%s\n" "$C_MUTED" "$C_RESET"
+    return 1
+  fi
 
   local items=()
   if [ "$dirty_count" -gt 0 ]; then
@@ -4908,7 +5182,7 @@ run_phase_5_merge() {
   case "$MENU_RESULT" in
     c|C)
       local commit_out=""
-      if ! commit_out="$( { git -C "$worktree_dir" add -A -- . ':(exclude).relay' && git -C "$worktree_dir" commit -m "feat(${task}): งานจาก @dev (RELAY auto-commit ก่อนผสาน)"; } 2>&1 )"; then
+      if ! commit_out="$( { git -C "$worktree_dir" add -A -- . ':(exclude).relay' ':(exclude).env' ':(exclude).env.*' ':(exclude)**/.env' ':(exclude)**/.env.*' ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db' && git -C "$worktree_dir" commit -m "feat(${task}): งานจาก @dev (RELAY auto-commit ก่อนผสาน)"; } 2>&1 )"; then
         printf "\n%s✖ commit ใน Worktree ไม่สำเร็จ — ยังไม่มีการผสานหรือลบใดๆ:%s\n%s\n" "$C_ERR" "$C_RESET" "$(printf "%s" "$commit_out" | tail -n 8)"
         return 1
       fi
@@ -5035,6 +5309,11 @@ run_skills_menu() {
       ;;
   esac
 }
+
+# รองรับการ source เฉพาะฟังก์ชันสำหรับชุดทดสอบอัตโนมัติโดยไม่เข้า Interactive Loop
+if [ "${RELAY_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 # ─── 14. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
 SUBCOMMAND="${1:-hub}"
