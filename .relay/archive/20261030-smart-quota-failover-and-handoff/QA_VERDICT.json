@@ -1,0 +1,14 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh",
+    "bash tests/test_quota_failover_and_handoff.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh",
+    "bash tests/test_token_telemetry.sh",
+    "bash tests/test_phase5_merge.sh",
+    "bash tests/test_auto_loop.sh",
+    "bash tests/test_quota_display.sh"
+  ],
+  "summary": "All 87 automated assertions across 6 test suites passed (17/17 for Smart Quota Failover, 1-Click Switcher, Mid-Step Recovery, and 0-Token Worktree Handoff Context)."
+}
