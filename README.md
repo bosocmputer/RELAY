@@ -144,66 +144,43 @@ cd RELAY
 - **รองรับการย้อนกลับทุกเมนู (`[b] ย้อนกลับ` และปุ่ม `ESC`):** ทุกเมนูย่อย หน้าเลือกค่าย AI หน้าเลือกโมเดล และทุกช่องรับข้อความรองรับการกด `b` หรือ `ESC` เพื่อย้อนกลับไปยังหน้าก่อนหน้าโดยไม่เสียค่าที่ตั้งไว้เดิม
 
 ### 4.2 การเปิดหน้าจอควบคุมกลาง (`relay`)
-เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางแบบ **Guided 3-Stage Progressive UX** จะแสดงผลดังนี้:
+เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางแบบ **Hermes-Style Split-Header Card** คู่กับ **Braille Apple Logo** และระบบนำทาง **Guided 3-Stage Progressive UX** จะแสดงผลดังนี้:
 
 ```text
- ██╗      ██████╗  ███████╗ ██╗       █████╗  ██╗   ██╗
- ╚██╗     ██╔══██╗ ██╔════╝ ██║      ██╔══██╗ ╚██╗ ██╔╝
-  ╚██╗    ██████╔╝ █████╗   ██║      ███████║  ╚████╔╝ 
-  ██╔╝    ██╔══██╗ ██╔══╝   ██║      ██╔══██║   ╚██╔╝  
- ██╔╝     ██║  ██║ ███████╗ ███████╗ ██║  ██║    ██║   
- ╚═╝      ╚═╝  ╚═╝ ╚══════╝ ╚══════╝ ╚═╝  ╚═╝    ╚═╝   RELAY v1.0 • Multi-Agent Handoff Hub
-╭────────────────────────────────────────────────────────────────────────
-│ ลำดับงาน : ✓ ขั้นที่ 1: ตั้งค่า & Login AI (4/4) ──➔ ✓ ขั้นที่ 2: เตรียมโปรเจกต์ ──➔ ● [ขั้นที่ 3: เริ่มสั่งงาน]
-├────────────────────────────────────────────────────────────────────────
-│ ตำแหน่ง (Roles)       ค่าย      โมเดลปัจจุบัน (จาก CLI)     สถานะความพร้อมจริง
-│ 1. @po (Product)    ➔ agy    │ gemini-4-argon-high    │ ● พร้อมใช้
-│ 2. @arch & @pm      ➔ agy    │ claude-opus-5-5-high   │ ● พร้อมใช้
-│ 3. @dev (Worktree)  ➔ agy    │ claude-sonnet-5-5-high │ ● พร้อมใช้
-│ 4. @qa & @sec       ➔ codex  │ gpt-6.1-terra          │ ● พร้อมใช้
-├────────────────────────────────────────────────────────────────────────
-│ สถานะ CLI: ● agy (Google AI Ultra) (Login แล้ว)   ● codex (Login แล้ว)   ● claude (Login แล้ว)
-├────────────────────────────────────────────────────────────────────────
-│ โควต้าคงเหลือ (Real-Time Quota)  อัปเดต 18:35:44 (6 นาทีที่แล้ว) • กด [u] ดึงข้อมูลสด
-│  ค่าย / กระเป๋า      5 ชั่วโมง                     รายสัปดาห์
-│  agy (Gemini)      ● 81%  อีก 1ชม.27น. (20:27)  ▲ 49%  อีก 1วัน 13ชม. (31 ต.ค. 08:10)
-│  agy (Claude/GPT)  ● 100% ↻ รีเซ็ตแล้ว            ● 99%  อีก 6วัน 15ชม. (05 พ.ย. 09:53)
-│  codex (Plus)      ● 70%  อีก 1ชม.18น. (19:59)  ● 61%  อีก 5วัน 19ชม. (04 พ.ย. 14:17)
-│  claude (Pro)      ● 100% ยังไม่เริ่มนับรอบ         ▲ 13%  อีก 20ชม.19น. (30 ต.ค. 15:00)
-├────────────────────────────────────────────────────────────────────────
-│ โครงการ : my-project [main]  •  ● PROJECT_STATE.md พร้อมใช้งาน  •  ● Learned Skills (5 กฎ) ▲ 2 รออนุมัติ [l]
-│ ใบงาน   : 20261029-user-auth  ➔  [✓] SPEC.md   [✓] ARCH & PLAN   [ ] QA_REPORT.md
-│ ตัวชี้วัด : ⏱ 2น.14วิ (2 ขั้น) • 🪙 38,420 tokens (In:36,900 [Cache:21,400] • Out:1,520) • กด [v] ดูรายขั้น/โมเดล
-├────────────────────────────────────────────────────────────────────────
-│ 👉 ขั้นตอนถัดไปที่แนะนำ (ขั้นที่ 3/3): มี PLAN.md แล้ว — กด [3] ให้ @dev เขียนโค้ด หรือกด [a] ⚡ รัน Auto-Relay Loop (3⇄4) อัตโนมัติ
-╰────────────────────────────────────────────────────────────────────────
+╭─────────────────────── RELAY v1.0.0 ──────────────────────────────────────────────────────╮
+│                 ⣠⣤⡀          Agent Roles                                                  │
+│                ⣼⣿⣿⡇          po: agy / gemini-4-argon-high ●                              │
+│            ⢀⣠⣤⣄⠈⠛⠁⣠⣤⣄⡀       arch: agy / claude-opus-5-5-high ●                           │
+│           ⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷       dev: agy / claude-sonnet-5-5-high ● (worktree)               │
+│          ▐⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿▌       qa: codex / gpt-6.1-terra ●                                  │
+│          ▐⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿▌                                                                    │
+│           ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿       Quota (5h / 7d) · updated 2m ago · [u]                       │
+│           ⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿       agy (Gemini): ● 81% (1ชม.27น.) · ▲ 49% (1วัน 13ชม.)          │
+│            ⠈⠻⣿⣿⡿⠋⠙⢿⣿⣿⠟⠁      agy (Claude/GPT): ● 100% (↻ รีเซ็ตแล้ว) · ● 99% (6วัน 15ชม.)  │
+│                              codex (Plus): ● 70% (1ชม.18น.) · ● 61% (5วัน 19ชม.)          │
+│         my-project · main    claude (Pro): ● 100% (ยังไม่เริ่มนับรอบ) · ▲ 13% (20ชม.19น.)     │
+│        ~/dev/my-project                                                                   │
+│      Task: 20261030-user-auth Pipeline & Telemetry                                         │
+│                              task: 20261030-user-auth · [✓] SPEC  [✓] PLAN  [ ] QA        │
+│                              telemetry: 2m 14s (2 steps) · 38,420 tokens · [v]            │
+│                              rules: 5 active · ▲ 2 pending [l]                            │
+│                              next: มี PLAN.md แล้ว — กด [3] ให้ @dev เขียนโค้ด หรือกด [a]     │
+╰───────────────────────────────────────────────────────────────────────────────────────────╯
 
-ขั้นที่ 3/3: เลือกขั้นตอนการทำงานสำหรับโปรเจกต์ 'my-project'
-ใช้ปุ่มลูกศร ↑/↓ เลื่อนเลือก • กด Enter ยืนยัน • หรือกดคีย์ลัด [...] ได้ทันที
-    [1] ขั้นตอนที่ 1 (@po)       — วิเคราะห์ความต้องการและสร้าง SPEC.md (agy/gemini-4-argon-high)
-    [2] ขั้นตอนที่ 2 (@arch/@pm) — สร้าง ARCH.md & PLAN.md (agy/claude-opus-5-5-high)
-  ❯ [3] ★ [ขั้นตอนถัดไป] ขั้นตอนที่ 3 (@dev) — แยก Git Worktree และเขียนโค้ด (agy/claude-sonnet-5-5-high)
-    [4] ขั้นตอนที่ 4 (@qa/@sec)  — รันเทสต์ + ตรวจความปลอดภัย + QA_REPORT.md (codex/gpt-6.1-terra)
-    [5] ขั้นตอนที่ 5 (Merge)     — ตรวจ commit + ผสานโค้ดเข้า main + สกัดบทเรียน + เก็บเข้า .relay/archive/
-    [a] ⚡ รัน Auto-Relay Loop: ขั้นที่ 2 ➔ 3 ⇄ 4 อัตโนมัติพร้อมเบรกโควต้า 20% (/loop)
-    [x] ⚡ โหมดด่วน Fast Track: ข้าม @po/@arch ➔ ส่ง @dev ทำใน Worktree ทันที (สำหรับงานเล็ก/แก้บั๊ก) (/fast)
-    [v] 📊 ดูตัวชี้วัดความเร็ว + Token ที่ใช้จริง รายขั้นตอนและรายโมเดล (/stats)
-    [l] 🧠 จัดการและสกัดบทเรียนสะสมเฉพาะโปรเจกต์ (Self-Learning Skills) (/learn)
-    [n] สร้างใบงานใหม่ (New Task) (/new)
-    [f] สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)
-    [u] เช็กและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)
-    [c] ตั้งค่าค่าย AI & เปลี่ยน Model ประจำตำแหน่ง (/model)
-    [g] จัดการบทบาท Agent, คำสั่ง Prompt, ทักษะ และเพิ่มตำแหน่งใหม่ (/agents)
-    [t] ทดสอบความพร้อม Agent ทั้ง 4 ตำแหน่ง (/test)
-    [d] จัดการการเชื่อมต่อ CLI & Login บัญชี (/connect)
-    [s] จัดการและอัปเดตชุดทักษะ Skills (/skills)
-    [q] ออกจากโปรแกรม (/quit)
-╭────────────────────────────────────────────────────────────────────────
-│ ❯ คำสั่งที่เลือก: [3] (↑/↓ เลื่อน • Enter ยืนยัน • กด / พิมพ์ /model, /connect, /test)
-╰────────────────────────────────────────────────────────────────────────
+Workflow (↑/↓ select, Enter run, or press key)
+    1  @po            Define Spec (SPEC.md) · agy/gemini-4-argon-high
+    2  @arch & @pm    Design Architecture & Plan (ARCH.md, PLAN.md) · agy/claude-opus-5-5-high
+  ❯ 3  @dev           Implement in Git Worktree + Tests · agy/claude-sonnet-5-5-high
+    4  @qa & @sec     Verify Tests, Security & QA_REPORT.md · codex/gpt-6.1-terra
+    5  Merge          Merge Branch to main & Archive Task
+    a  Auto Loop      Run Steps 2 → 3 ⇄ 4 Automatically (/loop)
+    x  Fast Track     Quick Spec + Step 3 → 4 in Git Worktree (/fast)
+
+Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task  [f] Project  [s] Skills  [t] Test  [d] Connect  [q] Quit
+  › Select [3] (or type /command):
 ```
 
-### 4.3 การตรวจสอบโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (`[u]` / `/quota` หรือ `relay quota`)
+### 4.3 การตรวจสอบโควต้าคงเหลือของทุกค่าย (`[u]` / `/quota` หรือ `relay quota`)
 หน้าจอหลักแสดง **ตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์)** พร้อม **นับถอยหลังเวลารีเซ็ต** เช่น `อีก 1ชม.27น. (20:27)` หรือ `อีก 1วัน 13ชม. (31 ต.ค. 08:10)` โดยคำนวณใหม่ทุกครั้งที่วาดหน้าจอ จึงเดินถูกเสมอแม้ข้อมูลจะดึงมาสักพักแล้ว
 - **เลยเวลารีเซ็ตแล้ว:** แสดง `↻ รีเซ็ตแล้ว` และนับโควต้ารอบนั้นเป็น 100% (ทั้งบนหน้าจอและใน Quota Circuit Breaker ของ Auto-Loop)
 - **อายุข้อมูล:** หัวตารางบอกว่าดึงข้อมูลมาเมื่อไร (`6 นาทีที่แล้ว`) และขึ้นสีเตือนเมื่อเก่ากว่า 15 นาที
@@ -234,19 +211,22 @@ cd RELAY
 > [!NOTE]
 > ในโหมดอัตโนมัติ RELAY เรียกแต่ละค่ายด้วยโหมดสิทธิ์ที่ไม่ต้องถามโต้ตอบแต่ไม่ข้ามระบบสิทธิ์ทั้งหมด: `agy --mode auto`, `claude --permission-mode acceptEdits` และ `codex exec --full-auto` — หากใช้ `claude` เป็น `@dev` และต้องการให้รันคำสั่งทดสอบได้เอง ให้เพิ่ม allow rule ของคำสั่งนั้นใน `.claude/settings.json`
 
-### 4.5 ขั้นตอนที่ 5: ผสานโค้ดอย่างปลอดภัย (`[5]` / `relay 5`)
-ก่อนผสาน ระบบจะแสดงจำนวน commit ใหม่, ไฟล์ที่ยังไม่ commit ใน Worktree และผลตรวจรับล่าสุด แล้วทำงานตามลำดับนี้ **โดยไม่ลบอะไรจนกว่าจะผสานสำเร็จ**:
+### 4.5 ขั้นตอนที่ 5: ผสานโค้ดอย่างปลอดภัยพร้อมด่านตรวจไฟล์ความลับ (`[5]` / `relay 5`)
+ก่อนผสาน ระบบจะแสดงจำนวน commit ใหม่, ไฟล์ที่ยังไม่ commit ใน Worktree, การตรวจหาไฟล์ความลับต้องห้าม และผลตรวจรับล่าสุด แล้วทำงานตามลำดับนี้ **โดยไม่ลบอะไรจนกว่าจะผสานสำเร็จ**:
+- **ด่านตรวจไฟล์ความลับและฐานข้อมูลต้องห้าม (`worktree_forbidden_files`):** หากพบไฟล์ `.env`, `.env.*` (ยกเว้นไฟล์ตัวอย่าง `.env.example`/`.env.sample`/`.env.template`), `*.key`, `*.pem`, `*.sqlite*`, หรือ `*.db` ทั้งในไฟล์ค้างหรือใน commit ของกิ่งงาน ระบบจะ **บล็อกการ commit และผสานทันที** จนกว่าจะลบหรือเพิ่มเข้า `.gitignore`
 - ผลตรวจรับยังไม่เป็น `PASS` ➔ ขอยืนยันเพิ่มอีกชั้น (ค่าเริ่มต้นคือยกเลิก)
-- มีไฟล์ค้างใน Worktree ➔ เสนอ commit อัตโนมัติ (ไม่รวมโฟลเดอร์ `.relay/`) ก่อนผสาน
+- มีไฟล์ค้างใน Worktree ➔ เสนอ commit อัตโนมัติ (ไม่รวมโฟลเดอร์ `.relay/` และไม่รวมไฟล์ความลับต้องห้าม) ก่อนผสาน
 - กิ่งไม่มีโค้ดใหม่ ➔ ไม่ลบ Worktree หรือกิ่ง
 - ผสานด้วย `git merge --no-ff`; ถ้าเกิด conflict ➔ ยกเลิกการผสาน (`git merge --abort`) และเก็บ Worktree กับใบงานไว้ครบ
 - ผสานสำเร็จ ➔ บันทึกใบงานลงหัวข้อ "ประวัติใบงานที่ผสานแล้ว" ใน `PROJECT_STATE.md` ➔ เสนอบทเรียนเข้าคิวรออนุมัติ ➔ ลบ Worktree และกิ่ง ➔ ย้ายใบงานเข้า `.relay/archive/`
 - `PROJECT_STATE.md` ของกิ่งหลักถูกแก้เฉพาะขั้นตอนนี้เท่านั้น (`@qa` และ agent ใน Worktree อ่านได้แต่ห้ามแก้)
 
-### 4.6 ระบบสกัดบทเรียนและสร้างทักษะเฉพาะโปรเจกต์อัตโนมัติ (`Self-Learning Project Skills` — `[l]` / `/learn` หรือ `relay learn`)
-ได้รับแรงบันดาลใจจากแนวคิด `Loop Engineering` และ `tigerless-labs/autoharness` เพื่อให้ตัวแทน AI ในโปรเจกต์ของคุณฉลาดขึ้นเรื่อยๆ จากการทำงานจริงโดยไม่ทำผิดซ้ำ:
-- เมื่อคุณกด **`[5] Merge & Archive`** เพื่อปิดใบงาน (หรือกด **`l`** ➔ ข้อ 2) ระบบจะสกัดกฎที่เสนอจาก `SPEC.md`, `ARCH.md`, และ `QA_REPORT.md` ลงคิว **`.relay/skills/project-learned/PENDING.md`**
-- **กฎในคิวยังไม่ถูกส่งให้ AI** จนกว่าคุณจะกด **`l`** ➔ ข้อ 1 แล้วเลือกอนุมัติรายข้อ (`1,3`), ทั้งหมด (`a`) หรือปฏิเสธทั้งหมด (`x`) — ป้องกันกฎผิดที่ AI เขียนเองถูกส่งต่อไปทุกใบงาน (แดชบอร์ดจะขึ้น `▲ N รออนุมัติ [l]` เมื่อมีกฎในคิว)
+### 4.6 ระบบทักษะแบบเปิดเผยข้อมูลเป็นขั้นบันได (`Progressive Disclosure Skill Index`), `Scripts as Tools` และการสกัดบทเรียนจากหลักฐานจริง (`[l]` / `/learn` หรือ `relay learn`)
+ผสานแนวคิด **Anthropic Agent Skills (`Progressive Disclosure` + `Scripts as Tools`)** เข้ากับ **Hermes (`Evidence-Based Skill Distillation`)** และ `tigerless-labs/autoharness`:
+- **Progressive Disclosure Skill Index:** แทนที่จะโหลดเนื้อหา `SKILL.md` ทั้งหมดเข้า Context Window ล่วงหน้า ระบบจะสแกนเฉพาะหัว YAML Frontmatter (`name`, `description` ย่อ ≤80 ตัวอักษร), พาธจริงของ `SKILL.md` และรายชื่อสคริปต์ในโฟลเดอร์ `scripts/` ทั้งจาก `.relay/skills/` และ `~/.agents/skills/` เพื่อแนบเป็นสารบัญสั้นๆ ให้ Agent ทุกค่าย (`agy`, `claude`, `codex`) เห็นตรงกันและเปิดอ่าน `SKILL.md` เฉพาะใบที่ตรงกับงานจริง
+- **Scripts as Tools (`relay-verify-task` & `scripts/`):** สนับสนุนการบรรจุสคริปต์ตรวจสอบซ้ำไว้ในโฟลเดอร์ `scripts/` ของแต่ละ Skill พร้อมติดตั้งสคริปต์มาตรฐาน **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh`) ให้ `@dev` และ `@qa` สั่งตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม และตรวจโครงสร้าง `QA_VERDICT.json` ได้ด้วยคำสั่งเดียวแบบ 0-Token
+- **Evidence-Based Skill Distillation (`[l]` / `/learn`):** เมื่อคุณกด **`[5] Merge & Archive`** (หรือกด **`l`** ➔ ข้อ 2) ระบบจะสกัดทั้งกฎสถาปัตยกรรมและ **บทเรียนจากหลักฐานการแก้บั๊กข้ามรอบ** (`QA_VERDICT.before-round-*.json` ที่รอบแรกได้ `FAIL` แล้วแก้จน `PASS` ในรอบถัดไป) เข้าคิว **`.relay/skills/project-learned/PENDING.md`**
+- **กฎในคิวยังไม่ถูกส่งให้ AI** จนกว่าคุณจะกด **`l`** ➔ ข้อ 1 แล้วเลือกอนุมัติรายข้อ (`1,3`), ทั้งหมด (`a`) หรือปฏิเสธทั้งหมด (`x`) — ป้องกันกฎผิดที่ AI เขียนเองถูกส่งต่อไปทุกใบงาน (แดชบอร์ดจะขึ้น `▲ N pending [l]` เมื่อมีกฎในคิว)
 - กฎที่อนุมัติแล้วย้ายเข้า **`.relay/skills/project-learned/SKILL.md`** (ไม่ซ้ำ, ไม่เกิน **25 ข้อ**) และทุกการเสนอ/อนุมัติ/ปฏิเสธถูกบันทึกแบบ Append-Only ใน **`.relay/skills/project-learned/LEDGER.md`** — แก้หรือลบกฎใน `SKILL.md` ด้วยมือได้ตลอด
 - **ขอบเขตความปลอดภัย (Self-Authored Only Guardrail):** เขียนเฉพาะภายใน `.relay/skills/project-learned/` ของโปรเจกต์นั้นๆ เท่านั้น ไม่แตะต้องไฟล์กฎส่วนกลาง `~/.agents/GLOBAL_AGENTS.md` และแนบเข้าสู่ Prompt ของ `@arch`, `@dev`, และ `@qa` ในใบงานถัดไปอัตโนมัติครบทุกค่าย (`agy`, `codex`, `claude`)
 
@@ -303,10 +283,11 @@ cd RELAY
 
 | การดำเนินการ | คำสั่งผ่านหน้าจอ `relay` | คำสั่งตรงบน macOS / Linux | คำสั่งตรงบน Windows (`PowerShell`) |
 | :--- | :--- | :--- | :--- |
-| **1. ติดตั้งชุดทักษะมาตรฐาน** | กด `s` ➔ เลือก `2` | `./relay-skills.sh install` | `.\relay-skills.ps1 install` |
+| **1. ติดตั้งชุดทักษะมาตรฐาน + Script Tools** | กด `s` ➔ เลือก `2` | `./relay-skills.sh install` | `.\relay-skills.ps1 install` |
 | **2. อัปเดตทักษะเป็นเวอร์ชันล่าสุด** | กด `s` ➔ เลือก `3` | `./relay-skills.sh update` | `.\relay-skills.ps1 update` |
-| **3. เพิ่มทักษะใหม่เข้าสู่คลัง** | กด `s` ➔ เลือก `4` | `./relay-skills.sh add <repo_url> [skill]` | `.\relay-skills.ps1 add <repo_url> [skill]` |
-| **4. แสดงรายการทักษะทั้งหมด** | กด `s` ➔ เลือก `1` | `./relay-skills.sh list` | `.\relay-skills.ps1 list` |
+| **3. เพิ่มทักษะใหม่จาก GitHub เข้าสู่คลัง** | กด `s` ➔ เลือก `4` | `./relay-skills.sh add <repo_url> [skill]` | `.\relay-skills.ps1 add <repo_url> [skill]` |
+| **4. สร้างทักษะเฉพาะทาง (`SKILL.md` + `scripts/`)** | กด `s` ➔ เลือก `5` | `./relay-skills.sh create <name> "[desc]"` | — |
+| **5. แสดงรายการทักษะทั้งหมด** | กด `s` ➔ เลือก `1` | `./relay-skills.sh list` | `.\relay-skills.ps1 list` |
 
 ---
 
@@ -345,4 +326,4 @@ cd RELAY
 - 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
 - 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
 - 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License
-- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 87 ข้อ): `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + 0-Token Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
+- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 9 ชุดทดสอบ 121/121 ข้อ): `bash tests/test_progressive_skills_and_tools.sh` (Progressive Skill Index + `relay-verify-task` Script-as-Tool + `relay-skills.sh create` + Evidence-Based Remediation Distillation), `bash tests/test_security_and_hardening.sh` (Safe Config/Cache Parser + Atomic Writes + Worktree Secret Guard + Process Group Timeout), `bash tests/test_hermes_cli_redesign.sh` (Hermes-Style Split-Header Card + Braille Apple Logo + 4-Level Color Hierarchy), `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + 0-Token Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)

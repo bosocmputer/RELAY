@@ -57,13 +57,19 @@
 
 ---
 
-## 4. การสร้างไฟล์ทักษะ (`SKILL.md`) เฉพาะสำหรับองค์กรของคุณเอง
+## 4. การสร้างทักษะเฉพาะทางพร้อมสคริปต์เครื่องมือ (`Progressive Disclosure` & `Scripts as Tools`)
 
-หากทีมหรือองค์กรของคุณมีมาตรฐานเฉพาะทาง (เช่น มาตรฐานการออกแบบ API ภายในบริษัท หรือข้อกำหนดด้านความปลอดภัยเฉพาะองค์กร) คุณสามารถสร้างทักษะขึ้นเองได้ตามขั้นตอนต่อไปนี้:
+ตามแนวคิด **Anthropic Agent Skills** ระบบ `RELAY` รองรับการเปิดเผยข้อมูลทักษะแบบขั้นบันได (**Progressive Disclosure**) โดยสแกนเฉพาะหัว YAML Frontmatter (`name` และ `description`) พร้อมพาธไฟล์ `SKILL.md` และรายการสคริปต์ในโฟลเดอร์ `scripts/` เพื่อแนบเป็นสารบัญสั้นๆ ให้ Agent ทุกค่าย (`agy`, `claude`, `codex`) เห็นตรงกันโดยไม่เปลือง Context Window
 
-1. สร้างโฟลเดอร์ใหม่ที่ `~/.agents/skills/<ชื่อทักษะของคุณ>/` (หรือ `%USERPROFILE%\.agents\skills\<ชื่อทักษะของคุณ>\` บน Windows)
-2. สร้างไฟล์ชื่อ `SKILL.md` ภายในโฟลเดอร์ดังกล่าว โดยแนะนำให้ควบคุมความยาวไม่เกิน 150 บรรทัดเพื่อประหยัดหน่วยความจำบริบท:
+คุณสามารถสร้างโครงสร้างทักษะมาตรฐาน (`SKILL.md` + โฟลเดอร์ `scripts/`) สำหรับโปรเจกต์ได้ด้วยคำสั่งเดียว:
 
+```bash
+# สร้างทักษะใหม่ใน .relay/skills/<skill-name>/ (หรือกด [s] -> เลือกข้อ 5 ในหน้าจอ relay)
+./relay-skills.sh create company-api-standard "มาตรฐานการออกแบบ REST API และการจัดการข้อผิดพลาดขององค์กร"
+```
+
+คำสั่งดังกล่าวจะสร้างโฟลเดอร์ `.relay/skills/company-api-standard/` ประกอบด้วย:
+1. **`SKILL.md`:** เอกสารขั้นตอนปฏิบัติงานพร้อม YAML Frontmatter (แนะนำความยาวไม่เกิน 150 บรรทัด):
 ```markdown
 ---
 name: company-api-standard
@@ -73,14 +79,15 @@ description: มาตรฐานการออกแบบ REST API และ
 # ข้อกำหนดการพัฒนา API ภายในองค์กร
 1. กำหนดรูปแบบ Endpoint เป็น `/api/v1/<resource>` เสมอ
 2. ข้อมูลตอบกลับ (Response) ต้องอยู่ในโครงสร้าง `{ success: boolean, data: any, error: string | null }`
-3. ต้องเขียนชุดทดสอบ (Unit Tests) ครอบคลุมกรณีข้อมูลไม่ถูกต้อง (`400 Bad Request`) และไม่มีสิทธิ์เข้าถึง (`401 Unauthorized`) ทุกครั้ง
+3. รันสคริปต์ตรวจสอบในโฟลเดอร์ `scripts/run-check.sh` ก่อนส่งมอบงานทุกครั้ง
 ```
-3. อ้างอิงชื่อทักษะ `company-api-standard` ในไฟล์ `~/.agents/GLOBAL_AGENTS.md` หรือกดปุ่ม **`[g]` (`relay agents`)** ในหน้าจอหลักของ `relay` เพื่อผูกทักษะดังกล่าวเข้ากับตำแหน่งหลัก (`@po`, `@arch`, `@dev`, `@qa`) หรือตำแหน่ง Agent ที่สร้างใหม่ได้โดยตรง
+2. **`scripts/run-check.sh` (`Scripts as Tools`):** สคริปต์ตรวจสอบอัตโนมัติที่ Agent สามารถสั่งรันซ้ำผ่าน Bash ได้ทันทีโดยไม่ต้องเขียนคำสั่งตรวจใหม่ด้วยมือทุกครั้ง
 
 ---
 
-## 5. รายการทักษะแม่แบบที่ติดตั้งมาพร้อมกับ `RELAY` (`templates/`)
-นอกจากทักษะภายนอกใน `skills-manifest.txt` แล้ว สคริปต์ติดตั้ง (`setup-mac.sh` / `relay-skills.sh`) จะติดตั้งทักษะแม่แบบของ `RELAY` ลงใน `~/.agents/skills/` ให้อัตโนมัติ ได้แก่:
+## 5. รายการทักษะแม่แบบและสคริปต์เครื่องมือที่ติดตั้งมาพร้อมกับ `RELAY` (`templates/`)
+นอกจากทักษะภายนอกใน `skills-manifest.txt` แล้ว สคริปต์ติดตั้ง (`setup-mac.sh` / `relay-skills.sh`) จะติดตั้งทักษะแม่แบบและสคริปต์เครื่องมือของ `RELAY` ลงใน `~/.agents/` ให้อัตโนมัติ ได้แก่:
+- **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh` ➔ `~/.agents/bin/relay-verify-task`): สคริปต์ตรวจสอบมาตรฐานแบบ 0-Token สำหรับตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม (`.env*`, `*.key`, `*.pem`, `*.sqlite*`, `*.db`) และตรวจ JSON Schema ของ `QA_VERDICT.json`
 - **`flutter-best-practices`** (`templates/flutter-best-practices-SKILL.md`): มาตรฐานการพัฒนาแอปพลิเคชันด้วย Flutter & Dart (Dart 3 Null Safety, Widget Performance, State Management และการรัน `flutter analyze` + `flutter test`)
 - **`playwright-qa`** (`templates/playwright-qa-SKILL.md`): ขั้นตอนการตรวจสอบคุณภาพ รันชุดทดสอบจริงของโปรเจกต์ การใช้ Playwright MCP เฉพาะเมื่อแก้ Web UI และการเขียน `QA_REPORT.md` คู่กับ `QA_VERDICT.json`
 - **`lucide-icons` และ `simple-icons`**: มาตรฐานการใช้ไอคอนและสัญลักษณ์แบรนด์โดยไม่วาด `<svg>` ดิบเอง

@@ -6,14 +6,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "⚙️ [RELAY Setup] กำลังติดตั้งการตั้งค่าส่วนกลาง (~/.agents/) สำหรับ macOS / Linux..."
 
 # 1. สร้างโฟลเดอร์ส่วนกลางสำหรับทุกค่าย CLI
-mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons ~/.agents/hooks ~/.agents/bin ~/.claude ~/.codex ~/.gemini
+mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons ~/.agents/skills/verification-before-completion/scripts ~/.agents/hooks ~/.agents/bin ~/.claude ~/.codex ~/.gemini
 
-# 2. คัดลอกไฟล์กฎกลาง สกิลตรวจรับงาน สกิล Flutter สกิลมาตรฐานไอคอน และสคริปต์ควบคุมศูนย์กลาง (relay, relay-init, relay-skills)
+# 2. คัดลอกไฟล์กฎกลาง สกิลตรวจรับงาน สกิล Flutter สกิลมาตรฐานไอคอน สคริปต์ตรวจสอบงาน และสคริปต์ควบคุมศูนย์กลาง (relay, relay-init, relay-skills, relay-verify-task)
 cp "$SCRIPT_DIR/templates/GLOBAL_AGENTS.md" ~/.agents/GLOBAL_AGENTS.md
 cp "$SCRIPT_DIR/templates/playwright-qa-SKILL.md" ~/.agents/skills/playwright-qa/SKILL.md
 cp "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ~/.agents/skills/flutter-best-practices/SKILL.md
 cp "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ~/.agents/skills/lucide-icons/SKILL.md
 cp "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ~/.agents/skills/simple-icons/SKILL.md
+if [ -f "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ]; then
+  cp "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ~/.agents/bin/relay-verify-task
+  cp "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ~/.agents/skills/verification-before-completion/scripts/verify-relay-task.sh
+  chmod +x ~/.agents/bin/relay-verify-task ~/.agents/skills/verification-before-completion/scripts/verify-relay-task.sh
+fi
 [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
 cp "$SCRIPT_DIR/templates/pre-commit" ~/.agents/hooks/pre-commit
 cp "$SCRIPT_DIR/skills-manifest.txt" ~/.agents/skills-manifest.txt
