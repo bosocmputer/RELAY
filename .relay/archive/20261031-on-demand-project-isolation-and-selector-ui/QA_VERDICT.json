@@ -1,0 +1,10 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "bash -n relay.sh",
+    "bash tests/test_hermes_cli_redesign.sh",
+    "bash templates/scripts/verify-relay-task.sh"
+  ],
+  "summary": "On-Demand & Per-Project isolation in GLOBAL_AGENTS.md, ● [RELAY] vs ○ [ทั่วไป] categorized project selector in relay.sh, and synced documentation passed all checks."
+}
