@@ -11,6 +11,9 @@ Write-Host "⚙️ [RELAY Windows Setup] กำลังติดตั้งก
 $BinDir = Join-Path $HOME ".agents\bin"
 $dirs = @(
     (Join-Path $HOME ".agents\skills\playwright-qa"),
+    (Join-Path $HOME ".agents\skills\flutter-best-practices"),
+    (Join-Path $HOME ".agents\skills\lucide-icons"),
+    (Join-Path $HOME ".agents\skills\simple-icons"),
     (Join-Path $HOME ".agents\hooks"),
     $BinDir,
     (Join-Path $HOME ".claude"),
@@ -26,6 +29,9 @@ $globalAgentsSrc = Join-Path $ScriptDir "templates\GLOBAL_AGENTS.md"
 $globalAgentsDst = Join-Path $HOME ".agents\GLOBAL_AGENTS.md"
 Copy-Item -Force $globalAgentsSrc $globalAgentsDst
 Copy-Item -Force (Join-Path $ScriptDir "templates\playwright-qa-SKILL.md") (Join-Path $HOME ".agents\skills\playwright-qa\SKILL.md")
+Copy-Item -Force (Join-Path $ScriptDir "templates\flutter-best-practices-SKILL.md") (Join-Path $HOME ".agents\skills\flutter-best-practices\SKILL.md")
+Copy-Item -Force (Join-Path $ScriptDir "templates\lucide-icons-SKILL.md") (Join-Path $HOME ".agents\skills\lucide-icons\SKILL.md")
+Copy-Item -Force (Join-Path $ScriptDir "templates\simple-icons-SKILL.md") (Join-Path $HOME ".agents\skills\simple-icons\SKILL.md")
 Copy-Item -Force (Join-Path $ScriptDir "templates\pre-commit") (Join-Path $HOME ".agents\hooks\pre-commit")
 Copy-Item -Force (Join-Path $ScriptDir "relay-init.ps1") (Join-Path $BinDir "relay-init.ps1")
 Copy-Item -Force (Join-Path $ScriptDir "relay.ps1") (Join-Path $BinDir "relay.ps1")

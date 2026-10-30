@@ -58,9 +58,20 @@ function Sync-ManifestSkills([string]$ModeLabel) {
         }
     }
 
-    $qaSkillDir = Join-Path $HOME ".agents\skills\playwright-qa"
-    New-Item -ItemType Directory -Force -Path $qaSkillDir | Out-Null
-    Copy-Item -Force (Join-Path $ScriptDir "templates\playwright-qa-SKILL.md") (Join-Path $qaSkillDir "SKILL.md")
+    $localSkills = @(
+        @{ Name = "playwright-qa"; File = "templates\playwright-qa-SKILL.md" },
+        @{ Name = "flutter-best-practices"; File = "templates\flutter-best-practices-SKILL.md" },
+        @{ Name = "lucide-icons"; File = "templates\lucide-icons-SKILL.md" },
+        @{ Name = "simple-icons"; File = "templates\simple-icons-SKILL.md" }
+    )
+    foreach ($ls in $localSkills) {
+        $skillDir = Join-Path $HOME ".agents\skills\$($ls.Name)"
+        New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
+        $srcFile = Join-Path $ScriptDir $ls.File
+        if (Test-Path $srcFile) {
+            Copy-Item -Force $srcFile (Join-Path $skillDir "SKILL.md")
+        }
+    }
 
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         Write-Host "🔌 ผูก Playwright MCP เข้ากับ Claude Code..." -ForegroundColor Cyan
