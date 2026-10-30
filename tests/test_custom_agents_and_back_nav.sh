@@ -88,6 +88,12 @@ else
   fail "รีเซ็ตตำแหน่งหลัก (@po) ไม่สำเร็จ"
 fi
 
+if printf "%s" "$(get_core_role_default_skills dev)" | grep -q "flutter-best-practices" && [ -f "$REPO_DIR/templates/flutter-best-practices-SKILL.md" ]; then
+  pass "ตำแหน่ง @dev มีทักษะมาตรฐาน flutter-best-practices และไฟล์แม่แบบพร้อมใช้งาน"
+else
+  fail "ไม่พบทักษะ flutter-best-practices ใน @dev"
+fi
+
 # 2. เพิ่ม Agent ตำแหน่งใหม่ (@ux และ @devops)
 upsert_custom_agent "$PROJECT_AGENTS_CONF" "@ux" "UX/UI Designer" "agy" "gemini-4-argon-high" "project" "impeccable lucide-icons" "ออกแบบโครงสร้างหน้าจอและลำดับการใช้งาน"
 upsert_custom_agent "$PROJECT_AGENTS_CONF" "devops" "DevOps & Cloud Engineer" "codex" "gpt-6.1-terra" "worktree" "systematic-debugging" "ดูแล Dockerfile และระบบ CI/CD"

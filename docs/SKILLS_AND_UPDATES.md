@@ -75,4 +75,12 @@ description: มาตรฐานการออกแบบ REST API และ
 2. ข้อมูลตอบกลับ (Response) ต้องอยู่ในโครงสร้าง `{ success: boolean, data: any, error: string | null }`
 3. ต้องเขียนชุดทดสอบ (Unit Tests) ครอบคลุมกรณีข้อมูลไม่ถูกต้อง (`400 Bad Request`) และไม่มีสิทธิ์เข้าถึง (`401 Unauthorized`) ทุกครั้ง
 ```
-3. อ้างอิงชื่อทักษะ `company-api-standard` ในไฟล์ `~/.agents/GLOBAL_AGENTS.md` หรือในไฟล์ `AGENTS.md` ประจำโครงการที่ต้องการใช้งาน
+3. อ้างอิงชื่อทักษะ `company-api-standard` ในไฟล์ `~/.agents/GLOBAL_AGENTS.md` หรือกดปุ่ม **`[g]` (`relay agents`)** ในหน้าจอหลักของ `relay` เพื่อผูกทักษะดังกล่าวเข้ากับตำแหน่งหลัก (`@po`, `@arch`, `@dev`, `@qa`) หรือตำแหน่ง Agent ที่สร้างใหม่ได้โดยตรง
+
+---
+
+## 5. รายการทักษะแม่แบบที่ติดตั้งมาพร้อมกับ `RELAY` (`templates/`)
+นอกจากทักษะภายนอกใน `skills-manifest.txt` แล้ว สคริปต์ติดตั้ง (`setup-mac.sh` / `relay-skills.sh`) จะติดตั้งทักษะแม่แบบของ `RELAY` ลงใน `~/.agents/skills/` ให้อัตโนมัติ ได้แก่:
+- **`flutter-best-practices`** (`templates/flutter-best-practices-SKILL.md`): มาตรฐานการพัฒนาแอปพลิเคชันด้วย Flutter & Dart (Dart 3 Null Safety, Widget Performance, State Management และการรัน `flutter analyze` + `flutter test`)
+- **`playwright-qa`** (`templates/playwright-qa-SKILL.md`): ขั้นตอนการตรวจสอบคุณภาพ รันชุดทดสอบจริงของโปรเจกต์ การใช้ Playwright MCP เฉพาะเมื่อแก้ Web UI และการเขียน `QA_REPORT.md` คู่กับ `QA_VERDICT.json`
+- **`lucide-icons` และ `simple-icons`**: มาตรฐานการใช้ไอคอนและสัญลักษณ์แบรนด์โดยไม่วาด `<svg>` ดิบเอง

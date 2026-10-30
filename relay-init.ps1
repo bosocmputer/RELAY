@@ -43,8 +43,8 @@ if (-not (Test-Path $StateFile)) {
 - (ระบุโฟลเดอร์หลักและหน้าที่ของแต่ละส่วน)
 
 ## 3. คำสั่งสำคัญสำหรับการตรวจสอบและทดสอบ (Build & Test Commands)
-- คำสั่งรันทดสอบ (Unit Tests): ``npm test`` หรือ ``pnpm test``
-- คำสั่งตรวจสอบโครงสร้างโค้ด (Build / Lint): ``npm run build``
+- โครงการ Web / Node.js: ``npm test`` (หรือ ``pnpm test``) และ ``npm run build``
+- โครงการ Flutter / Dart: ``flutter analyze`` และ ``flutter test``
 "@
     Set-Content -Path $StateFile -Value $StateContent -Encoding UTF8
     Write-Host "✅ สร้างไฟล์ตั้งต้น: $StateFile" -ForegroundColor Green
