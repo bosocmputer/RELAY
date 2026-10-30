@@ -1440,8 +1440,13 @@ print_dashboard_header() {
     if [ "$UX_STAGE" -eq 3 ]; then
       if [ -n "$ACTIVE_TASK" ]; then
         printf "%s│%s ใบงาน   : %s%s%s  ➔  %b   %b   %b\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$ACTIVE_TASK" "$C_RESET" "$spec_m" "$plan_m" "$qa_m"
+        local task_telem
+        task_telem="$(get_task_telemetry_summary_inline "$ACTIVE_TASK")"
+        if [ -n "$task_telem" ]; then
+          printf "%s│%s ตัวชี้วัด : %b\n" "$C_ACCENT" "$C_RESET" "$task_telem"
+        fi
       else
-        printf "%s│%s ใบงาน   : %s(ยังไม่มีใบงานที่กำลังดำเนินการ — กด Enter ที่ข้อ [1] เพื่อเริ่มใบงานแรก)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
+        printf "%s│%s ใบงาน   : %s(ยังไม่มีใบงานที่กำลังดำเนินการ — กด [1] เริ่มใบงานเต็มรูปแบบ หรือกด [x] โหมดด่วน Fast Track)%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$C_RESET"
       fi
     fi
   fi
@@ -2149,8 +2154,156 @@ run_agent_readiness_test() {
   esac
 }
 
-# ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน ──────────────────────────────────────
-# บันทึก 1 บรรทัดต่อการเรียก agent ลง .relay/tasks/<task>/RUN_LOG.jsonl
+# ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน & ระบบวัด Token จริงจาก Session Logs ───
+# ดึงตัวเลข Token จริง (total|input|cached|output|turns) จากไฟล์ .jsonl ของแต่ละ CLI ที่อัปเดตในช่วง [start_epoch, end_epoch]
+extract_step_token_usage() {
+  local provider="$1"
+  local start_ep="${2:-0}"
+  local end_ep="${3:-0}"
+  if [ -n "${RELAY_MOCK_TOKENS:-}" ]; then
+    echo "$RELAY_MOCK_TOKENS"
+    return 0
+  fi
+  command -v python3 >/dev/null 2>&1 || { echo "0|0|0|0|0"; return 0; }
+  python3 - "$provider" "$start_ep" "$end_ep" <<'PYEOF' 2>/dev/null || echo "0|0|0|0|0"
+import os, sys, glob, json, datetime
+
+prov = sys.argv[1]
+s_ep = float(sys.argv[2]) if sys.argv[2].isdigit() else 0.0
+e_ep = float(sys.argv[3]) if sys.argv[3].isdigit() else s_ep
+
+def parse_ep(ts):
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        return datetime.datetime.fromisoformat(ts).timestamp()
+    except Exception:
+        return None
+
+tot_in = tot_ca = tot_out = tot_all = turns = 0
+
+if prov == "agy":
+    roots = []
+    if os.environ.get("RELAY_AGY_BRAIN_DIR"):
+        roots.append(os.environ["RELAY_AGY_BRAIN_DIR"])
+    else:
+        roots.append(os.path.expanduser("~/.gemini/antigravity-cli/brain"))
+        roots.append(os.path.expanduser("~/.gemini/antigravity/brain"))
+    seen = {}
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        agy_files = set(
+            glob.glob(os.path.join(root, "*", ".system_generated", "logs", "transcript.jsonl"))
+            + glob.glob(os.path.join(root, "**", "transcript.jsonl"), recursive=True)
+        )
+        for f in agy_files:
+            try:
+                if os.path.getmtime(f) < s_ep - 5:
+                    continue
+                for line in open(f, encoding="utf-8", errors="ignore"):
+                    if "PLANNER_RESPONSE" not in line:
+                        continue
+                    d = json.loads(line)
+                    if d.get("type") != "PLANNER_RESPONSE":
+                        continue
+                    ep = parse_ep(d.get("created_at"))
+                    if ep is not None and (s_ep - 2 <= ep <= e_ep + 5):
+                        inp = int(d.get("input_tokens") or 0)
+                        ca = int(d.get("cache_read_tokens") or 0)
+                        out = int(d.get("output_tokens") or 0)
+                        if inp or ca or out:
+                            seen[(f, d.get("step_index"))] = (inp, ca, out)
+            except Exception:
+                continue
+    tot_in = sum(x[0] + x[1] for x in seen.values())
+    tot_ca = sum(x[1] for x in seen.values())
+    tot_out = sum(x[2] for x in seen.values())
+    tot_all = tot_in + tot_out
+    turns = len(seen)
+
+elif prov == "codex":
+    c_root = os.environ.get("RELAY_CODEX_SESSIONS_DIR") or os.path.expanduser("~/.codex/sessions")
+    if os.path.isdir(c_root):
+        for f in glob.glob(os.path.join(c_root, "**", "*.jsonl"), recursive=True):
+            try:
+                if os.path.getmtime(f) < s_ep - 5:
+                    continue
+                base = None
+                win = []
+                for line in open(f, encoding="utf-8", errors="ignore"):
+                    if "total_token_usage" not in line:
+                        continue
+                    d = json.loads(line)
+                    p = d.get("payload") or {}
+                    if p.get("type") != "token_count":
+                        continue
+                    tu = (p.get("info") or {}).get("total_token_usage")
+                    if not isinstance(tu, dict):
+                        continue
+                    ep = parse_ep(d.get("timestamp"))
+                    if ep is None:
+                        continue
+                    if ep < s_ep - 2:
+                        base = tu
+                    elif ep <= e_ep + 5:
+                        win.append(tu)
+                if win:
+                    last = win[-1]
+                    b = base or {}
+                    di = max(0, int(last.get("input_tokens") or 0) - int(b.get("input_tokens") or 0))
+                    dc = max(0, int(last.get("cached_input_tokens") or 0) - int(b.get("cached_input_tokens") or 0))
+                    do = max(0, int(last.get("output_tokens") or 0) - int(b.get("output_tokens") or 0))
+                    dt = max(0, int(last.get("total_tokens") or 0) - int(b.get("total_tokens") or 0))
+                    tot_in += di
+                    tot_ca += dc
+                    tot_out += do
+                    tot_all += dt if dt > 0 else (di + do)
+                    b_tot = int(b.get("total_tokens") or 0)
+                    turns += len({int(x.get("total_tokens") or 0) for x in win if int(x.get("total_tokens") or 0) > b_tot})
+            except Exception:
+                continue
+
+elif prov == "claude":
+    cl_root = os.environ.get("RELAY_CLAUDE_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects")
+    seen = {}
+    if os.path.isdir(cl_root):
+        for f in glob.glob(os.path.join(cl_root, "**", "*.jsonl"), recursive=True):
+            try:
+                if os.path.getmtime(f) < s_ep - 5:
+                    continue
+                for line in open(f, encoding="utf-8", errors="ignore"):
+                    if "\"usage\"" not in line:
+                        continue
+                    d = json.loads(line)
+                    m = d.get("message") or {}
+                    u = m.get("usage")
+                    if not isinstance(u, dict):
+                        continue
+                    ep = parse_ep(d.get("timestamp"))
+                    if ep is not None and (s_ep - 2 <= ep <= e_ep + 5):
+                        k = d.get("requestId") or m.get("id") or d.get("uuid")
+                        if k:
+                            seen[k] = u
+            except Exception:
+                continue
+    for u in seen.values():
+        fi = int(u.get("input_tokens") or 0) + int(u.get("cache_creation_input_tokens") or 0)
+        ca = int(u.get("cache_read_input_tokens") or 0)
+        out = int(u.get("output_tokens") or 0)
+        tot_in += fi + ca
+        tot_ca += ca
+        tot_out += out
+    tot_all = tot_in + tot_out
+    turns = len(seen)
+
+print(f"{tot_all}|{tot_in}|{tot_ca}|{tot_out}|{turns}")
+PYEOF
+}
+
+# บันทึก 1 บรรทัดต่อการเรียก agent ลง .relay/tasks/<task>/RUN_LOG.jsonl (พร้อมข้อมูล Token จริง)
 append_run_log() {
   local log_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
   [ -n "$ACTIVE_TASK" ] && [ -d "$log_dir" ] || return 0
@@ -2159,9 +2312,19 @@ append_run_log() {
 import json, sys, datetime
 f = sys.argv[1]
 mode, step, prov, model, rc, s, e, qb, qa = sys.argv[2:11]
+tok_raw = sys.argv[11] if len(sys.argv) > 11 else "0|0|0|0|0"
 def q(x):
     p = x.split("|")
     return {"5h": p[0] if p and p[0] else "-", "7d": p[1] if len(p) > 1 else "-"}
+def t(x):
+    p = (x.split("|") + ["0", "0", "0", "0", "0"])[:5]
+    return {
+        "total": int(p[0]) if p[0].isdigit() else 0,
+        "input": int(p[1]) if p[1].isdigit() else 0,
+        "cached": int(p[2]) if p[2].isdigit() else 0,
+        "output": int(p[3]) if p[3].isdigit() else 0,
+        "turns": int(p[4]) if p[4].isdigit() else 0,
+    }
 rec = {
     "started_at": datetime.datetime.fromtimestamp(int(s)).isoformat(timespec="seconds"),
     "duration_sec": int(e) - int(s),
@@ -2172,20 +2335,213 @@ rec = {
     "exit_code": int(rc) if rc.lstrip("-").isdigit() else rc,
     "quota_before": q(qb),
     "quota_after": q(qa),
+    "tokens": t(tok_raw),
 }
 with open(f, "a", encoding="utf-8") as fh:
     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 PYEOF
 }
 
-# สรุปเวลาและโควต้าที่ใช้ต่อขั้นของ Auto-Loop จาก RUN_LOG.jsonl
+# แสดงกล่องสรุปเวลา + Token จริง + โควต้าหลังจบแต่ละขั้นตอนทันที
+print_step_telemetry_box() {
+  local step_label="$1"
+  local prov="$2"
+  local model="$3"
+  local rc="$4"
+  local s_ep="$5"
+  local e_ep="$6"
+  local qb="$7"
+  local qa="$8"
+  local tok_raw="${9:-0|0|0|0|0}"
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$step_label" "$prov" "$model" "$rc" "$s_ep" "$e_ep" "$qb" "$qa" "$tok_raw" \
+    "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_MUTED" "$C_OK" "$C_WARN" <<'PYEOF' 2>/dev/null || true
+import sys
+
+step, prov, model, rc, s, e, qb, qa, tok_raw, ACC, RST, BOLD, MUTED, OK, WARN = sys.argv[1:16]
+dur_s = max(0, int(e) - int(s))
+m, sec = divmod(dur_s, 60)
+h, m = divmod(m, 60)
+dur_txt = f"{h}ชม.{m:02d}น.{sec:02d}วิ" if h else (f"{m}น.{sec:02d}วิ" if m else f"{sec}วิ")
+
+tp = (tok_raw.split("|") + ["0", "0", "0", "0", "0"])[:5]
+tot, inp, ca, out, turns = [int(x) if x.isdigit() else 0 for x in tp]
+
+def q_diff(b_str, a_str):
+    if b_str.isdigit() and a_str.isdigit():
+        d = int(a_str) - int(b_str)
+        return f"{b_str}% ➔ {a_str}% ({d:+d}%)"
+    return f"{b_str}% ➔ {a_str}%"
+
+qb5, qb7 = (qb.split("|") + ["-", "-"])[:2]
+qa5, qa7 = (qa.split("|") + ["-", "-"])[:2]
+
+if tot > 0:
+    tok_txt = f"{OK}รวม {tot:,} tokens{RST} (Input: {inp:,} [Cache: {ca:,}] • Output: {out:,} • {turns} รอบ)"
+else:
+    tok_txt = f"{MUTED}ไม่พบการบันทึก Token ในรอบนี้ (0 tokens){RST}"
+
+print("")
+print(f"{ACC}╭────────────────────────────────────────────────────────────────────────{RST}")
+print(f"{ACC}│{RST} 📊 {BOLD}ตัวชี้วัดการทำงานของขั้นตอนนี้ (Step Telemetry — วัดจากระบบจริง){RST}")
+print(f"{ACC}│{RST}  • ขั้นตอน / โมเดล : {BOLD}{step}{RST} ({prov} / {model})")
+print(f"{ACC}│{RST}  • เวลาที่ใช้จริง   : ⏱ {BOLD}{dur_txt}{RST} {MUTED}(exit {rc}){RST}")
+print(f"{ACC}│{RST}  • Token ที่ใช้จริง  : 🪙 {tok_txt}")
+print(f"{ACC}│{RST}  • โควต้าก่อน ➔ หลัง : 📉 5h: {q_diff(qb5, qa5)}  │  7d: {q_diff(qb7, qa7)}")
+print(f"{ACC}╰────────────────────────────────────────────────────────────────────────{RST}")
+PYEOF
+}
+
+# สรุปยอดรวมของใบงานปัจจุบันแบบ 1 บรรทัดสำหรับแสดงบนหน้า Dashboard หลัก
+get_task_telemetry_summary_inline() {
+  local task="${1:-$ACTIVE_TASK}"
+  [ -n "$task" ] || return 0
+  local f="$RELAY_DIR/tasks/$task/RUN_LOG.jsonl"
+  [ -f "$f" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$f" "$C_BOLD" "$C_MUTED" "$C_OK" "$C_RESET" <<'PYEOF' 2>/dev/null || true
+import json, sys
+
+f, BOLD, MUTED, OK, RST = sys.argv[1:6]
+dur = tot = inp = ca = out = steps = 0
+for line in open(f, encoding="utf-8", errors="ignore"):
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    steps += 1
+    dur += int(r.get("duration_sec") or 0)
+    t = r.get("tokens") or {}
+    tot += int(t.get("total") or 0)
+    inp += int(t.get("input") or 0)
+    ca += int(t.get("cached") or 0)
+    out += int(t.get("output") or 0)
+
+if steps == 0:
+    sys.exit(0)
+m, s = divmod(dur, 60)
+h, m = divmod(m, 60)
+dur_s = f"{h}ชม.{m:02d}น." if h else (f"{m}น.{s:02d}วิ" if m else f"{s}วิ")
+print(f"⏱ {BOLD}{dur_s}{RST} ({steps} ขั้น) • 🪙 {OK}{tot:,} tokens{RST} {MUTED}(In:{inp:,} [Cache:{ca:,}] • Out:{out:,}) • กด [v] ดูรายขั้น/โมเดล{RST}")
+PYEOF
+}
+
+# รายงานตารางเปรียบเทียบรายขั้นตอนและรายโมเดล (ใช้ใน [v] relay stats และหน้า [5] Merge)
+print_task_telemetry_report() {
+  local target_task="${1:-$ACTIVE_TASK}"
+  refresh_project_paths
+  if [ -z "$target_task" ]; then
+    get_active_task
+    target_task="$ACTIVE_TASK"
+  fi
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 - "$RELAY_DIR" "$target_task" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_MUTED" "$C_OK" "$C_WARN" <<'PYEOF' 2>/dev/null || true
+import os, sys, glob, json
+
+relay_dir, active_task, ACC, RST, BOLD, MUTED, OK, WARN = sys.argv[1:9]
+
+def fmt_dur(s):
+    s = max(0, int(s))
+    m, sec = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h}ชม.{m:02d}น." if h else (f"{m}น.{sec:02d}วิ" if m else f"{sec}วิ")
+
+def load_rows(path):
+    rows = []
+    if not os.path.isfile(path):
+        return rows
+    for line in open(path, encoding="utf-8", errors="ignore"):
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            continue
+    return rows
+
+task_log = os.path.join(relay_dir, "tasks", active_task, "RUN_LOG.jsonl") if active_task else ""
+if not os.path.isfile(task_log) and active_task:
+    task_log = os.path.join(relay_dir, "archive", active_task, "RUN_LOG.jsonl")
+
+task_rows = load_rows(task_log) if task_log else []
+
+all_logs = sorted(
+    glob.glob(os.path.join(relay_dir, "tasks", "*", "RUN_LOG.jsonl"))
+    + glob.glob(os.path.join(relay_dir, "archive", "*", "RUN_LOG.jsonl"))
+)
+all_rows = []
+for lf in all_logs:
+    tname = os.path.basename(os.path.dirname(lf))
+    for r in load_rows(lf):
+        r["_task"] = tname
+        all_rows.append(r)
+
+print("")
+print(f"{ACC}╭────────────────────────────────────────────────────────────────────────{RST}")
+print(f"{ACC}│{RST} 📊 {BOLD}รายงานตัวชี้วัดความเร็ว + Token + โควต้า (RELAY Telemetry & Cost Report){RST}")
+
+if task_rows:
+    print(f"{ACC}├────────────────────────────────────────────────────────────────────────{RST}")
+    print(f"{ACC}│{RST} {BOLD}1. แยกตามขั้นตอนของใบงานปัจจุบัน: {active_task}{RST}")
+    tot_dur = tot_tok = tot_in = tot_ca = tot_out = 0
+    for idx, r in enumerate(task_rows, 1):
+        d = int(r.get("duration_sec") or 0)
+        t = r.get("tokens") or {}
+        tk = int(t.get("total") or 0)
+        ti = int(t.get("input") or 0)
+        tc = int(t.get("cached") or 0)
+        to = int(t.get("output") or 0)
+        tot_dur += d
+        tot_tok += tk
+        tot_in += ti
+        tot_ca += tc
+        tot_out += to
+        qb = (r.get("quota_before") or {}).get("5h", "-")
+        qa = (r.get("quota_after") or {}).get("5h", "-")
+        print(f"{ACC}│{RST}  {idx}. {BOLD}{r.get('step','-')}{RST} [{r.get('provider','-')}/{r.get('model','-')}]")
+        print(f"{ACC}│{RST}     ⏱ {fmt_dur(d)} • 🪙 {OK}{tk:,} tokens{RST} {MUTED}(In:{ti:,} [Cache:{tc:,}] • Out:{to:,}) • 5h: {qb}%➔{qa}%{RST}")
+    print(f"{ACC}│{RST}  {BOLD}Σ รวมใบงานนี้:{RST} ⏱ {BOLD}{fmt_dur(tot_dur)}{RST} ({len(task_rows)} ขั้น) • 🪙 {OK}{tot_tok:,} tokens{RST} (In:{tot_in:,} [Cache:{tot_ca:,}] • Out:{tot_out:,})")
+else:
+    print(f"{ACC}├────────────────────────────────────────────────────────────────────────{RST}")
+    print(f"{ACC}│{RST} {MUTED}ยังไม่มีประวัติการรัน Agent ในใบงานปัจจุบัน ({active_task or 'ไม่มีใบงาน'}){RST}")
+
+if all_rows:
+    by_model = {}
+    for r in all_rows:
+        key = f"{r.get('provider','-')}/{r.get('model','-')}"
+        bm = by_model.setdefault(key, {"runs": 0, "dur": 0, "tot": 0, "inp": 0, "ca": 0, "out": 0})
+        bm["runs"] += 1
+        bm["dur"] += int(r.get("duration_sec") or 0)
+        t = r.get("tokens") or {}
+        bm["tot"] += int(t.get("total") or 0)
+        bm["inp"] += int(t.get("input") or 0)
+        bm["ca"] += int(t.get("cached") or 0)
+        bm["out"] += int(t.get("output") or 0)
+    print(f"{ACC}├────────────────────────────────────────────────────────────────────────{RST}")
+    print(f"{ACC}│{RST} {BOLD}2. สรุปเปรียบเทียบแยกตามค่ายและโมเดล (สะสมทุกใบงานในโปรเจกต์นี้){RST}")
+    for mk, st in sorted(by_model.items(), key=lambda x: (-x[1]["tot"], -x[1]["dur"])):
+        print(f"{ACC}│{RST}  • {BOLD}{mk}{RST} ({st['runs']} ครั้ง • ⏱ {fmt_dur(st['dur'])})")
+        print(f"{ACC}│{RST}    🪙 รวม {OK}{st['tot']:,} tokens{RST} {MUTED}(In:{st['inp']:,} [Cache:{st['ca']:,}] • Out:{st['out']:,}){RST}")
+
+print(f"{ACC}╰────────────────────────────────────────────────────────────────────────{RST}")
+PYEOF
+}
+
+run_task_stats_view() {
+  local mode="${1:-interactive}"
+  refresh_project_paths
+  get_active_task
+  print_task_telemetry_report "$ACTIVE_TASK"
+  if [ "$mode" != "--once" ] && [ -t 0 ]; then
+    read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true
+  fi
+}
+
+# สรุปเวลา Token และโควต้าที่ใช้ต่อขั้นของ Auto-Loop จาก RUN_LOG.jsonl
 print_loop_run_summary() {
   local since="$1"
   local f="$RELAY_DIR/tasks/$ACTIVE_TASK/RUN_LOG.jsonl"
   [ -f "$f" ] && command -v python3 >/dev/null 2>&1 || return 0
-  python3 - "$f" "$since" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_MUTED" <<'PYEOF' 2>/dev/null || true
+  python3 - "$f" "$since" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_MUTED" "$C_OK" <<'PYEOF' 2>/dev/null || true
 import json, sys, datetime
-f, since, ACC, RST, BOLD, MUTED = sys.argv[1:7]
+f, since, ACC, RST, BOLD, MUTED, OK = sys.argv[1:8]
 since = int(since)
 rows = []
 for line in open(f, encoding="utf-8"):
@@ -2205,12 +2561,15 @@ def dur(s):
     h, m = divmod(m, 60)
     return f"{h}ชม.{m:02d}น." if h else f"{m}น.{s:02d}วิ"
 print(f"{ACC}│{RST} {BOLD}สรุปการทำงานของลูป (จาก RUN_LOG.jsonl){RST}")
-total = 0
+total_s = 0
+total_tok = 0
 for r in rows:
-    total += r.get("duration_sec", 0)
+    total_s += r.get("duration_sec", 0)
+    tk = int((r.get("tokens") or {}).get("total") or 0)
+    total_tok += tk
     qb, qa = r.get("quota_before", {}), r.get("quota_after", {})
-    print(f"{ACC}│{RST}  • {r['step']} — {r['provider']}/{r['model']} • {dur(r.get('duration_sec', 0))} • exit {r.get('exit_code')} {MUTED}• 5h {qb.get('5h')}%→{qa.get('5h')}%{RST}")
-print(f"{ACC}│{RST}  {MUTED}รวม {len(rows)} ขั้น • ใช้เวลาทั้งหมด {dur(total)}{RST}")
+    print(f"{ACC}│{RST}  • {r['step']} — {r['provider']}/{r['model']} • ⏱ {dur(r.get('duration_sec', 0))} • 🪙 {tk:,} tok {MUTED}• 5h {qb.get('5h')}%→{qa.get('5h')}%{RST}")
+print(f"{ACC}│{RST}  {MUTED}รวม {len(rows)} ขั้น • ใช้เวลาทั้งหมด {dur(total_s)} • รวม {OK}{total_tok:,} tokens{RST}")
 PYEOF
 }
 
@@ -2237,7 +2596,7 @@ launch_provider_cli() {
     printf "%s" "$initial_prompt" | pbcopy
   fi
 
-  local run_start q_before
+  local run_start run_end q_before q_after tok_usage
   run_start="$(date +%s)"
   q_before="$(get_role_quota_pair "$provider" "$configured_model")"
   (
@@ -2248,8 +2607,12 @@ launch_provider_cli() {
       codex)  codex -m "$configured_model" "$initial_prompt" || true ;;
     esac
   )
+  run_end="$(date +%s)"
   refresh_quota_cache --quiet
-  append_run_log "interactive" "$role_name" "$provider" "$configured_model" "0" "$run_start" "$(date +%s)" "$q_before" "$(get_role_quota_pair "$provider" "$configured_model")"
+  q_after="$(get_role_quota_pair "$provider" "$configured_model")"
+  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end")"
+  append_run_log "interactive" "$role_name" "$provider" "$configured_model" "0" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
+  print_step_telemetry_box "$role_name" "$provider" "$configured_model" "0" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
 }
 
 ensure_git_repo_ready_for_worktree() {
@@ -2382,7 +2745,7 @@ run_phase_1_po() {
   if [ -z "$ACTIVE_TASK" ]; then
     create_new_task "${user_goal:-feature}"
   fi
-  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md"
+  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ให้กระชับตรงประเด็น (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด เพื่อประหยัด Token ของขั้นตอนถัดไป)"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po (Product Owner)" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=1
 }
@@ -2392,7 +2755,7 @@ run_phase_2_arch() {
   ensure_or_create_task
   local learned_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md"
+  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง)"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (Architect & Planner)" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
 }
@@ -2413,6 +2776,51 @@ run_phase_3_dev() {
   LAST_COMPLETED_PHASE=3
 }
 
+# โหมดด่วน Fast Track ([x] / /fast / relay fast): สำหรับงานเล็กหรือแก้บั๊ก ข้าม @po และ @arch ส่งตรงให้ @dev ใน Worktree ทันที
+run_fast_track_dev() {
+  require_all_roles_ready || return 0
+  refresh_project_paths
+  mkdir -p "$RELAY_DIR/tasks" "$RELAY_DIR/archive"
+  get_active_task
+
+  local fast_goal="${1:-}"
+  if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
+    if [ -z "$fast_goal" ]; then
+      echo ""
+      read -r -p "⚡ [Fast Track] ระบุงานย่อยหรือบั๊กที่ต้องการให้ @dev แก้ไขทันที: " fast_goal
+    fi
+    if [ -z "$ACTIVE_TASK" ]; then
+      create_new_task "${fast_goal:-fast-fix}"
+    fi
+    if [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
+      cat <<EOF > "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md"
+# ใบงานด่วน (Fast Track SPEC — $ACTIVE_TASK)
+- **โหมด:** Fast Track (ข้าม @po และ @arch เพื่อลด Ceremony Overhead สำหรับงานขนาดเล็ก)
+- **เป้าหมาย:** ${fast_goal:-แก้ไขโค้ดและชุดทดสอบตามคำสั่งของผู้ใช้}
+
+## เกณฑ์การตรวจรับงาน (Acceptance Criteria)
+- [ ] แก้ไขโค้ดตรงตามเป้าหมายและรันชุดทดสอบที่เกี่ยวข้องผ่าน
+- [ ] บันทึก git commit ลงในกิ่ง feat/$ACTIVE_TASK เรียบร้อย
+EOF
+    fi
+  fi
+
+  if ! prepare_task_worktree; then
+    [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
+    return 0
+  fi
+
+  local learned_note commit_note
+  learned_note="$(get_learned_skills_prompt_note)"
+  commit_note="$(get_dev_commit_note)"
+  local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
+  launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "โหมดด่วน Fast Track: @dev (ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
+  if [ -d "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" ]; then
+    sync_task_docs_from_worktree "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
+  fi
+  LAST_COMPLETED_PHASE=4
+}
+
 run_phase_4_qa() {
   require_all_roles_ready || return 0
   ensure_or_create_task
@@ -2422,7 +2830,7 @@ run_phase_4_qa() {
 
   local learned_note
   learned_note="$(get_learned_skills_prompt_note)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal (0 Token) 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. หากมีส่วนติดต่อผู้ใช้บนเว็บ ให้ใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (Quality Assurance & Security Auditor)" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
@@ -2767,13 +3175,17 @@ exec_provider_autonomous() {
       ;;
   esac
 
-  local rc=0 run_start q_before
+  local rc=0 run_start run_end q_before q_after tok_usage
   run_start="$(date +%s)"
   q_before="$(get_role_quota_pair "$provider" "$configured_model")"
   ( cd "$work_dir" && run_with_timeout "$step_timeout" "${cmd[@]}" ) || rc=$?
+  run_end="$(date +%s)"
 
   refresh_quota_cache --quiet
-  append_run_log "auto" "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$(date +%s)" "$q_before" "$(get_role_quota_pair "$provider" "$configured_model")"
+  q_after="$(get_role_quota_pair "$provider" "$configured_model")"
+  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end")"
+  append_run_log "auto" "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
+  print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
   return "$rc"
 }
 
@@ -3152,6 +3564,11 @@ run_phase_5_merge() {
   else
     printf "%s│%s  • ไฟล์ค้างใน Worktree : ไม่มี\n" "$C_ACCENT" "$C_RESET"
   fi
+  local merge_telem
+  merge_telem="$(get_task_telemetry_summary_inline "$task")"
+  if [ -n "$merge_telem" ]; then
+    printf "%s│%s  • ต้นทุนใบงาน  : %b\n" "$C_ACCENT" "$C_RESET" "$merge_telem"
+  fi
   if [ "$base" != "main" ] && [ "$base" != "master" ]; then
     printf "%s│%s  %s▲ กิ่งปลายทางไม่ใช่ main/master — ระบบจะถามยืนยันอีกครั้ง%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET"
   fi
@@ -3314,6 +3731,14 @@ case "$SUBCOMMAND" in
     run_learned_skills_menu "${2:-interactive}"
     exit 0
     ;;
+  stats|telemetry|tokens)
+    run_task_stats_view "${2:-interactive}"
+    exit 0
+    ;;
+  fast|quick|x)
+    run_fast_track_dev "${2:-}"
+    exit 0
+    ;;
   config|model)
     configure_roles_menu
     exit 0
@@ -3446,6 +3871,8 @@ while true; do
       "4|${p4_label}" \
       "5|${p5_label}" \
       "a|${pa_label}" \
+      "x|⚡ โหมดด่วน Fast Track: ข้าม @po/@arch ➔ ส่ง @dev ทำใน Worktree ทันที (สำหรับงานเล็ก/แก้บั๊ก) (/fast)" \
+      "v|📊 ดูตัวชี้วัดความเร็ว + Token ที่ใช้จริง รายขั้นตอนและรายโมเดล (/stats)" \
       "l|${pl_label}" \
       "n|สร้างใบงานใหม่ (New Task) (/new)" \
       "f|สลับไปโฟลเดอร์โปรเจกต์อื่น (Switch Project Folder)" \
@@ -3463,6 +3890,8 @@ while true; do
       4|/qa|/sec|/4)        run_phase_4_qa ;;
       5|/merge|/5)          run_phase_5_merge ;;
       a|A|/loop|/auto)      run_auto_relay_loop ;;
+      x|X|/fast|/quick)     run_fast_track_dev ;;
+      v|V|/stats|/tokens)   run_task_stats_view ;;
       l|L|/learn|/distill)  run_learned_skills_menu ;;
       n|N|/new)             create_new_task ;;
       f|F)                  select_or_create_project_dir ;;

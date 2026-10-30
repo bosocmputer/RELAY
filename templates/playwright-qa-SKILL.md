@@ -5,7 +5,7 @@ description: ตรวจสอบคุณภาพโค้ด รันชุ
 
 # ขั้นตอนการตรวจรับงานของ @qa (ขั้นตอนที่ 4)
 1. อ่านเกณฑ์การตรวจรับงาน (Acceptance Criteria) จากไฟล์ `.relay/tasks/<task-id>/SPEC.md`
-2. รันคำสั่ง build และ unit test ของโครงการผ่าน Terminal (ขั้นตอนนี้ประมวลผลด้วยสคริปต์ของระบบ 0 Token)
+2. รันคำสั่ง build และ unit test ของโครงการผ่าน Terminal (เน้นสรุปผลเฉพาะข้อที่ตกเพื่อประหยัดโควต้า Output)
 3. หากเป็นงานที่เกี่ยวข้องกับส่วนติดต่อผู้ใช้บนเว็บ (Web UI):
    - เรียกใช้เครื่องมือ **Playwright MCP** (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_take_screenshot`)
    - ทดสอบการใช้งานจริงตามเกณฑ์การตรวจรับงานทุกข้อ และตรวจสอบว่าไม่มีข้อผิดพลาดใน Console (Console Error)
