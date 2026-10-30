@@ -55,21 +55,17 @@ if (-not (Test-Path $StateFile)) {
 Write-Host "==================================================================" -ForegroundColor Cyan
 Write-Host "✅ เตรียมโครงสร้าง .relay/ เสร็จสมบูรณ์!" -ForegroundColor Green
 Write-Host "📂 ตำแหน่งโฟลเดอร์เอกสาร: $TargetAbs\.relay\"
-Write-Host "🟣 วิธีเปิดในโปรแกรม Obsidian:"
+Write-Host "🟣 (ทางเลือกเสริม — ไม่บังคับ) หากต้องการเปิดดูเอกสารใน Obsidian:"
 Write-Host "   เปิดแอป Obsidian -> คลิก 'Open folder as vault' -> เลือกโฟลเดอร์ '$TargetAbs\.relay'"
 Write-Host "==================================================================" -ForegroundColor Cyan
 
 if ($Mode -eq "existing") {
     Write-Host "📌 ขั้นตอนต่อไปสำหรับ [กรณีที่ 2: โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield Project)]:" -ForegroundColor Yellow
     Write-Host "   1. เปิด PowerShell ในโฟลเดอร์โครงการ: cd `"$TargetAbs`""
-    Write-Host "   2. เปิดใช้งาน CLI (claude หรือ gemini) แล้วคัดลอกคำสั่งด้านล่างไปสั่งงาน:"
-    Write-Host ""
-    Write-Host "   `"@arch ช่วยสแกนโครงสร้างโปรเจกต์เดิมทั้งหมด (Tech Stack, โครงสร้างโฟลเดอร์, Database Schema, API และคำสั่งรันเทสต์) แล้วสรุปเขียนทับลงในไฟล์ .relay/PROJECT_STATE.md ให้กระชับไม่เกิน 2 หน้า โดยยังไม่ต้องแก้ไขโค้ดใดๆ`"" -ForegroundColor Green
+    Write-Host "   2. พิมพ์คำสั่ง: relay"
 } else {
     Write-Host "📌 ขั้นตอนต่อไปสำหรับ [กรณีที่ 1: เริ่มต้นโครงการใหม่ (Greenfield Project)]:" -ForegroundColor Yellow
-    Write-Host "   1. เปิด PowerShell ในโฟลเดอร์โครงการ: cd `"$TargetAbs`" (และรัน git init -b main หากยังไม่ได้เริ่ม Git)"
-    Write-Host "   2. เปิดใช้งาน CLI (gemini หรือ claude) แล้วคัดลอกคำสั่งด้านล่างไปสั่งงาน:"
-    Write-Host ""
-    Write-Host "   `"@po ฉันกำลังจะสร้างโปรเจกต์ใหม่เกี่ยวกับ [ระบุรายละเอียดโปรเจกต์] ช่วยซักถามความต้องการทีละข้อจนชัดเจน แล้วสรุปเป็นไฟล์ .relay/tasks/$TodayCompact-initial-project/SPEC.md`"" -ForegroundColor Green
+    Write-Host "   1. เปิด PowerShell ในโฟลเดอร์โครงการ: cd `"$TargetAbs`""
+    Write-Host "   2. พิมพ์คำสั่ง: relay"
 }
 Write-Host "==================================================================" -ForegroundColor Cyan

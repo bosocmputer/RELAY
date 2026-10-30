@@ -34,10 +34,12 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ---
 
-## ส่วนที่ 2: การติดตั้งและการเชื่อมต่อโปรแกรม Obsidian (แนะนำอย่างยิ่ง)
+## ส่วนที่ 2: การเปิดดูเอกสารด้วยโปรแกรม Obsidian (ทางเลือกเสริม — ไม่บังคับติดตั้ง)
 
-### ทำไมจึงควรติดตั้งโปรแกรม Obsidian ร่วมกับระบบ `RELAY`?
-แม้ว่าไฟล์เอกสารในโฟลเดอร์ `.relay/` (`PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md`, `QA_REPORT.md`) จะเป็นไฟล์ Markdown มาตรฐานที่สามารถเปิดอ่านในโปรแกรมแก้ไขโค้ดทั่วไปได้ แต่ **การติดตั้งโปรแกรม Obsidian (ใช้งานฟรี 100%)** จะช่วยให้คุณมี **"หน้าต่างจัดการเอกสารสัญญาและฐานความรู้ของโครงการ"** แยกออกจากหน้าต่างเขียนโค้ด สามารถอ่านแผนภาพสถาปัตยกรรม (Mermaid Diagram) ตรวจเช็กรายการงาน (Checklist) และดูภาพหน้าจอผลการทดสอบใน `QA_REPORT.md` ได้อย่างชัดเจน
+### ทำไมจึงอาจใช้โปรแกรม Obsidian ร่วมกับระบบ `RELAY`? (ใช้หรือไม่ใช้ก็ได้)
+ไฟล์เอกสารทั้งหมดในโฟลเดอร์ `.relay/` (`PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md`, `QA_REPORT.md`) เป็นไฟล์ Markdown มาตรฐานที่ **ระบบ `RELAY` อ่านและเขียนลงดิสก์โดยตรงโดยไม่พึ่งพาโปรแกรมภายนอก** คุณสามารถเปิดอ่านใน VS Code, Cursor หรือโปรแกรมแก้ไขโค้ดใดก็ได้
+
+อย่างไรก็ตาม หากต้องการแยกหน้าต่างดูเอกสารออกจากหน้าต่างเขียนโค้ด การติดตั้งโปรแกรม **Obsidian (ทางเลือกเสริม ใช้งานฟรี 100%)** จะช่วยให้คุณอ่านแผนภาพสถาปัตยกรรม (Mermaid Diagram) ตรวจเช็กรายการงาน (Checklist) และดูภาพหน้าจอผลการทดสอบใน `QA_REPORT.md` แบบเรียลไทม์ได้อย่างสะดวก
 
 ### 2.1 วิธีติดตั้งโปรแกรม Obsidian (สำหรับผู้ที่ยังไม่มีโปรแกรม)
 - **วิธีที่ 1: ดาวน์โหลดจากเว็บไซต์ทางการ (รองรับทั้ง Windows และ macOS)**
@@ -69,16 +71,13 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 - **โควต้า Gemini Models:** `gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`, `gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.8-flash-low`
 - **โควต้า Claude & GPT Models:** `claude-opus-5-5-high`, `claude-opus-5-5-medium`, `claude-opus-5-5-low`, `claude-sonnet-5-5-high`, `claude-sonnet-5-5-medium`, `claude-sonnet-5-5-low`, `gpt-oss-120b-medium`
 
-### 3.2 การติดตั้ง CLI เสริม (`claude`, `codex`, `gemini`)
+### 3.2 การติดตั้ง CLI เสริม (`claude`, `codex`)
 ```bash
 # 1. Claude Code CLI (สำหรับผู้มีแพ็กเกจ Anthropic Claude Pro/Max)
 npm install -g @anthropic-ai/claude-code
 
 # 2. OpenAI Codex CLI (สำหรับผู้มีแพ็กเกจ ChatGPT Plus/Pro)
 npm install -g @openai/codex
-
-# 3. Google Gemini CLI (สำหรับผู้ใช้งานผ่าน GEMINI_API_KEY จาก Google AI Studio)
-npm install -g @google/gemini-cli
 ```
 
 **การยืนยันตัวตนครั้งแรก (Authentication):**

@@ -28,8 +28,8 @@
 | องค์ประกอบหลัก | เครื่องมือมาตรฐานที่ใช้ | หน้าที่ความรับผิดชอบในระบบ |
 | :--- | :--- | :--- |
 | **1. หน้าจอควบคุมกลางแบบนำทาง 3 ขั้นตอน** | คำสั่ง **`relay`** (`relay.sh` / `relay.ps1`) + ไฟล์ **`relay-roles.conf`** | ศูนย์กลางการสั่งงานในหน้าต่าง Terminal เดียว ตรวจสอบสถานะการ Login จริง ดึงรายชื่อโมเดลสดจาก CLI และนำทางผู้ใช้ตั้งแต่ตั้งค่า AI ➔ เตรียมโปรเจกต์ ➔ สั่งงาน 4 ขั้นตอน |
-| **2. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | **Obsidian** + โฟลเดอร์ **`.relay/`** | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`) และรายงานผลการตรวจสอบ (`QA_REPORT.md`) |
-| **3. บทบาทตัวแทน AI และสภาพแวดล้อมแยกอิสระ** | Official CLI (`agy`, `claude`, `codex`) + **`Git Worktree`** + ชุดทักษะ **`Skills`** | ดำเนินงานตามบทบาททั้ง 4 ขั้นตอน และแยกกิ่งการพัฒนา (`.relay/worktrees/<task-id>`) ออกจากกิ่งหลัก (`main`) อัตโนมัติในขั้นตอนที่ 3 |
+| **2. ระบบจัดการเอกสารส่งมอบงานและสถานะโครงการ** | โฟลเดอร์ **`.relay/`** (ไฟล์ `.md` & `.json` มาตรฐาน)<br/>*(เปิดอ่านด้วย VS Code / Editor ใดก็ได้ หรือใช้ **Obsidian** เป็นตัวเลือกเสริม)* | จัดเก็บเอกสารสถานะโครงการ (`PROJECT_STATE.md`), เอกสารกำหนดความต้องการ (`SPEC.md`), แผนงาน (`ARCH.md`, `PLAN.md`), รายงานผล (`QA_REPORT.md`, `QA_VERDICT.json`) และบันทึกการทำงาน (`RUN_LOG.jsonl`) โดยไม่ต้องพึ่งพาโปรแกรมภายนอก |
+| **3. บทบาทตัวแทน AI (สลับค่ายได้อิสระ) และสภาพแวดล้อมแยกอิสระ** | Official CLI (`agy`, `claude`, `codex`) + **`Git Worktree`** + ชุดทักษะ **`Skills`** | ผู้ใช้สามารถ **กด `[c]` เลือกสลับค่าย AI และโมเดลประจำตำแหน่ง (`@po`, `@arch`, `@dev`, `@qa`) ได้อิสระทุกบทบาท** ไม่ล็อกตายตัว พร้อมแยกกิ่งการพัฒนา (`.relay/worktrees/<task-id>`) ออกจากกิ่งหลัก (`main`) อัตโนมัติในขั้นตอนที่ 3 |
 | **4. ระบบตรวจสอบความปลอดภัยและการทดสอบส่วนติดต่อผู้ใช้** | **`Global Git Hook`** + **[`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp)** + **[`trailofbits/skills`](https://github.com/trailofbits/skills)** & **[`semgrep/skills`](https://github.com/semgrep/skills)** | ป้องกันการบันทึกไฟล์ความลับ (`.env`) ด้วย `pre-commit hook`, รันชุดทดสอบระบบด้วยสคริปต์ (**0 Token**), สแกนช่องโหว่ความปลอดภัย และใช้ **Playwright MCP** ทดสอบส่วนติดต่อผู้ใช้บนเบราว์เซอร์จริงโดยไม่เสียค่าใช้จ่าย API เพิ่มเติม |
 
 ```mermaid
@@ -67,29 +67,33 @@ flowchart TD
 
 > 📖 **สำหรับผู้เริ่มต้นที่ยังไม่มีเครื่องมือพื้นฐานในเครื่อง:** สามารถศึกษาขั้นตอนการติดตั้งแบบละเอียดทีละขั้นตอนได้ที่เอกสาร **[`docs/INSTALL_ZERO_TO_HERO.md`](./docs/INSTALL_ZERO_TO_HERO.md)**
 
-### ขั้นตอนที่ 3.1: ติดตั้งโปรแกรมพื้นฐาน (Git, Node.js, Obsidian) และ Official CLI
+### ขั้นตอนที่ 3.1: ติดตั้งโปรแกรมพื้นฐาน (Git, Node.js) และ Official CLI
 
 #### 🍎 สำหรับระบบปฏิบัติการ macOS (รันใน `Terminal`)
 ```bash
-# 1. ติดตั้ง Git, Node.js, pnpm และโปรแกรม Obsidian ผ่าน Homebrew
+# 1. ติดตั้ง Git, Node.js และ pnpm ผ่าน Homebrew
 brew install git node pnpm
-brew install --cask obsidian
 
 # 2. ติดตั้ง Official CLI ของผู้ให้บริการที่คุณใช้งาน
 #    (หากมี Google AI Ultra / Antigravity จะมี ~/.gemini/bin/agy พร้อมใช้งานอยู่แล้ว)
 npm install -g @anthropic-ai/claude-code @openai/codex
+
+# (ทางเลือกเสริม — ไม่บังคับ) ติดตั้ง Obsidian สำหรับเปิดดูเอกสาร .md แบบกราฟิก
+# brew install --cask obsidian
 ```
 
 #### 🪟 สำหรับระบบปฏิบัติการ Windows (คลิกขวาเปิด `PowerShell` แบบ Run as Administrator)
 ```powershell
-# 1. ติดตั้ง Git, Node.js (LTS) และโปรแกรม Obsidian ผ่าน winget
+# 1. ติดตั้ง Git และ Node.js (LTS) ผ่าน winget
 winget install --id Git.Git -e --source winget
 winget install --id OpenJS.NodeJS.LTS -e --source winget
-winget install --id Obsidian.Obsidian -e --source winget
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 # 2. ปิดหน้าต่าง PowerShell แล้วเปิดใหม่ 1 ครั้ง จากนั้นติดตั้ง Official CLI
 npm install -g @anthropic-ai/claude-code @openai/codex
+
+# (ทางเลือกเสริม — ไม่บังคับ) ติดตั้ง Obsidian สำหรับเปิดดูเอกสาร .md แบบกราฟิก
+# winget install --id Obsidian.Obsidian -e --source winget
 ```
 
 ---
@@ -121,9 +125,11 @@ cd RELAY
 
 ---
 
-## 4. การตั้งค่าจับคู่ตำแหน่งกับค่าย AI และการใช้งานหน้าจอ Terminal กลาง (`relay`)
+## 4. การตั้งค่าจับคู่ตำแหน่งกับค่าย AI (สลับค่ายได้อิสระทุกบทบาท) และการใช้งานหน้าจอ Terminal กลาง (`relay`)
 
 ### 4.1 ค่ายผู้ให้บริการและโมเดลที่รองรับ (`relay config` หรือกด `c`)
+> 💡 **ไม่ได้ล็อกตายตัวตามบทบาท:** ทั้ง 4 ตำแหน่ง (`1. @po`, `2. @arch/@pm`, `3. @dev`, `4. @qa/@sec`) สามารถ **สลับค่าย AI และเปลี่ยนโมเดลได้อย่างอิสระตลอดเวลา** ผ่านปุ่ม **`c`** (`relay config`) เช่น หากโควต้าของค่ายใดใกล้หมด หรือคุณมีเฉพาะแพ็กเกจของค่ายเดียว ก็สามารถตั้งให้ทุกบทบาทใช้ค่ายเดียวกันหรือผสมค่ายตามต้องการได้ทันที
+
 รันคำสั่ง `relay config` (หรือกดปุ่ม `c` ในหน้าจอหลักของ `relay`) เพื่อกำหนดค่าย AI และโมเดลประจำตำแหน่ง หรือเลือก **Quick Setup** ในคลิกเดียว:
 - **`agy` (Google AI Ultra / Antigravity CLI):** ดึงรายชื่อโมเดลสดจาก `agy models` ใช้โควต้า Google AI Ultra ได้ทั้งก้อน Gemini และก้อน Claude/GPT:
   - โควต้า Gemini: `gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`, `gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.8-flash-low`
@@ -231,13 +237,15 @@ cd RELAY
 
 ---
 
-## 5. การติดตั้งและการใช้งานร่วมกับโปรแกรม Obsidian
+## 5. การเปิดดูเอกสารใน `.relay/` ด้วยโปรแกรม Obsidian (ทางเลือกเสริม — ไม่บังคับติดตั้ง)
 
-### 5.1 เหตุผลที่แนะนำให้ติดตั้งโปรแกรม Obsidian ควบคู่กับหน้าจอ `relay`
-ในขณะที่คุณใช้หน้าต่าง Terminal เดียวในการรันคำสั่ง `relay` การเปิดโปรแกรม **Obsidian (ใช้งานฟรี 100%)** ไว้ด้านข้างจะช่วยให้คุณมีหน้าจอสำหรับอ่านและแก้ไขเอกสาร `PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md` และดูแผนภาพสถาปัตยกรรม (Mermaid) ได้แบบเรียลไทม์
-- **ลิงก์ดาวน์โหลดโดยตรง:** [https://obsidian.md](https://obsidian.md)
+### 5.1 Obsidian คืออะไรในระบบ `RELAY`? (ใช้หรือไม่ใช้ก็ได้)
+ระบบ `RELAY` จัดเก็บเอกสารส่งมอบงานทั้งหมดเป็นไฟล์ Markdown (`.md`) และ JSON มาตรฐานในโฟลเดอร์ `.relay/` โดยตรง **ตัวสคริปต์ไม่ได้ผูกติดหรือบังคับต้องมีโปรแกรม Obsidian** คุณสามารถเปิดอ่านและแก้ไขไฟล์ใน `.relay/` ด้วย VS Code, Cursor หรือโปรแกรมแก้ไขข้อความใดก็ได้
 
-### 5.2 วิธีเชื่อมต่อโฟลเดอร์ `.relay/` เข้ากับโปรแกรม Obsidian
+อย่างไรก็ตาม หากคุณต้องการแยก **"หน้าจอดูเอกสารและแผนผังของทีม AI"** ออกจากหน้าจอเขียนโค้ด การเปิดโฟลเดอร์ `.relay/` ในโปรแกรม **Obsidian (ฟรี 100%)** ไว้ด้านข้าง Terminal จะช่วยให้เห็นเอกสาร `PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md`, แผนภาพ Mermaid และรูปแคปหน้าจอใน `QA_REPORT.md` อัปเดตแบบเรียลไทม์อย่างสวยงาม
+- **ลิงก์ดาวน์โหลด (ทางเลือกเสริม):** [https://obsidian.md](https://obsidian.md)
+
+### 5.2 วิธีเปิดโฟลเดอร์ `.relay/` ในโปรแกรม Obsidian (กรณีต้องการใช้)
 1. เปิดโปรแกรม **Obsidian** ➔ คลิกปุ่ม **"Open folder as vault"** (เปิดโฟลเดอร์เป็นคลังข้อมูล)
 2. เลือกเข้าไปที่โฟลเดอร์ **`.relay`** ภายในโครงการของคุณ (เช่น `my-project/.relay`) แล้วกด **Open**
    *(สำหรับผู้ใช้ macOS: หากไม่เห็นโฟลเดอร์ `.relay` ในหน้าต่างเลือกไฟล์ ให้กดปุ่มลัด `Command (⌘) + Shift + .` เพื่อแสดงโฟลเดอร์ที่ขึ้นต้นด้วยจุด)*
