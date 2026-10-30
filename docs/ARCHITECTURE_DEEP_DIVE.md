@@ -26,11 +26,11 @@
 ```mermaid
 sequenceDiagram
     actor User as 👤 ผู้พัฒนา (Developer)
-    participant P1 as ขั้นตอนที่ 1: @po (เช่น agy / gemini-4-argon-high)
-    participant Relay as โฟลเดอร์เอกสาร (.relay/ & Obsidian)
-    participant P2 as ขั้นตอนที่ 2: @arch & @pm (เช่น agy / claude-opus-5-5-high)
-    participant P3 as ขั้นตอนที่ 3: @dev (เช่น agy / claude-sonnet-5-5-high ใน Git Worktree)
-    participant P4 as ขั้นตอนที่ 4: @qa & @sec (เช่น codex / gpt-6.1-terra)
+    participant P1 as ขั้นตอนที่ 1: @po (สลับค่ายได้ เช่น agy / gemini-4-argon-high)
+    participant Relay as โฟลเดอร์เอกสาร (.relay/ Markdown & JSON)
+    participant P2 as ขั้นตอนที่ 2: @arch & @pm (สลับค่ายได้ เช่น agy / claude-opus-5-5-high)
+    participant P3 as ขั้นตอนที่ 3: @dev (สลับค่ายได้ เช่น agy / claude-sonnet-5-5-high ใน Git Worktree)
+    participant P4 as ขั้นตอนที่ 4: @qa & @sec (สลับค่ายได้ เช่น codex / gpt-6.1-terra)
 
     User->>P1: 1. แจ้งโจทย์หรือฟีเจอร์ที่ต้องการพัฒนาผ่านเมนู [1] ใน relay
     P1->>User: 2. ซักถามประเด็นที่ยังไม่ชัดเจนทีละข้อ (Brainstorming)
