@@ -3143,7 +3143,7 @@ run_phase_1_po() {
   fi
   local role_note
   role_note="$(get_core_role_prompt_note po)"
-  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้}${role_note} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) แล้วซักถามความต้องการจากฉันทีละประเด็นจนชัดเจน เมื่อฉันยืนยันแล้วให้สรุปเป็นเอกสารกำหนดความต้องการลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ให้กระชับตรงประเด็น (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด เพื่อประหยัด Token ของขั้นตอนถัดไป)"
+  local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้}${role_note} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) หากข้อมูลชัดเจนเพียงพอแล้ว ให้สรุปขอบเขตงานและเกณฑ์ตรวจรับ (Acceptance Criteria) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ได้ทันที (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด) แต่หากมีประเด็นสำคัญที่ยังไม่ชัดเจน ให้ถามรวบยอดในครั้งเดียวสั้นๆ ไม่เกิน 3 ข้อก่อนเขียน SPEC.md (ห้ามแก้ไขโค้ดในขั้นตอนนี้)"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po ($(get_core_role_title po))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=1
 }
@@ -3154,7 +3154,7 @@ run_phase_2_arch() {
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note arch)"
-  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} แล้วออกแบบโครงสร้างทางเทคนิคลงในไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และจัดทำแผนการดำเนินงานย่อยเป็นข้อๆ ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง)"
+  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ): 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm ($(get_core_role_title arch))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
 }
@@ -3171,7 +3171,7 @@ run_phase_3_dev() {
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note}${role_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามแผนที่กำหนดไว้${commit_note}"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (Unit Tests) ตามเกณฑ์ที่กำหนดไว้ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้เท่านั้น)${commit_note}"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   LAST_COMPLETED_PHASE=3
 }
@@ -3235,7 +3235,7 @@ run_phase_4_qa() {
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note qa)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบความปลอดภัยของ git diff ตามทักษะ differential-review และ semgrep 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md (ระบุ VERDICT: PASS หรือ VERDICT: FAIL ให้ชัดเจน)$(get_qa_prompt_contract)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หรือ 'VERDICT: FAIL' เพียงบรรทัดเดียว$(get_qa_prompt_contract)"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec ($(get_core_role_title qa))" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
@@ -4258,7 +4258,7 @@ run_auto_relay_loop() {
       loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
-    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} แล้วสร้างไฟล์ .relay/tasks/$ACTIVE_TASK/ARCH.md และ .relay/tasks/$ACTIVE_TASK/PLAN.md โดยเขียนเฉพาะรายการไฟล์ที่ต้องแก้และขั้นตอนสำคัญให้กระชับที่สุด (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นน้ำท่วมทุ่ง) โดยไม่ต้องรอถามโต้ตอบ"
+    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ) โดยไม่ต้องรอถามโต้ตอบ: 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
     rc=0
     exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
@@ -4294,9 +4294,9 @@ run_auto_relay_loop() {
 
     local dev_prompt=""
     if [ "$round" -eq 1 ]; then
-      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md, ARCH.md และ PLAN.md${learned_note}${dev_role_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี)${learned_note}${dev_role_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้เท่านั้น)${commit_note}"
     else
-      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และ QA_VERDICT.json ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note} แล้วแก้ไขโค้ดและชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     fi
 
     rc=0
@@ -4312,7 +4312,7 @@ run_auto_relay_loop() {
     # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
     archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดยรันคำสั่งทดสอบจริงผ่าน Terminal ตรวจสอบ git diff และเขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     loop_check_rc "$rc" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" || return 1
