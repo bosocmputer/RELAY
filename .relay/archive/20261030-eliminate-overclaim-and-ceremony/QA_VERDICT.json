@@ -1,0 +1,11 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "grep over-claiming audit (0 matches)",
+    "bash -n relay.sh",
+    "bash tests/test_custom_agents_and_back_nav.sh (9/9 PASS)",
+    "bash tests/test_token_telemetry.sh (8/8 PASS)"
+  ],
+  "summary": "Eliminated all remaining over-claiming strings in scripts/hooks/docs and enforced anti-ceremony length caps across all auto-loop and custom agent prompts."
+}
