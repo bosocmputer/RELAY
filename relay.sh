@@ -69,6 +69,12 @@ relay_on_interrupt() {
   exit 130
 }
 
+# ซ่อนคำเตือน "Permission allow rule (<พาธ settings.json>): ..." ที่ claude CLI พิมพ์ทาง stderr ทุกครั้งที่เริ่ม
+# (พาธเปลี่ยนตามโฟลเดอร์ที่รัน เช่น ../../.claude/settings.json) — ข้อความ stderr อื่นยังแสดงตามปกติ
+filter_claude_permission_warnings() {
+  grep -v '^Permission allow rule (' >&2 || true
+}
+
 install_interrupt_traps() {
   local prev_exit_trap
   prev_exit_trap="$(trap -p EXIT 2>/dev/null | sed -E "s/^trap -- '(.*)' EXIT$/\1/")"
@@ -1654,7 +1660,49 @@ MENU_STDIN_EOF=0
 MENU_SHORTCUTS_BAR=""
 EXTRA_MENU_KEYS=""
 
+# หา locale UTF-8 ที่ใช้ได้ครั้งเดียวต่อโปรเซส (ถ้า locale ปัจจุบันเป็น UTF-8 อยู่แล้วไม่ต้องเปลี่ยน)
+# ใช้ตอนตัดข้อความ: ใน locale C bash นับเป็นไบต์ ตัดภาษาไทยกลางตัวอักษรได้
+RELAY_UTF8_LOCALE="-"
+relay_detect_utf8_locale() {
+  [ "$RELAY_UTF8_LOCALE" != "-" ] && return 0
+  RELAY_UTF8_LOCALE=""
+  case "$(locale charmap 2>/dev/null)" in
+    UTF-8|utf8) return 0 ;;
+  esac
+  local l
+  for l in C.UTF-8 en_US.UTF-8 C.utf8 en_US.utf8; do
+    if [ "$(LC_ALL="$l" locale charmap 2>/dev/null)" = "UTF-8" ]; then
+      RELAY_UTF8_LOCALE="$l"
+      return 0
+    fi
+  done
+}
+
+# ตัดข้อความให้ไม่เกิน $2 ตัวอักษร (นับตามตัวอักษร UTF-8) และต่อท้ายด้วย … เมื่อถูกตัด
+# สระ/วรรณยุกต์ไทยนับเป็นตัวอักษรแต่ไม่กินความกว้าง ข้อความที่ตัดแล้วจึงไม่กว้างเกินจอ
+relay_fit_text() {
+  (
+    [ -n "$RELAY_UTF8_LOCALE" ] && [ "$RELAY_UTF8_LOCALE" != "-" ] && LC_ALL="$RELAY_UTF8_LOCALE"
+    fit_t="$1"
+    fit_m="$2"
+    if [ "${#fit_t}" -le "$fit_m" ]; then
+      printf '%s' "$fit_t"
+    else
+      printf '%s…' "${fit_t:0:$((fit_m - 1))}"
+    fi
+  )
+}
+
+RELAY_TERM_COLS=120
 print_shortcuts_bar_lines() {
+  # จอแคบกว่า 80 คอลัมน์ ➔ แบบย่อ (จำนวนบรรทัดเท่าเดิม เพื่อให้การวาดเมนูซ้ำตรงบรรทัด)
+  if [ "${RELAY_TERM_COLS:-120}" -lt 80 ]; then
+    printf "\033[2K\r\n"
+    printf "\033[2K\r  %s%sShortcuts%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
+    printf "\033[2K\r  %s[c][g][u][v][l]%s Models Agents Quota Stats Rules\n" "$C_MUTED" "$C_RESET"
+    printf "\033[2K\r  %s[n][f][t][d][s][q]%s New Project Test Auth Skills Quit\n" "$C_MUTED" "$C_RESET"
+    return 0
+  fi
   printf "\033[2K\r\n"
   printf "\033[2K\r  %s%sShortcuts%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
   printf "\033[2K\r  %s[c]%s Models   %s[g]%s Agents   %s[u]%s Quota   %s[v]%s Telemetry   %s[l]%s Rules\n" \
@@ -1718,10 +1766,31 @@ interactive_menu() {
 
   [ "${RELAY_TRAPS_INSTALLED:-0}" = "1" ] || install_interrupt_traps
   tput civis 2>/dev/null || true
-  # ปิด line-wrap ระหว่างวาดเมนู: ข้อความยาวเกินจอถูกตัดที่ขอบแทนการขึ้นบรรทัดใหม่ ทำให้การเลื่อนเคอร์เซอร์กลับไปวาดซ้ำตรงบรรทัดเสมอ
+  # ปิด line-wrap ระหว่างวาดเมนู (สำหรับ Terminal ที่รองรับ) — ข้อความยังถูกตัดให้พอดีจอด้านล่างอีกชั้น
   printf '\033[?7l'
   local esc_timeout=1
   [ "${BASH_VERSINFO[0]:-3}" -ge 4 ] && esc_timeout=0.1
+
+  # ตัดข้อความเมนูที่กว้างกว่าจอก่อนพิมพ์: Terminal บางตัวไม่ทำตาม ESC[?7l และตัดบรรทัดเอง
+  # ทำให้การเลื่อนเคอร์เซอร์ขึ้นตามจำนวนรายการไม่ตรง และเมนูวาดซ้อน (เผื่อ 12 คอลัมน์สำหรับ "  ❯ [key] " และอักขระกว้างไม่แน่นอน)
+  # stty อ่านขนาดจาก /dev/tty โดยตรง ($(tput cols) ใน command substitution มี stdout เป็น pipe จึงมักได้ค่าเริ่มต้น 80)
+  local term_cols
+  term_cols="$(stty size </dev/tty 2>/dev/null | awk '{print $2}')"
+  [[ "$term_cols" =~ ^[0-9]+$ ]] && [ "$term_cols" -ge 20 ] || term_cols="$(tput cols 2>/dev/null || true)"
+  [[ "$term_cols" =~ ^[0-9]+$ ]] && [ "$term_cols" -ge 20 ] || term_cols="${COLUMNS:-120}"
+  RELAY_TERM_COLS="$term_cols"
+  relay_detect_utf8_locale
+  local fit_idx=0 fit_key fit_label fit_max
+  while [ "$fit_idx" -lt "$count" ]; do
+    fit_key="${items[$fit_idx]%%|*}"
+    fit_label="${items[$fit_idx]#*|}"
+    fit_max=$((term_cols - ${#fit_key} - 12))
+    [ "$fit_max" -lt 8 ] && fit_max=8
+    if [ "${#fit_label}" -gt "$fit_max" ]; then
+      items[$fit_idx]="${fit_key}|$(relay_fit_text "$fit_label" "$fit_max")"
+    fi
+    fit_idx=$((fit_idx + 1))
+  done
 
   local footer_lines=1
   [ -n "$has_shortcuts" ] && footer_lines=4
@@ -1756,7 +1825,11 @@ interactive_menu() {
     if [ -n "$has_shortcuts" ]; then
       print_shortcuts_bar_lines
     else
-      printf "\033[2K\r  %s↑/↓ เลื่อน • Enter เลือก [%s] • b/ESC ย้อนกลับ • / พิมพ์เมนู%s\n" "$C_MUTED" "$cur_key" "$C_RESET"
+      if [ "$term_cols" -lt 70 ]; then
+        printf "\033[2K\r  %s↑/↓ • Enter [%s] • b/ESC%s\n" "$C_MUTED" "$cur_key" "$C_RESET"
+      else
+        printf "\033[2K\r  %s↑/↓ เลื่อน • Enter เลือก [%s] • b/ESC ย้อนกลับ • / พิมพ์เมนู%s\n" "$C_MUTED" "$cur_key" "$C_RESET"
+      fi
     fi
 
     local k1=""
@@ -3181,7 +3254,7 @@ ping_single_role_agent() {
       agy --model "$configured_model" -p "$self_check_prompt" || exit_code=$?
       ;;
     claude)
-      claude --model "$configured_model" -p "$self_check_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || exit_code=$?
+      claude --model "$configured_model" -p "$self_check_prompt" 2> >(filter_claude_permission_warnings) || exit_code=$?
       ;;
     codex)
       codex exec --skip-git-repo-check -m "$configured_model" "$self_check_prompt" || exit_code=$?
@@ -3778,7 +3851,7 @@ launch_provider_cli() {
         fi
         exit "$rc"
         ;;
-      claude) claude --model "$configured_model" "$initial_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) ;;
+      claude) claude --model "$configured_model" "$initial_prompt" 2> >(filter_claude_permission_warnings) ;;
       codex)  codex -m "$configured_model" "$initial_prompt" ;;
     esac
   ) || cli_rc=$?
