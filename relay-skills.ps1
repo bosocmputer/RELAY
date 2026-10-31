@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     RELAY Skill Manager สำหรับ Windows (PowerShell)
 .DESCRIPTION

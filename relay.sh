@@ -5134,7 +5134,9 @@ exec_provider_autonomous() {
   local cmd=()
   case "$provider" in
     agy)    cmd=(agy --model "$configured_model" --mode auto -p "$prompt") ;;
-    claude) cmd=(claude --model "$configured_model" --permission-mode acceptEdits -p "$prompt") ;;
+    # ห่อด้วย bash ลูกเพื่อกรองคำเตือน "Permission allow rule (...)" ออกจาก stderr (คำสั่งเดียวกับ filter_claude_permission_warnings)
+    # exec ให้ claude แทนที่ bash ลูก จึงได้ exit code ของ claude และถูกหยุดพร้อมกันตอนหมดเวลา
+    claude) cmd=(/bin/bash -c 'exec 2> >(grep -v "^Permission allow rule (" >&2 || true); exec claude "$@"' relay-claude --model "$configured_model" --permission-mode acceptEdits -p "$prompt") ;;
     codex)  cmd=(codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt") ;;
     *)
       printf "%s✖ ไม่รู้จักค่าย '%s'%s\n" "$C_ERR" "$provider" "$C_RESET"

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     สคริปต์สร้างโครงสร้าง .relay/ สำหรับโครงการใหม่ (Greenfield) หรือโครงการเดิม (Brownfield) บน Windows
 #>
