@@ -19,6 +19,10 @@ param(
     [string]$Description = "[Custom Skill] สกิลเพิ่มเติมโดยผู้ใช้"
 )
 
+# ล็อกเวอร์ชันแพ็กเกจที่ npx ดาวน์โหลดมารัน (ไม่ใช้ latest แบบไม่ระบุ) • ปรับได้ผ่านตัวแปรสภาพแวดล้อม (เหมือน relay-skills.sh)
+$SkillsCliPkg = if ($env:RELAY_SKILLS_CLI_PKG) { $env:RELAY_SKILLS_CLI_PKG } else { "skills@1.7.4" }
+$PlaywrightMcpPkg = if ($env:RELAY_PLAYWRIGHT_MCP_PKG) { $env:RELAY_PLAYWRIGHT_MCP_PKG } else { "@playwright/mcp@0.0.83" }
+
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ManifestFile = Join-Path $ScriptDir "skills-manifest.txt"
@@ -52,9 +56,9 @@ function Sync-ManifestSkills([string]$ModeLabel) {
         Write-Host "------------------------------------------------------------------" -ForegroundColor DarkGray
         Write-Host "📦 $desc : $repo $skill" -ForegroundColor Yellow
         if (-not [string]::IsNullOrWhiteSpace($skill)) {
-            npx -y skills add $repo --skill $skill -g
+            npx -y $SkillsCliPkg add $repo --skill $skill -g
         } else {
-            npx -y skills add $repo -g
+            npx -y $SkillsCliPkg add $repo -g
         }
     }
 
@@ -75,11 +79,11 @@ function Sync-ManifestSkills([string]$ModeLabel) {
 
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         Write-Host "🔌 ผูก Playwright MCP เข้ากับ Claude Code..." -ForegroundColor Cyan
-        try { claude mcp add -s user playwright cmd /c npx `@playwright/mcp`@latest } catch {}
+        try { claude mcp add -s user playwright cmd /c npx $PlaywrightMcpPkg } catch {}
     }
     if (Get-Command codex -ErrorAction SilentlyContinue) {
         Write-Host "🔌 ผูก Playwright MCP เข้ากับ Codex CLI..." -ForegroundColor Cyan
-        try { codex mcp add playwright -- cmd /c npx `@playwright/mcp`@latest } catch {}
+        try { codex mcp add playwright -- cmd /c npx $PlaywrightMcpPkg } catch {}
     }
 
     Write-Host "==================================================================" -ForegroundColor Green
@@ -96,9 +100,9 @@ switch ($Command) {
         }
         Write-Host "➕ กำลังติดตั้งสกิลใหม่จาก: $RepoUrl $SkillName..." -ForegroundColor Green
         if (-not [string]::IsNullOrWhiteSpace($SkillName)) {
-            npx -y skills add $RepoUrl --skill $SkillName -g
+            npx -y $SkillsCliPkg add $RepoUrl --skill $SkillName -g
         } else {
-            npx -y skills add $RepoUrl -g
+            npx -y $SkillsCliPkg add $RepoUrl -g
         }
         $entry = "$RepoUrl|$SkillName|$Description"
         $existing = Get-Content $ManifestFile -Encoding UTF8
