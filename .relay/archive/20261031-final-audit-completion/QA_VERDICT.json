@@ -1,0 +1,10 @@
+{
+  "verdict": "PASS",
+  "failed_criteria": [],
+  "tests_run": [
+    "/bin/bash -n relay.sh relay-init.sh relay-skills.sh setup-mac.sh",
+    "bash tests/test_performance_and_accuracy.sh",
+    "bash templates/scripts/verify-relay-task.sh"
+  ],
+  "summary": "All 12 test suites (216/216 checks) passed; ~/.claude/skills/* native skill links and PROJECT_STATE.md zero-overclaim checks verified."
+}
