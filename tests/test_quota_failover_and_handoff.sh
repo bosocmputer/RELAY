@@ -193,7 +193,8 @@ setup_env
 ( cd "$PROJ" && "$HOME/.agents/bin/relay" loop --yes --auto-failover < /dev/null > "$TMP_ROOT/auto_out.txt" 2>&1 )
 grep -q "Smart Auto-Failover" "$TMP_ROOT/auto_out.txt" && ok "แสดงแจ้งเตือน Smart Auto-Failover เมื่อโควต้า @dev (12%) < 20%" || bad "ไม่แสดง Smart Auto-Failover"
 grep -q "\[FAILOVER\].*agy/claude-sonnet-5-5-high.*agy/gemini-4-argon-high" "$PROJ/.relay/tasks/20261030-demo/LOOP_LOG.md" && ok "บันทึกการสลับไปใช้ agy/gemini-4-argon-high ลงใน LOOP_LOG.md" || bad "ไม่พบบันทึก FAILOVER ใน LOOP_LOG.md"
-grep -q 'MODEL_DEV="gemini-4-argon-high"' "$HOME/.agents/relay-roles.conf" && ok "อัปเดต MODEL_DEV เป็น gemini-4-argon-high ลงไฟล์ตั้งค่าอัตโนมัติ" || bad "ไม่อัปเดตไฟล์ตั้งค่า"
+grep -q 'MODEL_DEV="gemini-4-argon-high"' "$PROJ/.relay/roles.conf" && ok "อัปเดต MODEL_DEV เป็น gemini-4-argon-high ลง .relay/roles.conf ของโปรเจกต์" || bad "ไม่อัปเดตไฟล์ตั้งค่าของโปรเจกต์"
+grep -q 'MODEL_DEV="claude-sonnet-5-5-high"' "$HOME/.agents/relay-roles.conf" && ok "ไม่ทับค่าตั้ง Global (~/.agents/relay-roles.conf) เมื่อสลับค่ายอัตโนมัติ" || bad "ค่าตั้ง Global ถูกเปลี่ยน"
 grep -q "\[PASS\]" "$PROJ/.relay/tasks/20261030-demo/LOOP_LOG.md" && ok "รันลูปต่อจนผ่านการตรวจรับ (PASS) โดยไม่สะดุดหยุด" || bad "ลูปไม่ผ่าน PASS หลัง Auto-Failover"
 
 # ทดสอบเมนู Interactive 1-Click Switcher (เลือก [1] และเลือก [f] ฝืนรันต่อ)

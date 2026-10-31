@@ -165,8 +165,8 @@ else
   fail "Fast Track ไม่ได้สร้างใบงานหรือ Worktree"
 fi
 
-if [ "$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")" = "PASS|json" ] && grep -q '"total": 4200' "$RELAY_DIR/tasks/$ACTIVE_TASK/RUN_LOG.jsonl"; then
-  pass "Fast Track ซิงก์ QA_VERDICT.json และบันทึก Token (4,200 tokens) ลง RUN_LOG.jsonl"
+if [ "$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")" = "PASS|self" ] && grep -q '"total": 4200' "$RELAY_DIR/tasks/$ACTIVE_TASK/RUN_LOG.jsonl"; then
+  pass "Fast Track ซิงก์ QA_VERDICT.json (ระบุเป็น PASS|self — @dev ตรวจเอง) และบันทึก Token (4,200 tokens) ลง RUN_LOG.jsonl"
 else
   fail "Fast Track ไม่ได้ซิงก์ QA_VERDICT.json หรือ RUN_LOG.jsonl"
 fi

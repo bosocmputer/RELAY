@@ -55,7 +55,10 @@ RELAY_CHILD_ACTIVE=0
 RELAY_TRAPS_INSTALLED=0
 
 relay_restore_cursor() {
-  [ -t 1 ] && tput cnorm 2>/dev/null
+  if [ -t 1 ]; then
+    tput cnorm 2>/dev/null
+    printf '\033[?7h'
+  fi
   return 0
 }
 
@@ -761,6 +764,7 @@ else:
 
 # 2. แยกวิเคราะห์ผลลัพธ์จาก ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 codex_ok = False
+codex_at = NOW_HM
 try:
     codex_files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
     for cf in reversed(codex_files[-8:]):
@@ -788,6 +792,7 @@ try:
                     vals["CODEX_PLAN"] = str(pt).capitalize()
                 found_rl = True
                 codex_ok = True
+                codex_at = datetime.fromtimestamp(os.path.getmtime(cf)).strftime("%H:%M")
                 break
         if found_rl:
             break
@@ -796,7 +801,7 @@ except Exception:
 if has_codex:
     vals["CODEX_FETCH_OK"] = "1" if codex_ok else "0"
     if codex_ok:
-        vals["CODEX_FETCHED_AT"] = NOW_HM
+        vals["CODEX_FETCHED_AT"] = codex_at
 else:
     vals["CODEX_FETCH_OK"] = "-"
 
@@ -898,34 +903,56 @@ safe_load_quota_cache() {
   done < "$cache_file"
 }
 
-update_codex_quota_fast() {
-  if ! command -v python3 >/dev/null 2>&1; then
-    return 0
-  fi
-  local cx_out
-  cx_out="$(python3 -c '
+# อ่านโควต้า Codex จาก session log ล่าสุด (rate_limits ที่ CLI บันทึกไว้) — คืนค่า plan|5h|reset5|7d|reset7|epoch5|epoch7|เวลาของข้อมูล
+codex_quota_snapshot() {
+  python3 - <<'PYEOF' 2>/dev/null || true
 import os, glob, json
 from datetime import datetime
 TH_MONTHS = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+
+def remaining(d):
+    v = d.get("used_percent")
+    if v is None:
+        return "-"
+    return str(max(0, min(100, int(round(100.0 - float(v))))))
+
 files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl")))
 for cf in reversed(files[-5:]):
-    for line in reversed(open(cf, encoding="utf-8", errors="ignore").readlines()):
-        if "\"rate_limits\"" in line and "\"token_count\"" in line:
+    try:
+        lines = open(cf, encoding="utf-8", errors="ignore").readlines()
+    except Exception:
+        continue
+    for line in reversed(lines):
+        if '"rate_limits"' not in line or '"token_count"' not in line:
+            continue
+        try:
             rl = (json.loads(line).get("payload") or {}).get("rate_limits") or {}
-            p, s = rl.get("primary") or {}, rl.get("secondary") or {}
-            r5 = max(0, min(100, int(round(100.0 - float(p.get("used_percent", 0))))))
-            r7 = max(0, min(100, int(round(100.0 - float(s.get("used_percent", 0))))))
-            dt5 = datetime.fromtimestamp(int(p["resets_at"])).strftime("%H:%M") if p.get("resets_at") else "-"
-            dt7_o = datetime.fromtimestamp(int(s["resets_at"])) if s.get("resets_at") else None
-            dt7 = f"{dt7_o.day:02d} {TH_MONTHS[dt7_o.month]} {dt7_o.strftime(\"%H:%M\")}" if dt7_o else "-"
-            pt = str(rl.get("plan_type") or "plus").capitalize()
-            e5 = str(int(p["resets_at"])) if p.get("resets_at") else "-"
-            e7 = str(int(s["resets_at"])) if s.get("resets_at") else "-"
-            print(f"{pt}|{r5}|{dt5}|{r7}|{dt7}|{e5}|{e7}")
-            raise SystemExit(0)
-' 2>/dev/null || true)"
+        except Exception:
+            continue
+        p, s = rl.get("primary") or {}, rl.get("secondary") or {}
+        r5, r7 = remaining(p), remaining(s)
+        if r5 == "-" and r7 == "-":
+            continue
+        dt5 = datetime.fromtimestamp(int(p["resets_at"])).strftime("%H:%M") if p.get("resets_at") else "-"
+        dt7 = "-"
+        if s.get("resets_at"):
+            d7 = datetime.fromtimestamp(int(s["resets_at"]))
+            dt7 = "%02d %s %s" % (d7.day, TH_MONTHS[d7.month], d7.strftime("%H:%M"))
+        pt = str(rl.get("plan_type") or "plus").capitalize()
+        e5 = str(int(p["resets_at"])) if p.get("resets_at") else "-"
+        e7 = str(int(s["resets_at"])) if s.get("resets_at") else "-"
+        at = datetime.fromtimestamp(os.path.getmtime(cf)).strftime("%H:%M")
+        print(f"{pt}|{r5}|{dt5}|{r7}|{dt7}|{e5}|{e7}|{at}")
+        raise SystemExit(0)
+PYEOF
+}
+
+update_codex_quota_fast() {
+  command -v python3 >/dev/null 2>&1 || return 0
+  local cx_out
+  cx_out="$(codex_quota_snapshot)"
   if [ -n "$cx_out" ]; then
-    IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET CODEX_5H_RESET_EPOCH CODEX_7D_RESET_EPOCH <<<"$cx_out"
+    IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET CODEX_5H_RESET_EPOCH CODEX_7D_RESET_EPOCH CODEX_FETCHED_AT <<<"$cx_out"
     CODEX_FETCH_OK="1"
   fi
 }
@@ -939,17 +966,24 @@ load_quota_cache() {
   update_codex_quota_fast
   local age=$((now_ts - ${QUOTA_UPDATED_EPOCH:-0}))
   if [ "${SUBCOMMAND:-hub}" != "quota" ] && [ "${SUBCOMMAND:-hub}" != "usage" ]; then
-    if [ ! -f "$QUOTA_CACHE_FILE" ] || [ "$age" -gt 180 ] || [ "${AGY_GEMINI_5H_REM:--}" = "-" ]; then
+    # ช่องโควต้า agy ว่างนับเป็นเหตุให้ refresh เฉพาะเมื่อ login agy แล้ว (ไม่งั้นเครื่องที่ไม่มี agy จะ refresh ทุกครั้งที่วาดหน้าจอ)
+    local agy_missing=0
+    [ "${CLI_AUTH_AGY:-0}" = "1" ] && [ "${AGY_GEMINI_5H_REM:--}" = "-" ] && agy_missing=1
+    if [ ! -f "$QUOTA_CACHE_FILE" ] || [ "$age" -gt 180 ] || [ "$agy_missing" -eq 1 ]; then
       local q_lock="$GLOBAL_DIR/relay-quota.lock"
       local lock_pid=""
-      [ -f "$q_lock" ] && lock_pid="$(cat "$q_lock" 2>/dev/null || true)"
+      # lock ที่ค้างเกิน 2 นาที (ตัว refresh ถูก kill) ถือว่าหมดอายุ กัน PID ถูกนำกลับมาใช้จน refresh ไม่ทำงานอีก
+      if [ -f "$q_lock" ] && [ -z "$(find "$q_lock" -mmin +2 2>/dev/null)" ]; then
+        lock_pid="$(cat "$q_lock" 2>/dev/null || true)"
+      fi
       if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then
+        mkdir -p "$GLOBAL_DIR" 2>/dev/null || true
         (
-          mkdir -p "$GLOBAL_DIR" 2>/dev/null || true
-          echo "$$" > "$q_lock" 2>/dev/null || true
           refresh_quota_cache --quiet </dev/null >/dev/null 2>&1 || true
           rm -f "$q_lock" 2>/dev/null || true
         ) >/dev/null 2>&1 &
+        # $! = PID ของตัว refresh จริง ($$ ใน subshell ของ bash 3.2 คือ PID ของ relay หลัก)
+        echo "$!" > "$q_lock" 2>/dev/null || true
       fi
     fi
   fi
@@ -1297,9 +1331,10 @@ apply_role_provider_model_switch() {
     qa)   ROLE_QA="$new_prov";   MODEL_QA="$new_model" ;;
     *)    return 1 ;;
   esac
-  local target_conf="$GLOBAL_ROLES_CONF"
-  [ -f "$PROJECT_ROLES_CONF" ] && target_conf="$PROJECT_ROLES_CONF"
-  save_role_config "$target_conf"
+  # บันทึกลง .relay/roles.conf ของโปรเจกต์นี้เท่านั้น — การสลับเพราะโควต้า/เครือข่ายของงานเดียวต้องไม่ย้ายค่ายของทุกโปรเจกต์
+  if [ -d "$RELAY_DIR" ]; then
+    save_role_config "$PROJECT_ROLES_CONF"
+  fi
   return 0
 }
 
@@ -1566,7 +1601,10 @@ compute_stage3_next_step() {
   elif [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] || [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_VERDICT.json" ]; then
     local s3v
     s3v="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
-    if [ "${s3v%%|*}" = "PASS" ]; then
+    if [ "$s3v" = "PASS|self" ]; then
+      RECOMMENDED_STEP=4
+      STAGE3_FOCUS_TEXT="[4] @qa ตรวจรับงาน Fast Track (ตอนนี้ @dev ตรวจเอง) หรือ [5] Merge"
+    elif [ "${s3v%%|*}" = "PASS" ]; then
       RECOMMENDED_STEP=5
       STAGE3_FOCUS_TEXT="[5] Merge Branch to main & Archive Task (QA PASS)"
     else
@@ -1652,6 +1690,10 @@ interactive_menu() {
 
   [ "${RELAY_TRAPS_INSTALLED:-0}" = "1" ] || install_interrupt_traps
   tput civis 2>/dev/null || true
+  # ปิด line-wrap ระหว่างวาดเมนู: ข้อความยาวเกินจอถูกตัดที่ขอบแทนการขึ้นบรรทัดใหม่ ทำให้การเลื่อนเคอร์เซอร์กลับไปวาดซ้ำตรงบรรทัดเสมอ
+  printf '\033[?7l'
+  local esc_timeout=1
+  [ "${BASH_VERSINFO[0]:-3}" -ge 4 ] && esc_timeout=0.1
 
   local footer_lines=1
   [ -n "$has_shortcuts" ] && footer_lines=4
@@ -1699,7 +1741,7 @@ interactive_menu() {
 
     if [ "$k1" = $'\x1b' ]; then
       local k23=""
-      IFS= read -rsn2 -t 0.1 k23 2>/dev/null || IFS= read -rsn2 -t 1 k23 2>/dev/null || true
+      IFS= read -rsn2 -t "$esc_timeout" k23 2>/dev/null || true
       case "$k23" in
         "[A"|"OA")
           selected=$(((selected - 1 + count) % count))
@@ -1711,7 +1753,7 @@ interactive_menu() {
           ;;
         "")
           MENU_RESULT="b"
-          tput cnorm 2>/dev/null || true
+          relay_restore_cursor
           return 0
           ;;
         *)
@@ -1721,7 +1763,7 @@ interactive_menu() {
     fi
 
     if [ "$k1" = "/" ]; then
-      tput cnorm 2>/dev/null || true
+      relay_restore_cursor
       printf "\033[1A\033[2K\r  %s❯ /%s" "$C_SEL" "$C_RESET"
       local slash_cmd=""
       read -r slash_cmd || true
@@ -1739,7 +1781,7 @@ interactive_menu() {
       lower_item_key="$(printf "%s" "$item_key" | tr '[:upper:]' '[:lower:]')"
       if [ "$lower_k1" = "$lower_item_key" ]; then
         MENU_RESULT="$item_key"
-        tput cnorm 2>/dev/null || true
+        relay_restore_cursor
         return 0
       fi
       match_idx=$((match_idx + 1))
@@ -1749,19 +1791,19 @@ interactive_menu() {
       for ek in $extra_keys; do
         if [ "$lower_k1" = "$ek" ]; then
           MENU_RESULT="$lower_k1"
-          tput cnorm 2>/dev/null || true
+          relay_restore_cursor
           return 0
         fi
       done
     fi
     if [ "$lower_k1" = "b" ]; then
       MENU_RESULT="b"
-      tput cnorm 2>/dev/null || true
+      relay_restore_cursor
       return 0
     fi
   done
 
-  tput cnorm 2>/dev/null || true
+  relay_restore_cursor
 }
 
 # ตรวจสอบว่าคำที่ผู้ใช้พิมพ์คือคำสั่งขอย้อนกลับหรือไม่ (b, B, back, /back)
@@ -2206,7 +2248,9 @@ print_dashboard_header() {
     if [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] || [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_VERDICT.json" ]; then
       local hv
       hv="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
-      if [ "${hv%%|*}" = "PASS" ]; then
+      if [ "$hv" = "PASS|self" ]; then
+        qa_m="${C_WARN}▲ QA PASS (self)${C_RESET}"
+      elif [ "${hv%%|*}" = "PASS" ]; then
         qa_m="${C_OK}● QA PASS${C_RESET}"
       else
         qa_m="${C_WARN}▲ QA ${hv%%|*}${C_RESET}"
@@ -2557,7 +2601,11 @@ run_quick_preset_menu() {
 list_workspace_projects_tsv() {
   local roots=("$@")
   if [ "${#roots[@]}" -eq 0 ]; then
-    roots=("$HOME/dev_bos" "$HOME/Projects" "$HOME/workspace" "$HOME/Developer")
+    [ -n "${RELAY_WORKSPACE:-}" ] && roots+=("$RELAY_WORKSPACE")
+    local cand
+    for cand in "$HOME/dev_bos" "$HOME/Projects" "$HOME/dev" "$HOME/code" "$HOME/workspace" "$HOME/Developer"; do
+      [ "$cand" = "${RELAY_WORKSPACE:-}" ] || roots+=("$cand")
+    done
   fi
   local relay_rows=()
   local std_rows=()
@@ -2590,8 +2638,8 @@ list_workspace_projects_tsv() {
 }
 
 select_or_create_project_dir() {
-  local base_workspace="$HOME/dev_bos"
-  [ ! -d "$base_workspace" ] && base_workspace="$HOME/Projects"
+  local base_workspace="${RELAY_WORKSPACE:-$HOME/dev_bos}"
+  [ -z "${RELAY_WORKSPACE:-}" ] && [ ! -d "$base_workspace" ] && base_workspace="$HOME/Projects"
 
   local folder_items=()
   local folder_paths=()
@@ -2819,7 +2867,9 @@ login_single_provider() {
     claude)
       if is_provider_installed claude; then
         printf "\n%sกำลังเปิดหน้าเข้าสู่ระบบของ Claude Code (claude auth login)...%s\n" "$C_ACCENT" "$C_RESET"
-        claude auth login || claude || true
+        claude auth login
+        local login_rc=$?
+        [ "$login_rc" -ne 0 ] && [ "$login_rc" -ne 130 ] && { claude || true; }
       else
         printf "%s✖ ยังไม่ได้ติดตั้ง claude%s\n" "$C_ERR" "$C_RESET"
       fi
@@ -2923,6 +2973,10 @@ configure_roles_menu() {
       m|M) configure_provider_defaults_menu ;;
       d|D) run_doctor_menu ;;
       s|S)
+        if [ "$target_conf" = "$GLOBAL_ROLES_CONF" ] && [ ! -d "$RELAY_DIR" ]; then
+          printf "\n%s▲ โฟลเดอร์นี้ยังไม่ได้ติดตั้ง .relay/ — บันทึกได้เฉพาะ Global (ติดตั้งด้วย [i] Greenfield/Brownfield ก่อน)%s\n" "$C_WARN" "$C_RESET"
+          continue
+        fi
         if [ "$target_conf" = "$GLOBAL_ROLES_CONF" ]; then
           target_conf="$PROJECT_ROLES_CONF"
           scope_label="Project (.relay/roles.conf)"
@@ -2938,7 +2992,7 @@ configure_roles_menu() {
         return 0
         ;;
       b|B|q|Q|*)
-        save_role_config "$target_conf"
+        # ทุกข้อที่เปลี่ยนค่าบันทึกไฟล์เองแล้ว — ออกเฉยๆ ไม่ต้องเขียนไฟล์ (กันสร้างไฟล์ตั้งค่าโดยไม่ได้เปลี่ยนอะไร)
         return 0
         ;;
     esac
@@ -3642,22 +3696,32 @@ launch_provider_cli() {
   local run_start run_end q_before q_after tok_usage
   run_start="$(date +%s)"
   q_before="$(get_role_quota_pair "$provider" "$configured_model")"
+  local cli_rc=0
   RELAY_CHILD_ACTIVE=1
   (
-    cd "$work_dir"
+    cd "$work_dir" || exit 1
     case "$provider" in
-      agy)    agy --model "$configured_model" -i "$initial_prompt" || agy --model "$configured_model" || true ;;
-      claude) claude --model "$configured_model" "$initial_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) || true ;;
-      codex)  codex -m "$configured_model" "$initial_prompt" || true ;;
+      agy)
+        agy --model "$configured_model" -i "$initial_prompt"
+        rc=$?
+        # agy รุ่นที่ไม่รองรับ -i ➔ เปิดแบบไม่มีคำสั่งเริ่มต้น (ไม่เปิดซ้ำเมื่อผู้ใช้กด Ctrl+C = 130)
+        if [ "$rc" -ne 0 ] && [ "$rc" -ne 130 ]; then
+          agy --model "$configured_model"
+          rc=$?
+        fi
+        exit "$rc"
+        ;;
+      claude) claude --model "$configured_model" "$initial_prompt" 2> >(grep -v '^Permission allow rule (\.claude/settings\.json):' >&2) ;;
+      codex)  codex -m "$configured_model" "$initial_prompt" ;;
     esac
-  )
+  ) || cli_rc=$?
   RELAY_CHILD_ACTIVE=0
   run_end="$(date +%s)"
   refresh_quota_cache --quiet
   q_after="$(get_role_quota_pair "$provider" "$configured_model")"
   tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end")"
-  append_run_log "interactive" "$role_name" "$provider" "$configured_model" "0" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
-  print_step_telemetry_box "$role_name" "$provider" "$configured_model" "0" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
+  append_run_log "interactive" "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
+  print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
 }
 
 ensure_git_repo_ready_for_worktree() {
@@ -4653,6 +4717,9 @@ elif sel == "x":
     chosen = set()
 else:
     chosen = {int(n) - 1 for n in re.findall(r"\d+", sel) if 0 < int(n) <= len(pending)}
+    if not chosen:
+        print(f"✖ ไม่เข้าใจคำตอบ '{selection}' — พิมพ์หมายเลข (เช่น 1,3), a = อนุมัติทั้งหมด หรือ x = ปฏิเสธทั้งหมด • กฎยังอยู่ในคิวตามเดิม")
+        sys.exit(2)
 
 approved = [p for i, p in enumerate(pending) if i in chosen]
 rejected = [p for i, p in enumerate(pending) if i not in chosen]
@@ -4948,7 +5015,8 @@ try:
     v = str(o.get("verdict", "")).strip().upper()
     fc = o.get("failed_criteria") or []
     if v == "PASS" and not fc:
-        print("PASS|json")
+        # tests_run == ["fast-track"] คือ verdict ที่ @dev เขียนเองตาม prompt ของ Fast Track (ยังไม่ผ่าน @qa)
+        print("PASS|self" if o.get("tests_run") == ["fast-track"] else "PASS|json")
     elif v in ("PASS", "FAIL"):
         print("FAIL|json")
     else:
@@ -4969,14 +5037,23 @@ PYEOF
   fi
 }
 
+# ย้ายไฟล์ไปชื่อ <base>.<ext> หรือ <base>.<เวลา>.<ext> ถ้าชื่อนั้นมีอยู่แล้ว (รันลูปซ้ำต้องไม่ทับหลักฐานรอบก่อน)
+archive_one_qa_file() {
+  local src="$1" base="$2" ext="$3"
+  [ -f "$src" ] || return 0
+  local dst="${base}.${ext}"
+  [ -e "$dst" ] && dst="${base}.$(date +%Y%m%d%H%M%S).${ext}"
+  mv "$src" "$dst"
+}
+
 # ย้ายผลตรวจรับเดิมออกก่อน @qa รอบใหม่ เพื่อไม่ให้ผลเก่าถูกนับซ้ำ
 archive_old_qa_outputs() {
   local round="$1"
   shift
   local d
   for d in "$@"; do
-    [ -f "$d/QA_REPORT.md" ] && mv "$d/QA_REPORT.md" "$d/QA_REPORT.before-round-${round}.md"
-    [ -f "$d/QA_VERDICT.json" ] && mv "$d/QA_VERDICT.json" "$d/QA_VERDICT.before-round-${round}.json"
+    archive_one_qa_file "$d/QA_REPORT.md" "$d/QA_REPORT.before-round-${round}" "md"
+    archive_one_qa_file "$d/QA_VERDICT.json" "$d/QA_VERDICT.before-round-${round}" "json"
   done
   return 0
 }
@@ -4994,6 +5071,7 @@ verdict_source_note() {
   case "$1" in
     md) printf " (ไม่มี QA_VERDICT.json — ใช้ VERDICT ใน QA_REPORT.md เป็นทางสำรอง)" ;;
     invalid-json) printf " (QA_VERDICT.json รูปแบบไม่ถูกต้อง)" ;;
+    self) printf " (@dev ตรวจเองใน Fast Track — ยังไม่ผ่าน @qa)" ;;
   esac
 }
 
@@ -5131,12 +5209,13 @@ run_auto_relay_loop() {
   refresh_quota_cache
 
   {
+    [ -s "$LOOP_LOG_FILE" ] && echo "" && echo "---"
     echo "# บันทึกการทำงานอัตโนมัติ (Bounded Auto-Relay Loop Log — $ACTIVE_TASK)"
     echo ""
     echo "- เริ่มต้นลูปเมื่อ: \`$(date '+%Y-%m-%d %H:%M:%S')\`"
     echo "- เกณฑ์เบรกโควต้าขั้นต่ำ: \`${min_quota_pct}%\` │ จำนวนรอบสูงสุด: \`${max_rounds} รอบ\` │ เพดานเวลาต่อขั้น: \`${step_timeout} วินาที\` │ Auto-Failover: \`${RELAY_AUTO_FAILOVER:-0}\`"
     echo ""
-  } > "$LOOP_LOG_FILE"
+  } >> "$LOOP_LOG_FILE"
 
   local rc=0
   local loop_started_at
@@ -5147,6 +5226,14 @@ run_auto_relay_loop() {
   dev_role_note="$(get_core_role_prompt_note dev)"
   qa_role_note="$(get_core_role_prompt_note qa)"
 
+  # เตรียม Git Worktree ก่อนทุกขั้น (หยุดทันทีถ้าสร้างไม่ได้ — agent โหมดอัตโนมัติห้ามรันบนกิ่งหลัก)
+  if ! prepare_task_worktree; then
+    loop_halt "สร้าง Git Worktree ไม่สำเร็จ"
+    return 1
+  fi
+  local worktree_dir="$TASK_WORK_DIR"
+  local wt_task_dir="$worktree_dir/.relay/tasks/$ACTIVE_TASK"
+
   # 1. ขั้นตอนที่ 2 (@arch & @pm) หากยังไม่มี PLAN.md
   if [ ! -f "$task_dir/PLAN.md" ]; then
     if ! check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "@arch & @pm" "$min_quota_pct" "arch"; then
@@ -5155,12 +5242,13 @@ run_auto_relay_loop() {
     fi
     local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ) โดยไม่ต้องรอถามโต้ตอบ: 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
     rc=0
-    exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$PROJECT_DIR" "$arch_prompt" || rc=$?
+    exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$worktree_dir" "$arch_prompt" || rc=$?
     if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "arch" "ขั้นตอนที่ 2 (@arch)" "$min_quota_pct"; then
       rc=0
-      exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (รับไม้ต่อหลังสลับค่าย)" "$PROJECT_DIR" "$arch_prompt" || rc=$?
+      exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm (รับไม้ต่อหลังสลับค่าย)" "$worktree_dir" "$arch_prompt" || rc=$?
     fi
     loop_check_rc "$rc" "ขั้นตอนที่ 2 (@arch)" || return 1
+    sync_task_docs_from_worktree "$wt_task_dir" "$task_dir"
     if [ ! -f "$task_dir/PLAN.md" ]; then
       loop_halt "@arch ทำงานจบแต่ไม่ได้สร้าง .relay/tasks/$ACTIVE_TASK/PLAN.md"
       return 1
@@ -5170,14 +5258,6 @@ run_auto_relay_loop() {
   else
     echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): พบไฟล์ PLAN.md อยู่แล้ว ข้ามไปยังขั้นตอนที่ 3" >> "$LOOP_LOG_FILE"
   fi
-
-  # เตรียม Git Worktree (หยุดทันทีถ้าสร้างไม่ได้ — ห้ามแก้โค้ดบนกิ่งหลัก)
-  if ! prepare_task_worktree; then
-    loop_halt "สร้าง Git Worktree ไม่สำเร็จ"
-    return 1
-  fi
-  local worktree_dir="$TASK_WORK_DIR"
-  local wt_task_dir="$worktree_dir/.relay/tasks/$ACTIVE_TASK"
 
   # 2. วนลูป @dev ⇄ @qa สูงสุดไม่เกิน max_rounds รอบ
   local round=1
@@ -5359,6 +5439,16 @@ run_phase_5_merge() {
     return 1
   fi
 
+  # ไฟล์ที่ track แล้วในกิ่งหลักต้องไม่มีการแก้ค้างก่อนผสาน (merge --abort อาจคืนไฟล์ที่แก้ค้างไว้ไม่ครบ)
+  # • ไม่นับไฟล์ untracked (merge ไม่แตะ) • .gitignore ยกเว้นเพราะ RELAY เพิ่ม .relay/worktrees/ เอง
+  local main_dirty
+  main_dirty="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no -- . ':(exclude).relay' ':(exclude).gitignore' 2>/dev/null || true)"
+  if [ -n "$main_dirty" ]; then
+    printf "\n%s✖ กิ่ง %s มีไฟล์ที่ยังไม่ commit — กรุณา commit หรือ stash ก่อนกด [5] (ยังไม่มีการผสานหรือลบใดๆ):%s\n" "$C_ERR" "$base" "$C_RESET"
+    printf "%s\n" "$main_dirty" | head -n 8 | sed 's/^/    /'
+    return 1
+  fi
+
   # ดึงเอกสารล่าสุดจาก Worktree กลับมาที่ใบงานหลักก่อน
   if [ -d "$worktree_dir/.relay/tasks/$task" ]; then
     sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$task" "$task_dir"
@@ -5380,7 +5470,9 @@ run_phase_5_merge() {
   printf "%s│%s %sตรวจสอบก่อนผสานโค้ด (ขั้นตอนที่ 5)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s  • ผสานจากกิ่ง  : %s ➔ เข้ากิ่ง %s%s%s\n" "$C_ACCENT" "$C_RESET" "$branch_name" "$C_BOLD" "$base" "$C_RESET"
   printf "%s│%s  • commit ใหม่   : %s commit\n" "$C_ACCENT" "$C_RESET" "$ahead"
-  if [ "$qa_v" = "PASS" ]; then
+  if [ "$qa_res" = "PASS|self" ]; then
+    printf "%s│%s  • ผลตรวจรับ    : %sPASS%s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET" "$(verdict_source_note self)"
+  elif [ "$qa_v" = "PASS" ]; then
     printf "%s│%s  • ผลตรวจรับ    : %sPASS%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
   else
     printf "%s│%s  • ผลตรวจรับ    : %s%s — ยังไม่ผ่านการตรวจรับจาก @qa%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$qa_v" "$C_RESET"
@@ -5399,6 +5491,11 @@ run_phase_5_merge() {
   merge_telem="$(get_task_telemetry_summary_inline "$task")"
   if [ -n "$merge_telem" ]; then
     printf "%s│%s  • ต้นทุนใบงาน  : %b\n" "$C_ACCENT" "$C_RESET" "$merge_telem"
+  fi
+  local relay_in_branch
+  relay_in_branch="$(git -C "$PROJECT_DIR" diff --name-only "${base}...${branch_name}" -- .relay 2>/dev/null | head -n 3 || true)"
+  if [ -n "$relay_in_branch" ]; then
+    printf "%s│%s  %s▲ กิ่งงานมีไฟล์ใน .relay/ ถูก commit (จะถูกผสานเข้า %s ด้วย): %s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$base" "$(printf "%s" "$relay_in_branch" | tr '\n' ' ')" "$C_RESET"
   fi
   if [ "$base" != "main" ] && [ "$base" != "master" ]; then
     printf "%s│%s  %s▲ กิ่งปลายทางไม่ใช่ main/master — ระบบจะถามยืนยันอีกครั้ง%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET"
@@ -5443,8 +5540,10 @@ run_phase_5_merge() {
     *) return 0 ;;
   esac
 
-  if [ "$qa_v" != "PASS" ]; then
-    interactive_menu "ใบงานนี้ยังไม่ผ่านการตรวจรับ (${qa_v}) — ยืนยันจะผสานเข้า ${base} หรือไม่?" 1 \
+  if [ "$qa_v" != "PASS" ] || [ "$qa_res" = "PASS|self" ]; then
+    local qa_label="$qa_v"
+    [ "$qa_res" = "PASS|self" ] && qa_label="PASS โดย @dev ตรวจเอง"
+    interactive_menu "ใบงานนี้ยังไม่ผ่านการตรวจรับจาก @qa (${qa_label}) — ยืนยันจะผสานเข้า ${base} หรือไม่?" 1 \
       "y|ยืนยันผสานแม้ยังไม่ผ่าน QA (รับผิดชอบเอง)" \
       "b|ย้อนกลับ — กลับไปแก้ไขก่อน"
     [ "$MENU_RESULT" != "y" ] && return 0
