@@ -67,11 +67,31 @@ if printf "%s" "$dash_clean" | grep -q "╭.*RELAY v1.0.0.*╮" && \
    printf "%s" "$dash_clean" | grep -q "ตำแหน่ง AI" && \
    printf "%s" "$dash_clean" | grep -q "โควต้า (5 ชม. / 7 วัน)" && \
    printf "%s" "$dash_clean" | grep -q "ความคืบหน้าและสถิติ" && \
-   printf "%s" "$dash_clean" | grep -q "งาน: 20261030-ui-redesign"; then
+   printf "%s" "$dash_clean" | grep -q "งานปัจจุบัน" && \
+   printf "%s" "$dash_clean" | grep -q "20261030-ui-redesign"; then
   pass "print_dashboard_header แสดงกรอบแบ่งซ้าย-ขวาเป็นภาษาไทย พร้อมหมวด ตำแหน่ง AI, โควต้า (5 ชม. / 7 วัน), ความคืบหน้าและสถิติ และงานปัจจุบัน"
 else
   fail "print_dashboard_header แสดงโครงสร้างไม่ครบ:\n$dash_clean"
 fi
+
+if printf "%s" "$dash_clean" | grep -q "โปรเจกต์" && \
+   printf "%s" "$dash_clean" | grep -q "proj (main)" && \
+   printf "%s" "$dash_clean" | grep -q "เปลี่ยนโปรเจกต์: กด \[f\]" && \
+   ! printf "%s" "$dash_clean" | grep -q "Google AI Ultra · Codex" && \
+   ! printf "%s" "$dash_clean" | grep -q "HEAD"; then
+  pass "กรอบซ้ายแสดงโปรเจกต์ (ชื่อ + กิ่งบรรทัดเดียวแม้ยังไม่มี commit) และวิธีเปลี่ยนโปรเจกต์ โดยไม่มีบรรทัดสรุปค่ายเดิม"
+else
+  fail "กรอบซ้ายไม่ถูกต้อง:\n$dash_clean"
+fi
+
+home_dash="$(PROJECT_DIR="$HOME" SUBCOMMAND=status print_dashboard_header | sed 's/\x1b\[[0-9;]*m//g')"
+if printf "%s" "$home_dash" | grep -q "ยังไม่ได้เลือกโปรเจกต์" && printf "%s" "$home_dash" | grep -q "กด \[1\] เพื่อเลือกโปรเจกต์"; then
+  pass "อยู่ในโฟลเดอร์ Home ➔ กรอบซ้ายบอกชัดว่ายังไม่ได้เลือกโปรเจกต์ และให้กด [1]"
+else
+  fail "กรอบซ้ายในโฟลเดอร์ Home ไม่ถูกต้อง:\n$home_dash"
+fi
+PROJECT_DIR="$TMP_ROOT/proj"
+refresh_project_paths
 
 echo "== AC-2: ทดสอบศัพท์มาตรฐานนักพัฒนาและตรวจจับการไม่ Over-claim บน Dashboard =="
 if ! printf "%s" "$dash_clean" | grep -Eq "Real-Time Quota|ใบงาน|สถานะงาน|ศูนย์จัดการ"; then
