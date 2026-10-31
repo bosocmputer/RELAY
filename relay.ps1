@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     RELAY Central Terminal Hub (v1.0) — Guided 3-Stage Progressive UX สำหรับ Windows (PowerShell)
 .DESCRIPTION

@@ -125,6 +125,34 @@ err="$(printf 'Permission allow rule (../../.claude/settings.json): Bash(x) has 
 check '[ "$err" = "real error from claude" ]' "กรองคำเตือนทุกพาธ และข้อความ error อื่นยังแสดง"
 check '[ "$(grep -c "2> >(filter_claude_permission_warnings)" "$RELAY_SH")" = "2" ] && ! grep -q "Permission allow rule (\\\\.claude" "$RELAY_SH"' "ทั้ง [t] และการเปิด CLI ของแต่ละขั้นตอนใช้ตัวกรองเดียวกัน"
 
+echo "=== Auto-Loop: กรองคำเตือนของ claude โดย exit code และเพดานเวลายังทำงาน ==="
+AL_BIN="$TMP_ROOT/al-bin"
+mkdir -p "$AL_BIN" "$TMP_ROOT/al-work"
+cat > "$AL_BIN/claude" <<'STUB'
+#!/bin/sh
+echo "Permission allow rule (../../.claude/settings.json): Bash(x *) has a wildcard" >&2
+echo "real error from claude" >&2
+[ -n "${FAKE_CLAUDE_SLEEP:-}" ] && sleep "$FAKE_CLAUDE_SLEEP"
+exit 3
+STUB
+chmod +x "$AL_BIN/claude"
+al_run() {
+  PATH="$AL_BIN:$PATH" RELAY_SOURCE_ONLY=1 /bin/bash -c "source '$RELAY_SH'; refresh_quota_cache() { :; }; extract_step_token_usage() { echo '0|0|0|0|0|dir'; }; append_run_log() { :; }; print_step_telemetry_box() { :; }; exec_provider_autonomous claude m '@dev' '$TMP_ROOT/al-work' 'do it' >/dev/null; echo \"RC=\$?\" >&2" 2>&1 </dev/null
+}
+al_out="$(al_run)"
+check 'printf "%s" "$al_out" | grep -q "real error from claude" && ! printf "%s" "$al_out" | grep -q "Permission allow rule" && printf "%s" "$al_out" | grep -q "^RC=3$"' "ซ่อนคำเตือน แสดง error อื่น และคืน exit code ของ claude (3)"
+al_start=$(date +%s)
+al_out="$(FAKE_CLAUDE_SLEEP=30 RELAY_STEP_TIMEOUT=1 al_run)"
+al_secs=$(( $(date +%s) - al_start ))
+check 'printf "%s" "$al_out" | grep -q "^RC=124$" && [ "$al_secs" -lt 15 ]' "หมดเวลาแล้วยังหยุด claude ได้ (exit 124 ใน ${al_secs} วินาที)"
+
+echo "=== ไฟล์ PowerShell ขึ้นต้นด้วย UTF-8 BOM (Windows PowerShell 5.1 อ่านภาษาไทยได้) ==="
+no_bom=""
+for ps in "$REPO_ROOT"/*.ps1; do
+  [ "$(head -c 3 "$ps" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ] || no_bom="$no_bom $(basename "$ps")"
+done
+check '[ -z "$no_bom" ]' "ไฟล์ .ps1 ทุกไฟล์มี UTF-8 BOM${no_bom:+ (ไม่มี:$no_bom)}"
+
 echo ""
 echo "=================================================================="
 echo "สรุปผลชุดทดสอบ Terminal Menu: ผ่าน ${PASS_COUNT} รายการ, ล้มเหลว ${FAIL_COUNT} รายการ"
