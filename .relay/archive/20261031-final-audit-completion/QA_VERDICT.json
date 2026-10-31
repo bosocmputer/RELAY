@@ -1,10 +1,12 @@
 {
-  "verdict": "PASS",
-  "failed_criteria": [],
-  "tests_run": [
-    "/bin/bash -n relay.sh relay-init.sh relay-skills.sh setup-mac.sh",
-    "bash tests/test_performance_and_accuracy.sh",
-    "bash templates/scripts/verify-relay-task.sh"
+  "verdict": "FAIL",
+  "failed_criteria": [
+    "AC-2: .relay/PROJECT_STATE.md ไม่ได้ถูกแก้ (commit ของใบงานเพิ่มเพียง 1 บรรทัดประวัติ) — การสแกนใน tests/test_performance_and_accuracy.sh ล้มเหลว",
+    "AC-3: รันซ้ำบน main 9426817 ได้ผ่าน 215 / ล้มเหลว 1 (ไม่ใช่ 216/216)"
   ],
-  "summary": "All 12 test suites (216/216 checks) passed; ~/.claude/skills/* native skill links and PROJECT_STATE.md zero-overclaim checks verified."
+  "tests_run": [
+    "bash tests/test_*.sh (ทั้ง 12 ชุด) บน main 9426817 — ผ่าน 215 ล้มเหลว 1",
+    "git log -- .relay/PROJECT_STATE.md"
+  ],
+  "summary": "แก้บันทึกเดิม (PASS, 216/216) ให้ตรงผลรันจริงเมื่อ 2026-10-31 • AC-1 ทำงานบน macOS แต่ภายหลังเปลี่ยนเป็นแบบเลือกเปิดเอง • งานที่ค้างทำต่อในใบงาน 20261031-fix-claude-skill-links-and-records"
 }
