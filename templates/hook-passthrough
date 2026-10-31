@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# RELAY: ส่งต่อไปยัง hook เดิมของ repo (.git/hooks/<ชื่อ hook>)
+# core.hooksPath ระดับ global ทำให้ git ไม่เรียก .git/hooks/ เอง — ไฟล์นี้ถูกติดตั้งในชื่อ hook มาตรฐานอื่นๆ ที่ RELAY ไม่ได้ใช้
+hook_name="$(basename "$0")"
+local_hook="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/$hook_name"
+if [ -x "$local_hook" ] && ! [ "$local_hook" -ef "$0" ]; then
+  exec "$local_hook" "$@"
+fi
+exit 0

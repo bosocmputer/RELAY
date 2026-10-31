@@ -2,6 +2,19 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_SUFFIX=".bak.$(date +%Y%m%d%H%M%S)"
+
+# สำรองไฟล์จริงของผู้ใช้ก่อนถูกแทนที่ (ข้ามถ้าเป็น symlink อยู่แล้ว หรือเนื้อหาตรงกับไฟล์ใหม่)
+backup_user_file() {
+  local target="$1"
+  local new_src="${2:-}"
+  [ -e "$target" ] && [ ! -L "$target" ] || return 0
+  if [ -n "$new_src" ] && cmp -s "$target" "$new_src"; then
+    return 0
+  fi
+  mv "$target" "${target}${BACKUP_SUFFIX}"
+  echo "📦 สำรองไฟล์เดิมไว้ที่: ${target}${BACKUP_SUFFIX}"
+}
 
 echo "⚙️ [RELAY Setup] กำลังติดตั้งการตั้งค่าส่วนกลาง (~/.agents/) สำหรับ macOS / Linux..."
 
@@ -9,6 +22,7 @@ echo "⚙️ [RELAY Setup] กำลังติดตั้งการตั�
 mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons ~/.agents/skills/verification-before-completion/scripts ~/.agents/hooks ~/.agents/bin ~/.claude ~/.codex ~/.gemini
 
 # 2. คัดลอกไฟล์กฎกลาง สกิลตรวจรับงาน สกิล Flutter สกิลมาตรฐานไอคอน สคริปต์ตรวจสอบงาน และสคริปต์ควบคุมศูนย์กลาง (relay, relay-init, relay-skills, relay-verify-task)
+backup_user_file ~/.agents/GLOBAL_AGENTS.md "$SCRIPT_DIR/templates/GLOBAL_AGENTS.md"
 cp "$SCRIPT_DIR/templates/GLOBAL_AGENTS.md" ~/.agents/GLOBAL_AGENTS.md
 cp "$SCRIPT_DIR/templates/playwright-qa-SKILL.md" ~/.agents/skills/playwright-qa/SKILL.md
 cp "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ~/.agents/skills/flutter-best-practices/SKILL.md
@@ -21,6 +35,12 @@ if [ -f "$SCRIPT_DIR/templates/scripts/verify-relay-task.sh" ]; then
 fi
 [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
 cp "$SCRIPT_DIR/templates/pre-commit" ~/.agents/hooks/pre-commit
+# hook มาตรฐานอื่นๆ ส่งต่อไปยัง .git/hooks/ ของ repo เดิม (global core.hooksPath ทำให้ git ไม่เรียกเอง)
+for hook_name in applypatch-msg pre-applypatch post-applypatch prepare-commit-msg commit-msg post-commit \
+                 pre-rebase post-checkout post-merge pre-push pre-auto-gc post-rewrite pre-merge-commit; do
+  cp "$SCRIPT_DIR/templates/hook-passthrough" ~/.agents/hooks/"$hook_name"
+  chmod +x ~/.agents/hooks/"$hook_name"
+done
 cp "$SCRIPT_DIR/skills-manifest.txt" ~/.agents/skills-manifest.txt
 cp "$SCRIPT_DIR/relay-init.sh" ~/.agents/bin/relay-init
 cp "$SCRIPT_DIR/relay-skills.sh" ~/.agents/bin/relay-skills
@@ -51,12 +71,25 @@ for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
 done
 
 # 4. เชื่อม Symlink กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini)
-ln -sf ~/.agents/GLOBAL_AGENTS.md ~/.claude/CLAUDE.md
-ln -sf ~/.agents/GLOBAL_AGENTS.md ~/.codex/AGENTS.md
-ln -sf ~/.agents/GLOBAL_AGENTS.md ~/.gemini/GEMINI.md
+#    (ไฟล์กฎเดิมของผู้ใช้จะถูกสำรองเป็น *.bak.<เวลา> ก่อนแทนที่ด้วย symlink)
+for rules_file in ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md; do
+  backup_user_file "$rules_file" ~/.agents/GLOBAL_AGENTS.md
+  ln -sf ~/.agents/GLOBAL_AGENTS.md "$rules_file"
+done
 
 # 5. ตั้งค่า Global Git Pre-commit Hook เพื่อตรวจสอบความปลอดภัยก่อน Commit ในทุกโครงการ
-git config --global core.hooksPath ~/.agents/hooks
+#    (hook เดิมใน .git/hooks/ ของแต่ละ repo ยังทำงานต่อผ่านตัวส่งต่อ • ไม่ทับ core.hooksPath ที่ผู้ใช้ตั้งไว้เอง)
+RELAY_HOOKS_DIR="$HOME/.agents/hooks"
+current_hooks_path="$(git config --global --get core.hooksPath 2>/dev/null || true)"
+case "$current_hooks_path" in
+  ""|"$RELAY_HOOKS_DIR"|"~/.agents/hooks")
+    git config --global core.hooksPath "$RELAY_HOOKS_DIR"
+    ;;
+  *)
+    echo "▲ พบ core.hooksPath เดิม ($current_hooks_path) — ไม่เขียนทับ"
+    echo "  หากต้องการใช้ RELAY Guard ให้รัน: git config --global core.hooksPath \"$RELAY_HOOKS_DIR\""
+    ;;
+esac
 
 echo "✅ [RELAY Setup] ติดตั้งการตั้งค่าส่วนกลางเสร็จสมบูรณ์!"
 echo "   • คำสั่งหน้าจอควบคุมกลาง: ~/.agents/bin/relay (พิมพ์คำว่า 'relay' ได้จากทุกโฟลเดอร์)"
