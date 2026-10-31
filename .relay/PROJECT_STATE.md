@@ -49,3 +49,9 @@
 - **ชุดทดสอบที่ไม่ใช้โควต้า (`tests/`):** `test_progressive_skills_and_tools.sh`, `test_security_and_hardening.sh`, `test_hermes_cli_redesign.sh`, `test_quota_failover_and_handoff.sh`, `test_custom_agents_and_back_nav.sh`, `test_token_telemetry.sh`, `test_phase5_merge.sh`, `test_auto_loop.sh` (CLI จำลอง), `test_quota_display.sh` (รวม 9 ชุดทดสอบ 124/124 ข้อ) พร้อมชุดทักษะแม่แบบ `flutter-best-practices`, `playwright-qa`, `lucide-icons`, `simple-icons`
 - **เอกสารคู่มือมาตรฐาน (`README.md`, `docs/` และ `domains/`):**
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield), ชี้แจงชัดเจนว่าโฟลเดอร์ `.relay/` คือกลไกหลักโดย **Obsidian เป็นเพียงทางเลือกเสริม (Optional Viewer)**, ทุกบทบาทสลับค่าย/โมเดล AI ได้อิสระผ่านปุ่ม `[c]`, ตัดคำกล่าวอ้างเกินจริง (`100%`, `คุ้มค่าสูงสุด`, `0 Token` ในขั้นตอนที่รัน AI) ออกทั้งหมด, อธิบายข้อจำกัดเรื่อง **Ceremony Overhead** คู่กับโหมด `[x] Fast Track` และระบบวัด Token จริง (`[v]` / `relay stats`), รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี
+
+## ประวัติใบงานที่ผสานแล้ว (RELAY อัปเดตอัตโนมัติ)
+- `2026-10-31` `20261031-skill-rewrite-on-reject` — ใบงานด่วน: ไม่เขียน SKILL.md ใหม่เมื่อไม่ได้อนุมัติกฎใด (20261031-skill-rewrite-on-reject) (merge `a27e546`)
+- `2026-10-31` `20261031-performance-and-accuracy-cleanup` — ใบงานปรับความเร็ว ลด Token และแก้ข้อความอ้างเกินจริง (20261031-performance-and-accuracy-cleanup) (merge `2aa0e94`)
+- `2026-10-31` `20261031-medium-fixes-and-personal-rules` — ใบงานแก้ไขปัญหาระดับ MEDIUM (20261031-medium-fixes-and-personal-rules) (merge `4ef0aa7`)
+- `2026-10-31` `20261031-high-severity-fixes` — ใบงานแก้ไขปัญหาระดับ HIGH จากผลตรวจ Deep Audit (20261031-high-severity-fixes) (merge `eccc619`)
