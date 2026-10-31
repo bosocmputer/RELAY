@@ -125,6 +125,103 @@ err="$(printf 'Permission allow rule (../../.claude/settings.json): Bash(x) has 
 check '[ "$err" = "real error from claude" ]' "กรองคำเตือนทุกพาธ และข้อความ error อื่นยังแสดง"
 check '[ "$(grep -c "2> >(filter_claude_permission_warnings)" "$RELAY_SH")" = "2" ] && ! grep -q "Permission allow rule (\\\\.claude" "$RELAY_SH"' "ทั้ง [t] และการเปิด CLI ของแต่ละขั้นตอนใช้ตัวกรองเดียวกัน"
 
+echo "=== กดลูกศรรัวระหว่างวาดเมนู (Terminal ไม่เปิด ECHOCTL) และคืนค่า echo หลังออกจากเมนู ==="
+cat > "$TMP_ROOT/echo_drift.py" <<'PYEOF'
+import fcntl, os, pty, re, select, struct, sys, termios, time
+relay, home, mode = sys.argv[1:4]
+COLS, ROWS = 90, 40
+menu = ("MENU_SHORTCUTS_BAR=1; interactive_menu t 0 '1|item one' '2|item two' '3|item three' "
+        "'4|item four' '5|item five' '6|item six' '7|item seven'")
+inner = f"export HOME='{home}' TERM=xterm RELAY_SOURCE_ONLY=1; source '{relay}'; {menu}; echo RESULT=$MENU_RESULT"
+# โหมด ctrlc: เปิดเมนูใน bash ลูก กด Ctrl+C แล้วให้ bash แม่พิมพ์สถานะ echo ของ tty หลังลูกจบ
+script = inner + "; stty -a" if mode == "keys" else f"/bin/bash -c \"{inner}\"; stty -a; echo OUTER_DONE"
+pid, fd = pty.fork()
+if pid == 0:
+    attrs = termios.tcgetattr(0)
+    attrs[3] &= ~termios.ECHOCTL
+    termios.tcsetattr(0, termios.TCSANOW, attrs)
+    os.execv("/bin/bash", ["/bin/bash", "-c", script])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+out = b""
+def drain(t):
+    global out
+    end = time.time() + t
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.01)
+        if r:
+            try:
+                d = os.read(fd, 65536)
+            except OSError:
+                return
+            if not d:
+                return
+            out += d
+drain(1.5)
+if mode == "keys":
+    for _ in range(5):
+        os.write(fd, b"\x1b[B")
+        r, _, _ = select.select([fd], [], [], 1.0)
+        if r:
+            out += os.read(fd, 64)
+    drain(2.5)
+    os.write(fd, b"\r")
+else:
+    os.write(fd, b"\x03")
+drain(1.5)
+try:
+    os.waitpid(pid, 0)
+except Exception:
+    pass
+scr = [[" "] * COLS for _ in range(ROWS)]
+x = y = 0
+def nl():
+    global y
+    if y == ROWS - 1:
+        scr.pop(0); scr.append([" "] * COLS)
+    else:
+        y += 1
+s = out.decode("utf-8", "replace")
+csi = re.compile(r"\x1b\[(\??)([0-9;]*)([A-Za-z])")
+i = 0
+while i < len(s):
+    c = s[i]
+    if c == "\x1b":
+        m = csi.match(s, i)
+        if m:
+            q, a, cmd = m.groups()
+            n = int(a.split(";")[0] or 1) if a else 1
+            if cmd == "A" and not q:
+                y = max(0, y - n)
+            elif cmd == "B" and not q:
+                y = min(ROWS - 1, y + n)
+            elif cmd == "K":
+                scr[y] = [" "] * COLS
+            i = m.end()
+            continue
+        i += 1
+        continue
+    if c == "\r":
+        x = 0
+    elif c == "\n":
+        nl()
+    elif c >= " ":
+        if x >= COLS:
+            x = 0; nl()
+        scr[y][x] = c; x += 1
+    i += 1
+lines = ["".join(r).rstrip() for r in scr]
+print("ROWS1=%d" % len([l for l in lines if re.match(r"^\s+(❯ )?\[1\] item one", l)]))
+m = re.search(r"RESULT=(\S+)", s)
+print("RESULT=%s" % (m.group(1) if m else "-"))
+print("ECHO_ON=%d" % (1 if re.search(r"(?<![-\w])echo(?![\w])", s.split("stty")[0] if False else s[s.rfind("speed"):] if "speed" in s else "") else 0))
+print("OUTER=%d" % (1 if "OUTER_DONE" in s else 0))
+PYEOF
+res="$(python3 "$TMP_ROOT/echo_drift.py" "$RELAY_SH" "$HOME" keys)"
+check 'printf "%s" "$res" | grep -q "^ROWS1=1$" && printf "%s" "$res" | grep -q "^RESULT=6$"' "ปุ่มที่ตกช่วงวาดเมนูใหม่ไม่ทำให้เมนูซ้อน และเลือกรายการถูก (↓×5 ➔ [6])"
+check 'printf "%s" "$res" | grep -q "^ECHO_ON=1$"' "ออกจากเมนูแล้ว tty กลับมาเปิด echo"
+res="$(python3 "$TMP_ROOT/echo_drift.py" "$RELAY_SH" "$HOME" ctrlc)"
+check 'printf "%s" "$res" | grep -q "^OUTER=1$" && printf "%s" "$res" | grep -q "^ECHO_ON=1$"' "กด Ctrl+C ในเมนูแล้ว tty กลับมาเปิด echo"
+
 echo "=== Auto-Loop: กรองคำเตือนของ claude โดย exit code และเพดานเวลายังทำงาน ==="
 AL_BIN="$TMP_ROOT/al-bin"
 mkdir -p "$AL_BIN" "$TMP_ROOT/al-work"
