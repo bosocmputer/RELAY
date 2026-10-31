@@ -71,11 +71,21 @@ for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
   fi
 done
 
-# 4. เชื่อม Symlink กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini)
-#    (ไฟล์กฎเดิมของผู้ใช้จะถูกสำรองเป็น *.bak.<เวลา> ก่อนแทนที่ด้วย symlink)
+# 4. เชื่อม Symlink กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini) และเชื่อมทักษะเข้ากับ ~/.claude/skills/
+#    (ไฟล์กฎเดิมของผู้ใช้จะถูกสำรองเป็น *.bak.<เวลา> ก่อนแทนที่ด้วย symlink • ไม่ทับโฟลเดอร์ทักษะจริงใน ~/.claude/skills/)
 for rules_file in ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.gemini/GEMINI.md; do
   backup_user_file "$rules_file" ~/.agents/GLOBAL_AGENTS.md
   ln -sf ~/.agents/GLOBAL_AGENTS.md "$rules_file"
+done
+
+mkdir -p ~/.claude/skills
+for s_dir in ~/.agents/skills/*; do
+  [ -d "$s_dir" ] && [ -f "$s_dir/SKILL.md" ] || continue
+  target_skill="$HOME/.claude/skills/$(basename "$s_dir")"
+  if [ -e "$target_skill" ] && [ ! -L "$target_skill" ]; then
+    continue
+  fi
+  ln -sfn "$s_dir" "$target_skill"
 done
 
 # 5. ตั้งค่า Global Git Pre-commit Hook เพื่อตรวจสอบความปลอดภัยก่อน Commit ในทุกโครงการ
