@@ -4785,15 +4785,18 @@ rejected = [p for i, p in enumerate(pending) if i not in chosen]
 
 rules = bullets(read_text(skill_file))
 seen = {re.sub(r"\W+", "", r.lower())[:60] for r in rules}
+added_rules = []
 for a in approved:
     k = re.sub(r"\W+", "", a.lower())[:60]
     if k not in seen:
         rules.append(a)
+        added_rules.append(a)
         seen.add(k)
 rules = rules[-25:]
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
-if rules:
+# เขียน SKILL.md เฉพาะเมื่อมีข้ออนุมัติใหม่ (ปฏิเสธทั้งหมดต้องไม่แตะไฟล์และหัวเอกสารเดิม)
+if added_rules:
     tmp_skill = f"{skill_file}.tmp.{os.getpid()}"
     with open(tmp_skill, "w", encoding="utf-8") as f:
         f.write(f"""---

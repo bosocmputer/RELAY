@@ -184,6 +184,12 @@ printf '# p\n\n- rule one long enough\n- rule two long enough\n' > "$P10/.relay/
 check '[ "$(grep -c "^- " "$P10/.relay/skills/project-learned/PENDING.md")" = "2" ]' "พิมพ์ 'all' ➔ กฎยังอยู่ในคิวครบ 2 ข้อ"
 ( cd "$P10" && relay_src "$M10_HOME" 'PROJECT_DIR="$PWD"; refresh_project_paths; apply_learned_approval 2' >/dev/null 2>&1 )
 check 'grep -q "rule two" "$P10/.relay/skills/project-learned/SKILL.md" && ! grep -q "rule one" "$P10/.relay/skills/project-learned/SKILL.md"' "พิมพ์หมายเลขยังอนุมัติได้ตามปกติ"
+# บรรทัดที่ผู้ใช้เขียนเองใน SKILL.md (ไม่ใช่ bullet) จะหายถ้าไฟล์ถูกเขียนใหม่ — ใช้ตรวจว่าไม่มีการเขียนทับ
+echo "> หมายเหตุที่ผู้ใช้เขียนเอง" >> "$P10/.relay/skills/project-learned/SKILL.md"
+cp "$P10/.relay/skills/project-learned/SKILL.md" "$TMP_ROOT/m10-skill-before.md"
+printf '# p\n\n- rule three long enough\n' > "$P10/.relay/skills/project-learned/PENDING.md"
+( cd "$P10" && relay_src "$M10_HOME" 'PROJECT_DIR="$PWD"; refresh_project_paths; apply_learned_approval x' >/dev/null 2>&1 )
+check 'cmp -s "$P10/.relay/skills/project-learned/SKILL.md" "$TMP_ROOT/m10-skill-before.md" && [ "$(grep -c "^- " "$P10/.relay/skills/project-learned/PENDING.md")" = "0" ]' "ปฏิเสธทั้งหมด (x) ➔ ล้างคิว แต่ไม่แตะ SKILL.md (หัวเอกสารเดิมไม่ถูกเขียนทับ)"
 
 echo "=== [M12] ปุ่ม [s] และการออกจากเมนูตั้งค่า ==="
 M12_HOME="$(new_home m12)"
