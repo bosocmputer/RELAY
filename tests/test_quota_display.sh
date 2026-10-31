@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ทดสอบการแสดงผลโควต้า: นับถอยหลัง, เลยเวลารีเซ็ต, แคชเก่าไม่มี epoch, ค่ายที่ดึงข้อมูลไม่ได้ — ไม่ใช้โควต้า AI
 RELAY="$(cd "$(dirname "$0")/.." && pwd)/relay.sh"
-ROOT=/tmp/relay-qt
+ROOT="$(mktemp -d -t relay-quota-test.XXXXXX)"
+trap 'rm -rf "$ROOT"' EXIT
 pass=0; fail=0
 ok()  { echo "  ✅ $1"; pass=$((pass+1)); }
 bad() { echo "  ❌ $1"; fail=$((fail+1)); }

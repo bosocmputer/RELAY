@@ -92,7 +92,8 @@ get_provider_version() {
   echo "${ver:-installed}"
 }
 
-# แคชสถานะการ Login ของทุกค่ายต่อรอบการแสดงผล เพื่อความรวดเร็วสูงสุด
+# แคชสถานะการ Login ของทุกค่ายในโปรเซสนี้ 60 วินาที (ไม่ต้องเรียก claude / codex CLI ใหม่ทุกครั้งที่วาดหน้าจอ)
+CLI_AUTH_CHECKED_AT=0
 CLI_AUTH_AGY=0
 CLI_AUTH_CLAUDE=0
 CLI_AUTH_CODEX=0
@@ -101,13 +102,21 @@ CLI_AUTH_DETAIL_CLAUDE="ยังไม่ได้ Login"
 CLI_AUTH_DETAIL_CODEX="ยังไม่ได้ Login"
 
 refresh_cli_auth_cache() {
-  # 1. ตรวจสถานะ Login ของ agy (Google AI Ultra / Antigravity CLI)
+  # --force = ตรวจใหม่ทันที (ใช้หลังสั่ง login)
+  local now_s
+  now_s="$(date +%s)"
+  if [ "${1:-}" != "--force" ] && [ $((now_s - CLI_AUTH_CHECKED_AT)) -lt 60 ]; then
+    return 0
+  fi
+  CLI_AUTH_CHECKED_AT="$now_s"
+
+  # 1. ตรวจสถานะ Login ของ agy (Google AI Ultra / Antigravity CLI) — ดูจากไฟล์ login ในเครื่อง ไม่ได้ถามเซิร์ฟเวอร์
   CLI_AUTH_AGY=0
   CLI_AUTH_DETAIL_AGY="ยังไม่ได้ Login (รัน agy เพื่อเข้าสู่ระบบ Google AI Ultra)"
   if is_provider_installed "agy"; then
-    if [ -s "$HOME/.gemini/jetski-standalone-oauth-token" ] || [ -s "$HOME/.gemini/config/config.json" ] || [ -d "$HOME/.gemini/antigravity-cli" ]; then
+    if [ -s "$HOME/.gemini/jetski-standalone-oauth-token" ] || [ -s "$HOME/.gemini/config/config.json" ]; then
       CLI_AUTH_AGY=1
-      CLI_AUTH_DETAIL_AGY="Login แล้ว (Google AI Ultra • Gemini 4 + Claude 5.5)"
+      CLI_AUTH_DETAIL_AGY="พบข้อมูล Login ของ agy ในเครื่อง (Google AI Ultra)"
     fi
   fi
 
@@ -229,10 +238,10 @@ get_cli_live_models() {
     cat << 'EOF'
 gemini-4-argon-high|Gemini 4 Argon (High) — โควตา Google AI Ultra (แนะนำสำหรับ @po / วิเคราะห์ลึก)
 gemini-4-argon-medium|Gemini 4 Argon (Medium) — โควตา Google AI Ultra (สมดุลความเร็วและคุณภาพ)
-gemini-4-argon-low|Gemini 4 Argon (Low) — โควตา Google AI Ultra (ประหยัดโควตาสูงสุด)
+gemini-4-argon-low|Gemini 4 Argon (Low) — โควตา Google AI Ultra (ใช้โควตาน้อยกว่า High / Medium)
 gemini-3.8-flash-high|Gemini 3.8 Flash (High) — โควตา Google AI Ultra (ความเร็วสูง คุณภาพสูง)
 gemini-3.8-flash-medium|Gemini 3.8 Flash (Medium) — โควตา Google AI Ultra (รวดเร็วสำหรับงานทั่วไป)
-gemini-3.8-flash-low|Gemini 3.8 Flash (Low) — โควตา Google AI Ultra (เบาและเร็วที่สุด)
+gemini-3.8-flash-low|Gemini 3.8 Flash (Low) — โควตา Google AI Ultra (ใช้โควตาน้อยกว่า High / Medium)
 claude-opus-5-5-high|Claude Opus 5.5 (High) — โควตา Google AI Ultra (แนะนำสำหรับ @arch/@pm)
 claude-opus-5-5-medium|Claude Opus 5.5 (Medium) — โควตา Google AI Ultra (สถาปัตยกรรมและวางแผน)
 claude-opus-5-5-low|Claude Opus 5.5 (Low) — โควตา Google AI Ultra (ประหยัดโควตา Claude Opus)
@@ -327,7 +336,7 @@ refresh_agy_models_live() {
       local mid mdesc
       mid="$(printf "%s" "$line" | awk '{print $1}')"
       mdesc="$(printf "%s" "$line" | sed -E 's/^[^[:space:]]+[[:space:]]+//')"
-      printf "%s|%s — โควตา Google AI Ultra (ดึงสดจาก agy models)\n" "$mid" "$mdesc" >> "$AGY_MODELS_CACHE"
+      printf "%s|%s — โควตา Google AI Ultra (จาก agy models)\n" "$mid" "$mdesc" >> "$AGY_MODELS_CACHE"
     done <<< "$raw_out"
     printf "%s● อัปเดตรายชื่อโมเดลจาก agy models สำเร็จแล้ว!%s\n" "$C_OK" "$C_RESET"
   else
@@ -558,7 +567,7 @@ check_all_roles_ready() {
   load_quota_cache
 }
 
-# ─── 2.5 ระบบดึงและแสดงโควต้าคงเหลือแบบเรียลไทม์ (Real-Time Multi-Provider Quota Engine) ───
+# ─── 2.5 ระบบดึงและแสดงโควต้าคงเหลือ (แคช + refresh เบื้องหลังเมื่อเก่ากว่า 3 นาที + ดึงใหม่เมื่อกด [u]) ───
 QUOTA_UPDATED_EPOCH=0
 QUOTA_UPDATED_AT="-"
 AGY_GEMINI_5H_REM="-"
@@ -599,7 +608,7 @@ refresh_quota_cache() {
   mkdir -p "$GLOBAL_DIR"
 
   if [ "$mode" != "--quiet" ]; then
-    printf "%sกำลังดึงข้อมูลโควต้าคงเหลือแบบเรียลไทม์จาก CLI ทุกค่าย (agy / codex / claude)...%s\n" "$C_ACCENT" "$C_RESET"
+    printf "%sกำลังดึงข้อมูลโควต้าคงเหลือล่าสุด (agy / claude จาก CLI • codex จาก session log)...%s\n" "$C_ACCENT" "$C_RESET"
   fi
 
   if [ "$mode" = "--deep" ] && is_provider_installed "codex" && is_provider_logged_in "codex"; then
@@ -947,10 +956,21 @@ for cf in reversed(files[-5:]):
 PYEOF
 }
 
+CODEX_SNAPSHOT_KEY=""
+CODEX_SNAPSHOT_VAL=""
 update_codex_quota_fast() {
   command -v python3 >/dev/null 2>&1 || return 0
-  local cx_out
-  cx_out="$(codex_quota_snapshot)"
+  # อ่าน session log ใหม่เฉพาะเมื่อไฟล์ล่าสุดเปลี่ยน (ชื่อ / ขนาด / เวลาแก้ไข) ไม่งั้นใช้ผลเดิมของโปรเซสนี้
+  local key cx_out
+  key="$(ls -lt "$HOME"/.codex/sessions/*/*/*/rollout-*.jsonl 2>/dev/null | head -n 1)"
+  key="${key:-none}"
+  if [ "$key" = "$CODEX_SNAPSHOT_KEY" ]; then
+    cx_out="$CODEX_SNAPSHOT_VAL"
+  else
+    cx_out="$(codex_quota_snapshot)"
+    CODEX_SNAPSHOT_KEY="$key"
+    CODEX_SNAPSHOT_VAL="$cx_out"
+  fi
   if [ -n "$cx_out" ]; then
     IFS='|' read -r CODEX_PLAN CODEX_5H_REM CODEX_5H_RESET CODEX_7D_REM CODEX_7D_RESET CODEX_5H_RESET_EPOCH CODEX_7D_RESET_EPOCH CODEX_FETCHED_AT <<<"$cx_out"
     CODEX_FETCH_OK="1"
@@ -1027,7 +1047,7 @@ format_quota_bar() {
   printf "%s[%s] %3d%%%s" "$col" "$bar" "$pct" "$C_RESET"
 }
 
-# ─── นับถอยหลังเวลารีเซ็ตโควต้า (คำนวณตอนวาดหน้าจอทุกครั้ง จึงเดินถูกเสมอแม้แคชจะเก่า) ───
+# ─── นับถอยหลังเวลารีเซ็ตโควต้า (คำนวณจากเวลารีเซ็ตที่แคชไว้ทุกครั้งที่วาดหน้าจอ จึงนับต่อได้แม้แคชจะเก่า) ───
 RENDER_NOW=""
 now_epoch() {
   if [ -n "$RENDER_NOW" ]; then
@@ -1058,7 +1078,7 @@ format_countdown() {
   fi
 }
 
-# เมื่อเลยเวลารีเซ็ตแล้ว โควต้ารอบนั้นกลับมาเต็ม 100% (ใช้ทั้งการแสดงผลและ Quota Circuit Breaker)
+# เมื่อเลยเวลารีเซ็ตแล้ว ถือว่าโควต้ารอบนั้นกลับมาเต็ม 100% จนกว่าจะดึงค่าใหม่ (ใช้ทั้งการแสดงผลและ Quota Circuit Breaker)
 effective_quota_pct() {
   local pct="$1"
   local ep="$2"
@@ -1478,7 +1498,7 @@ check_role_quota_safe() {
     claude) fetch_ok="$CLAUDE_FETCH_OK"; fetched_at="$CLAUDE_FETCHED_AT" ;;
   esac
   if [ "$fetch_ok" = "0" ]; then
-    printf "%s▲ ดึงโควต้าสดของ %s ไม่สำเร็จ — ใช้ค่าล่าสุดเมื่อ %s ในการตัดสิน%s\n" "$C_WARN" "$provider" "$fetched_at" "$C_RESET"
+    printf "%s▲ ดึงโควต้าล่าสุดของ %s ไม่สำเร็จ — ใช้ค่าล่าสุดเมื่อ %s ในการตัดสิน%s\n" "$C_WARN" "$provider" "$fetched_at" "$C_RESET"
   fi
 
   local low_flag=0
@@ -2434,7 +2454,7 @@ print_quota_report_box() {
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s%sQuota Monitor (5h / 7d) — สถานะโควต้าแยกตามค่ายและโมเดล%s\n" "$C_MUTED" "$C_RESET" "$C_ACCENT" "$C_BOLD" "$C_RESET"
-  printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (ดึงข้อมูลจาก CLI ทั้ง 3 ค่ายโดยตรง)%s\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
+  printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (agy / claude ถามจาก CLI • codex อ่านจาก session log ล่าสุดในเครื่อง)%s\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s1. Google AI Ultra — Gemini Models (agy)%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
   [ "$AGY_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_MUTED" "$C_RESET" "$C_WARN" "$AGY_FETCHED_AT" "$C_RESET"
@@ -2456,12 +2476,22 @@ print_quota_report_box() {
   printf "%s│%s    • Weekly 7-Day  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$c7")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %sStatus Summary:%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
-  if [[ "$c7" =~ ^[0-9]+$ ]] && [ "$c7" -lt 20 ]; then
-    printf "%s│%s  %s▲ โควต้ารายสัปดาห์ของ claude เหลือ %s%% (%s) — แนะนำให้สลับไปใช้ agy (เหลือ %s%%)%s\n" \
-      "$C_MUTED" "$C_RESET" "$C_WARN" "$c7" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$a7" "$C_RESET"
+  # สรุปจากทุกกระเป๋าที่มีข้อมูล: แจ้งกระเป๋าที่ต่ำกว่า 20% และบอกตรงๆ ว่ากระเป๋าไหนไม่มีข้อมูล
+  local low_list="" unknown_list="" q_label q_val
+  for q_label in "agy-Gemini 5h:$g5" "agy-Gemini 7d:$g7" "agy-Claude/GPT 5h:$a5" "agy-Claude/GPT 7d:$a7" "codex 5h:$x5" "codex 7d:$x7" "claude 5h:$c5" "claude 7d:$c7"; do
+    q_val="${q_label##*:}"
+    if [[ "$q_val" =~ ^[0-9]+$ ]]; then
+      [ "$q_val" -lt 20 ] && low_list="${low_list:+$low_list, }${q_label%:*} ${q_val}%"
+    else
+      unknown_list="${unknown_list:+$unknown_list, }${q_label%:*}"
+    fi
+  done
+  if [ -n "$low_list" ]; then
+    printf "%s│%s  %s▲ โควต้าต่ำกว่า 20%%: %s — ควรสลับตำแหน่งที่ใช้กระเป๋านี้ไปค่ายอื่น ([c])%s\n" "$C_MUTED" "$C_RESET" "$C_WARN" "$low_list" "$C_RESET"
   else
-    printf "%s│%s  %s● โควต้าทุกตำแหน่งพร้อมทำงานต่อเนื่อง%s\n" "$C_MUTED" "$C_RESET" "$C_OK" "$C_RESET"
+    printf "%s│%s  %s● ทุกกระเป๋าที่มีข้อมูลยังเหลือโควต้าอย่างน้อย 20%%%s\n" "$C_MUTED" "$C_RESET" "$C_OK" "$C_RESET"
   fi
+  [ -n "$unknown_list" ] && printf "%s│%s  %s○ ไม่มีข้อมูล: %s%s\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$unknown_list" "$C_RESET"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
   RENDER_NOW=""
 }
@@ -2477,9 +2507,9 @@ run_quota_dashboard() {
   fi
 
   while true; do
-    interactive_menu "จัดการและรีเฟรชโควต้าคงเหลือแบบเรียลไทม์" 0 \
-      "1|★ รีเฟรชข้อมูลโควต้าสดจากทุกค่ายเดี๋ยวนี้ (Live Sync: agy + codex + claude)" \
-      "2|ยิงอัปเดตโควต้า Codex สดจากเซิร์ฟเวอร์ OpenAI (Deep Codex Sync)" \
+    interactive_menu "จัดการและรีเฟรชโควต้าคงเหลือ" 0 \
+      "1|★ ดึงข้อมูลโควต้าล่าสุดจากทุกค่ายเดี๋ยวนี้ (agy + codex + claude)" \
+      "2|ส่งคำขอสั้นๆ 1 ครั้งผ่าน codex exec เพื่อให้ได้ค่าโควต้า Codex ใหม่ (ใช้โควต้า codex 1 คำขอ)" \
       "c|สลับค่าย AI / เปลี่ยน Model ประจำตำแหน่งเพื่อกระจายโควต้า (/model)" \
       "b|กลับสู่หน้าจอหลัก"
 
@@ -2826,7 +2856,7 @@ choose_model_interactive() {
   menu_items+=("c|กำหนดรหัสโมเดลด้วยตนเอง    — พิมพ์ชื่อ Model ID ที่ต้องการ")
   menu_items+=("b|ย้อนกลับ                    — คงค่าโมเดลเดิม (${fallback_m})")
 
-  interactive_menu "เลือก Model ของค่าย [${provider}] สำหรับ ${role_label} (ดึงจาก CLI ในเครื่องโดยตรง)" 0 "${menu_items[@]}"
+  interactive_menu "เลือก Model ของค่าย [${provider}] สำหรับ ${role_label} (รายชื่อจาก CLI / แคชในเครื่อง)" 0 "${menu_items[@]}"
 
   if [ "$MENU_RESULT" = "b" ] || [ "$MENU_RESULT" = "B" ]; then
     MODEL_CHOICE_CANCELLED=1
@@ -2884,7 +2914,7 @@ login_single_provider() {
       ;;
   esac
   RELAY_CHILD_ACTIVE=0
-  refresh_cli_auth_cache
+  refresh_cli_auth_cache --force
 }
 
 # ─── 9. การตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง ([c] / /model) ───────────
@@ -3251,23 +3281,28 @@ run_agent_readiness_test() {
   esac
 }
 
-# ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน & ระบบวัด Token จริงจาก Session Logs ───
-# ดึงตัวเลข Token จริง (total|input|cached|output|turns) จากไฟล์ .jsonl ของแต่ละ CLI ที่อัปเดตในช่วง [start_epoch, end_epoch]
+# ─── 13. เรียกใช้งาน CLI ของแต่ละขั้นตอน & ระบบวัด Token จาก Session Logs ───
+# ดึงตัวเลข Token (total|input|cached|output|turns|scope) จาก session log (.jsonl) ของแต่ละ CLI ในช่วง [start_epoch, end_epoch]
+# scope: dir = เฉพาะ session ในโฟลเดอร์ work_dir • all = ไม่ได้ระบุโฟลเดอร์ (รวมทุก session) • est = agy ไม่บันทึกโฟลเดอร์ (รวม session agy อื่นในช่วงเดียวกัน)
 extract_step_token_usage() {
   local provider="$1"
   local start_ep="${2:-0}"
   local end_ep="${3:-0}"
+  local work_dir="${4:-}"
   if [ -n "${RELAY_MOCK_TOKENS:-}" ]; then
     echo "$RELAY_MOCK_TOKENS"
     return 0
   fi
   command -v python3 >/dev/null 2>&1 || { echo "0|0|0|0|0"; return 0; }
-  python3 - "$provider" "$start_ep" "$end_ep" <<'PYEOF' 2>/dev/null || echo "0|0|0|0|0"
-import os, sys, glob, json, datetime
+  python3 - "$provider" "$start_ep" "$end_ep" "$work_dir" <<'PYEOF' 2>/dev/null || echo "0|0|0|0|0"
+import os, re, sys, glob, json, datetime
 
 prov = sys.argv[1]
 s_ep = float(sys.argv[2]) if sys.argv[2].isdigit() else 0.0
 e_ep = float(sys.argv[3]) if sys.argv[3].isdigit() else s_ep
+work_dir = sys.argv[4] if len(sys.argv) > 4 else ""
+work_real = os.path.realpath(work_dir) if work_dir else ""
+scope = "dir" if work_dir else "all"
 
 def parse_ep(ts):
     if not ts or not isinstance(ts, str):
@@ -3320,6 +3355,7 @@ if prov == "agy":
     tot_out = sum(x[2] for x in seen.values())
     tot_all = tot_in + tot_out
     turns = len(seen)
+    scope = "est"
 
 elif prov == "codex":
     c_root = os.environ.get("RELAY_CODEX_SESSIONS_DIR") or os.path.expanduser("~/.codex/sessions")
@@ -3328,6 +3364,13 @@ elif prov == "codex":
             try:
                 if os.path.getmtime(f) < s_ep - 5:
                     continue
+                if work_dir:
+                    # บรรทัดแรกของ rollout คือ session_meta ที่มี cwd ของ session นั้น
+                    with open(f, encoding="utf-8", errors="ignore") as fh:
+                        meta = json.loads(fh.readline() or "{}")
+                    s_cwd = (meta.get("payload") or {}).get("cwd") or ""
+                    if not s_cwd or os.path.realpath(s_cwd) != work_real:
+                        continue
                 base = None
                 win = []
                 for line in open(f, encoding="utf-8", errors="ignore"):
@@ -3366,8 +3409,15 @@ elif prov == "codex":
 elif prov == "claude":
     cl_root = os.environ.get("RELAY_CLAUDE_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects")
     seen = {}
+    cl_files = []
     if os.path.isdir(cl_root):
-        for f in glob.glob(os.path.join(cl_root, "**", "*.jsonl"), recursive=True):
+        if work_dir:
+            # Claude Code เก็บ session ไว้ใต้ ~/.claude/projects/<พาธ cwd ที่อักขระอื่นนอกจาก A-Z a-z 0-9 ถูกแทนด้วย ->
+            for wd in {work_dir, work_real}:
+                cl_files += glob.glob(os.path.join(cl_root, re.sub(r"[^A-Za-z0-9]", "-", wd), "**", "*.jsonl"), recursive=True)
+        else:
+            cl_files = glob.glob(os.path.join(cl_root, "**", "*.jsonl"), recursive=True)
+        for f in sorted(set(cl_files)):
             try:
                 if os.path.getmtime(f) < s_ep - 5:
                     continue
@@ -3396,11 +3446,11 @@ elif prov == "claude":
     tot_all = tot_in + tot_out
     turns = len(seen)
 
-print(f"{tot_all}|{tot_in}|{tot_ca}|{tot_out}|{turns}")
+print(f"{tot_all}|{tot_in}|{tot_ca}|{tot_out}|{turns}|{scope}")
 PYEOF
 }
 
-# บันทึก 1 บรรทัดต่อการเรียก agent ลง .relay/tasks/<task>/RUN_LOG.jsonl (พร้อมข้อมูล Token จริง)
+# บันทึก 1 บรรทัดต่อการเรียก agent ลง .relay/tasks/<task>/RUN_LOG.jsonl (พร้อมข้อมูล Token จาก session log)
 append_run_log() {
   local log_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
   [ -n "$ACTIVE_TASK" ] && [ -d "$log_dir" ] || return 0
@@ -3414,13 +3464,16 @@ def q(x):
     p = x.split("|")
     return {"5h": p[0] if p and p[0] else "-", "7d": p[1] if len(p) > 1 else "-"}
 def t(x):
-    p = (x.split("|") + ["0", "0", "0", "0", "0"])[:5]
+    p = (x.split("|") + ["0", "0", "0", "0", "0", ""])[:6]
+    total = int(p[0]) if p[0].isdigit() else 0
     return {
-        "total": int(p[0]) if p[0].isdigit() else 0,
+        "total": total,
         "input": int(p[1]) if p[1].isdigit() else 0,
         "cached": int(p[2]) if p[2].isdigit() else 0,
         "output": int(p[3]) if p[3].isdigit() else 0,
         "turns": int(p[4]) if p[4].isdigit() else 0,
+        "found": total > 0,
+        "scope": p[5] or "-",
     }
 rec = {
     "started_at": datetime.datetime.fromtimestamp(int(s)).isoformat(timespec="seconds"),
@@ -3439,7 +3492,7 @@ with open(f, "a", encoding="utf-8") as fh:
 PYEOF
 }
 
-# แสดงกล่องสรุปเวลา + Token จริง + โควต้าหลังจบแต่ละขั้นตอนทันที
+# แสดงกล่องสรุปเวลา + Token + โควต้าหลังจบแต่ละขั้นตอนทันที
 print_step_telemetry_box() {
   local step_label="$1"
   local prov="$2"
@@ -3461,8 +3514,12 @@ m, sec = divmod(dur_s, 60)
 h, m = divmod(m, 60)
 dur_txt = f"{h}ชม.{m:02d}น.{sec:02d}วิ" if h else (f"{m}น.{sec:02d}วิ" if m else f"{sec}วิ")
 
-tp = (tok_raw.split("|") + ["0", "0", "0", "0", "0"])[:5]
-tot, inp, ca, out, turns = [int(x) if x.isdigit() else 0 for x in tp]
+tp = (tok_raw.split("|") + ["0", "0", "0", "0", "0", ""])[:6]
+tot, inp, ca, out, turns = [int(x) if x.isdigit() else 0 for x in tp[:5]]
+scope_note = {
+    "est": " (ค่าประมาณ: agy ไม่บันทึกโฟลเดอร์ จึงรวม session agy อื่นที่รันช่วงเดียวกัน)",
+    "all": " (รวมทุก session ของค่ายนี้ในช่วงเวลาเดียวกัน)",
+}.get(tp[5], "")
 
 def q_diff(b_str, a_str):
     if b_str.isdigit() and a_str.isdigit():
@@ -3474,16 +3531,16 @@ qb5, qb7 = (qb.split("|") + ["-", "-"])[:2]
 qa5, qa7 = (qa.split("|") + ["-", "-"])[:2]
 
 if tot > 0:
-    tok_txt = f"{OK}รวม {tot:,} tokens{RST} (Input: {inp:,} [Cache: {ca:,}] • Output: {out:,} • {turns} รอบ)"
+    tok_txt = f"{OK}รวม {tot:,} tokens{RST} (Input: {inp:,} [Cache: {ca:,}] • Output: {out:,} • {turns} รอบ){MUTED}{scope_note}{RST}"
 else:
-    tok_txt = f"{MUTED}ไม่พบการบันทึก Token ในรอบนี้ (0 tokens){RST}"
+    tok_txt = f"{MUTED}ไม่พบข้อมูล Token ของขั้นตอนนี้ใน session log{RST}"
 
 print("")
 print(f"{ACC}╭────────────────────────────────────────────────────────────────────────{RST}")
-print(f"{ACC}│{RST} 📊 {BOLD}ตัวชี้วัดการทำงานของขั้นตอนนี้ (Step Telemetry — วัดจากระบบจริง){RST}")
+print(f"{ACC}│{RST} 📊 {BOLD}ตัวชี้วัดการทำงานของขั้นตอนนี้ (Step Telemetry — จาก session log ของ CLI){RST}")
 print(f"{ACC}│{RST}  • ขั้นตอน / โมเดล : {BOLD}{step}{RST} ({prov} / {model})")
 print(f"{ACC}│{RST}  • เวลาที่ใช้จริง   : ⏱ {BOLD}{dur_txt}{RST} {MUTED}(exit {rc}){RST}")
-print(f"{ACC}│{RST}  • Token ที่ใช้จริง  : 🪙 {tok_txt}")
+print(f"{ACC}│{RST}  • Token          : 🪙 {tok_txt}")
 print(f"{ACC}│{RST}  • โควต้าก่อน ➔ หลัง : 📉 5h: {q_diff(qb5, qa5)}  │  7d: {q_diff(qb7, qa7)}")
 print(f"{ACC}╰────────────────────────────────────────────────────────────────────────{RST}")
 PYEOF
@@ -3683,7 +3740,9 @@ launch_provider_cli() {
   printf "%s│%s  • ค่ายผู้ให้บริการ : %s  │  โมเดลที่ใช้: %s%s%s\n" "$C_ACCENT" "$C_RESET" "$provider" "$C_BOLD" "$configured_model" "$C_RESET"
   printf "%s│%s  • โฟลเดอร์ทำงาน  : %s%s%s\n" "$C_ACCENT" "$C_RESET" "$C_MUTED" "$work_dir" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s คำสั่งเริ่มต้น (คัดลอกลง Clipboard ให้แล้วอัตโนมัติ):\n" "$C_ACCENT" "$C_RESET"
+  local clip_note="คัดลอกข้อความด้านล่างไปวางเองได้"
+  command -v pbcopy >/dev/null 2>&1 && clip_note="คัดลอกลง Clipboard ให้แล้ว"
+  printf "%s│%s คำสั่งเริ่มต้น (%s):\n" "$C_ACCENT" "$C_RESET" "$clip_note"
   printf "%s%s%s\n" "$C_MUTED" "$initial_prompt" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s เมื่อสร้างเอกสารของขั้นตอนนี้เสร็จแล้ว ให้พิมพ์ %s/exit%s เพื่อกลับมาหน้าจอ RELAY\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
@@ -3719,7 +3778,7 @@ launch_provider_cli() {
   run_end="$(date +%s)"
   refresh_quota_cache --quiet
   q_after="$(get_role_quota_pair "$provider" "$configured_model")"
-  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end")"
+  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end" "$work_dir")"
   append_run_log "interactive" "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
   print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
 }
@@ -3852,7 +3911,7 @@ get_dev_commit_note() {
   printf " เมื่อเขียนโค้ดและรันชุดทดสอบผ่านแล้ว ให้ git add และ git commit งานทั้งหมดในกิ่ง feat/%s ของ Worktree นี้ (ห้าม commit โฟลเดอร์ .relay/)" "$ACTIVE_TASK"
 }
 
-# สรุปสถานะไฟล์ที่ทำค้างไว้ใน Git Worktree ด้วยสคริปต์ระบบ (0 Token) เพื่อให้ Agent ตัวใหม่รับไม้ต่อได้ทันทีเมื่อสลับค่ายหรือทำต่อ
+# สรุปสถานะไฟล์ที่ทำค้างไว้ใน Git Worktree ด้วยสคริปต์ระบบ (ไม่เรียก AI — แต่ข้อความนี้ถูกแนบเข้า prompt จึงนับเป็น Token ของ prompt) เพื่อให้ Agent ตัวใหม่รับไม้ต่อได้ทันทีเมื่อสลับค่ายหรือทำต่อ
 get_worktree_handoff_context_note() {
   local wt="${1:-}"
   [ -n "$wt" ] && [ -d "$wt" ] || return 0
@@ -3864,7 +3923,7 @@ get_worktree_handoff_context_note() {
   diff_summary="$(git -C "$wt" diff --shortstat HEAD -- . ':(exclude).relay' 2>/dev/null | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true)"
 
   if [ -n "$dirty_files" ] || [ -n "$commits_ahead" ]; then
-    printf " [บริบทรับไม้ต่อใน Worktree (0-Token Handoff): "
+    printf " [บริบทรับไม้ต่อใน Worktree: "
     if [ -n "$commits_ahead" ]; then
       printf "มี commit ก่อนหน้าในกิ่งนี้แล้ว (%s) " "$commits_ahead"
     fi
@@ -4995,7 +5054,7 @@ exec_provider_autonomous() {
 
   refresh_quota_cache --quiet
   q_after="$(get_role_quota_pair "$provider" "$configured_model")"
-  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end")"
+  tok_usage="$(extract_step_token_usage "$provider" "$run_start" "$run_end" "$work_dir")"
   append_run_log "auto" "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
   print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
   return "$rc"
@@ -5188,7 +5247,7 @@ run_auto_relay_loop() {
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s  %sระบบเบรกนิรภัยและการสลับโควต้า (Circuit Breakers & Smart Failover):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
   printf "%s│%s   1. Quota Guard & Failover : เตือนหรือสลับกระเป๋าโควต้าอัตโนมัติเมื่อโควต้าต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
-  printf "%s│%s   2. 0-Token Worktree Handoff: ส่งต่อรายชื่อไฟล์ที่ทำค้างใน Worktree ให้ AI ตัวใหม่ทันที\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s   2. Worktree Handoff       : สคริปต์สรุปไฟล์ที่ทำค้างใน Worktree (ไม่เรียก AI) แนบให้ AI ตัวใหม่\n" "$C_ACCENT" "$C_RESET"
   printf "%s│%s   3. Max Loop Cap           : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
   printf "%s│%s   4. Step Guard             : หยุดเมื่อ agent ค้างเกิน %s นาทีต่อขั้น หรือไม่สร้างไฟล์ผลลัพธ์\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -5205,7 +5264,7 @@ run_auto_relay_loop() {
     esac
   fi
 
-  printf "%sกำลังดึงข้อมูลโควต้าสดล่าสุดก่อนเริ่มลูป...%s\n" "$C_MUTED" "$C_RESET"
+  printf "%sกำลังดึงข้อมูลโควต้าล่าสุดก่อนเริ่มลูป...%s\n" "$C_MUTED" "$C_RESET"
   refresh_quota_cache
 
   {
@@ -5745,7 +5804,7 @@ while true; do
       "2|เลือกค่าย AI และ Model แยกทีละตำแหน่ง (@po, @arch, @dev, @qa)" \
       "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
       "3|จัดการการเชื่อมต่อ CLI และการเข้าสู่ระบบ (agy / codex / claude)" \
-      "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+      "u|ตรวจสอบและอัปเดตโควต้าคงเหลือของทุกค่าย (/quota)" \
       "t|ตรวจสอบสถานะความพร้อม Agent และทักษะประจำตำแหน่ง (/test)" \
       "q|ออกจากโปรแกรม (/quit)"
 
@@ -5770,7 +5829,7 @@ while true; do
     if [ "$IN_HOME_DIR" -eq 1 ]; then
       interactive_menu "ขั้นที่ 2/3: เลือกหรือสร้างโฟลเดอร์โปรเจกต์ (ปัจจุบันอยู่ใน Home ~)" 0 \
         "1|★ เลือกโฟลเดอร์โปรเจกต์ในเครื่อง หรือสร้างโปรเจกต์ใหม่ทันที" \
-        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือของทุกค่าย (/quota)" \
         "t|ทดสอบความพร้อมของ Agent ทุกบทบาท (/test)" \
         "g|จัดการบทบาท Agent, Prompt และชุดทักษะ Skills (/agents)" \
         "c|ตั้งค่าค่าย AI และเลือก Model ของแต่ละบทบาท (/model)" \
@@ -5795,7 +5854,7 @@ while true; do
         "1|★ เริ่มโปรเจกต์ใหม่ตั้งแต่ศูนย์ในโฟลเดอร์นี้ (Greenfield — สร้าง .relay/ ทันที)" \
         "2|นำ RELAY มาใช้กับโปรเจกต์เดิมที่มีโค้ดอยู่แล้ว (Brownfield — ให้ @arch สแกนสร้าง PROJECT_STATE.md)" \
         "f|สลับไปโฟลเดอร์โปรเจกต์อื่นในเครื่อง (Switch Project Folder)" \
-        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือแบบเรียลไทม์ของทุกค่าย (/quota)" \
+        "u|ตรวจสอบและอัปเดตโควต้าคงเหลือของทุกค่าย (/quota)" \
         "t|ทดสอบความพร้อม Agent ทุกตำแหน่ง (/test)" \
         "g|จัดการบทบาท Agent, คำสั่ง Prompt และทักษะประจำตำแหน่ง (/agents)" \
         "c|ตั้งค่าค่าย AI และเลือก Model ประจำตำแหน่ง (/model)" \

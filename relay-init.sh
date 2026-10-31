@@ -48,7 +48,7 @@ if [ "$MODE" = "existing" ]; then
   echo "📌 ขั้นตอนต่อไปสำหรับ [กรณีที่ 2: โครงการเดิมที่มีโค้ดอยู่แล้ว (Brownfield Project)]:"
   echo "   1. เปิด Terminal ในโฟลเดอร์โครงการ: cd \"$TARGET_ABS\""
   echo "   2. พิมพ์คำสั่ง: relay"
-  echo "      (ระบบจะนำทางสแกนสร้าง .relay/PROJECT_STATE.md และเริ่มสั่งงานทั้ง 4 ขั้นตอนให้อัตโนมัติ)"
+  echo "      (กด [2] Brownfield เพื่อให้ @arch สแกนโค้ดแล้วสรุปลง .relay/PROJECT_STATE.md จากนั้นสั่งงานทีละขั้นด้วย [1]–[5] หรือ [a] Auto Loop)"
 else
   echo "📌 ขั้นตอนต่อไปสำหรับ [กรณีที่ 1: เริ่มต้นโครงการใหม่ (Greenfield Project)]:"
   echo "   1. เปิด Terminal ในโฟลเดอร์โครงการ: cd \"$TARGET_ABS\""

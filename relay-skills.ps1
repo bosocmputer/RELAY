@@ -63,6 +63,7 @@ function Sync-ManifestSkills([string]$ModeLabel) {
     }
 
     $localSkills = @(
+        @{ Name = "relay-roles"; File = "templates\relay-roles-SKILL.md" },
         @{ Name = "playwright-qa"; File = "templates\playwright-qa-SKILL.md" },
         @{ Name = "flutter-best-practices"; File = "templates\flutter-best-practices-SKILL.md" },
         @{ Name = "lucide-icons"; File = "templates\lucide-icons-SKILL.md" },

@@ -40,7 +40,7 @@
 ```
 
 **การทำงานของคำสั่ง `add`:**
-1. ติดตั้งทักษะดังกล่าวเข้าสู่โฟลเดอร์ส่วนกลางของเครื่องผ่านคำสั่ง `npx skills add ... -g`
+1. ติดตั้งทักษะดังกล่าวเข้าสู่โฟลเดอร์ส่วนกลางของเครื่องผ่านคำสั่ง `npx skills add ... -g` (สคริปต์ล็อกเวอร์ชันไว้ที่ `skills@1.7.4` เปลี่ยนได้ด้วยตัวแปร `RELAY_SKILLS_CLI_PKG`)
 2. บันทึกลิงก์ Repository และชื่อทักษะต่อท้ายลงในไฟล์ [`skills-manifest.txt`](../skills-manifest.txt) โดยอัตโนมัติ เพื่อให้การรันคำสั่ง `update` ในอนาคตทำการอัปเดตทักษะใหม่นี้ควบคู่ไปด้วยเสมอ
 
 ---
@@ -87,7 +87,8 @@ description: มาตรฐานการออกแบบ REST API และ
 
 ## 5. รายการทักษะแม่แบบและสคริปต์เครื่องมือที่ติดตั้งมาพร้อมกับ `RELAY` (`templates/`)
 นอกจากทักษะภายนอกใน `skills-manifest.txt` แล้ว สคริปต์ติดตั้ง (`setup-mac.sh` / `relay-skills.sh`) จะติดตั้งทักษะแม่แบบและสคริปต์เครื่องมือของ `RELAY` ลงใน `~/.agents/` ให้อัตโนมัติ ได้แก่:
-- **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh` ➔ `~/.agents/bin/relay-verify-task`): สคริปต์ตรวจสอบมาตรฐานแบบ 0-Token สำหรับตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม (`.env*`, `*.key`, `*.pem`, `*.sqlite*`, `*.db`) และตรวจ JSON Schema ของ `QA_VERDICT.json`
+- **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh` ➔ `~/.agents/bin/relay-verify-task`): สคริปต์ตรวจสอบมาตรฐาน (ไม่เรียก AI) สำหรับตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม (`.env*`, `*.key`, `*.pem`, `*.sqlite*`, `*.db`) และตรวจ JSON Schema ของ `QA_VERDICT.json`
+- **`relay-roles`** (`templates/relay-roles-SKILL.md`): หน้าที่และชุดทักษะของ `@po`, `@arch`/`@pm`, `@dev`, `@qa`/`@sec` — ย้ายออกจาก `GLOBAL_AGENTS.md` เพื่อไม่ให้ถูกโหลดทุก session • agent เปิดอ่านเมื่อผู้ใช้เรียกบทบาทเองใน CLI (หน้าจอ `relay` แนบหน้าที่ไว้ใน prompt แล้ว)
 - **`flutter-best-practices`** (`templates/flutter-best-practices-SKILL.md`): มาตรฐานการพัฒนาแอปพลิเคชันด้วย Flutter & Dart (Dart 3 Null Safety, Widget Performance, State Management และการรัน `flutter analyze` + `flutter test`)
 - **`playwright-qa`** (`templates/playwright-qa-SKILL.md`): ขั้นตอนการตรวจสอบคุณภาพ รันชุดทดสอบจริงของโปรเจกต์ การใช้ Playwright MCP เฉพาะเมื่อแก้ Web UI และการเขียน `QA_REPORT.md` คู่กับ `QA_VERDICT.json`
 - **`lucide-icons` และ `simple-icons`**: มาตรฐานการใช้ไอคอนและสัญลักษณ์แบรนด์โดยไม่วาด `<svg>` ดิบเอง

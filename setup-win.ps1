@@ -10,6 +10,7 @@ Write-Host "⚙️ [RELAY Windows Setup] กำลังติดตั้งก
 # 1. สร้างโฟลเดอร์ส่วนกลางสำหรับทุกค่าย CLI
 $BinDir = Join-Path $HOME ".agents\bin"
 $dirs = @(
+    (Join-Path $HOME ".agents\skills\relay-roles"),
     (Join-Path $HOME ".agents\skills\playwright-qa"),
     (Join-Path $HOME ".agents\skills\flutter-best-practices"),
     (Join-Path $HOME ".agents\skills\lucide-icons"),
@@ -28,6 +29,7 @@ foreach ($d in $dirs) {
 $globalAgentsSrc = Join-Path $ScriptDir "templates\GLOBAL_AGENTS.md"
 $globalAgentsDst = Join-Path $HOME ".agents\GLOBAL_AGENTS.md"
 Copy-Item -Force $globalAgentsSrc $globalAgentsDst
+Copy-Item -Force (Join-Path $ScriptDir "templates\relay-roles-SKILL.md") (Join-Path $HOME ".agents\skills\relay-roles\SKILL.md")
 Copy-Item -Force (Join-Path $ScriptDir "templates\playwright-qa-SKILL.md") (Join-Path $HOME ".agents\skills\playwright-qa\SKILL.md")
 Copy-Item -Force (Join-Path $ScriptDir "templates\flutter-best-practices-SKILL.md") (Join-Path $HOME ".agents\skills\flutter-best-practices\SKILL.md")
 Copy-Item -Force (Join-Path $ScriptDir "templates\lucide-icons-SKILL.md") (Join-Path $HOME ".agents\skills\lucide-icons\SKILL.md")
