@@ -28,6 +28,11 @@ foreach ($d in $dirs) {
 # 2. คัดลอกไฟล์กฎการทำงานส่วนกลาง สคริปต์เริ่มต้นโครงการ และสคริปต์หน้าจอควบคุมกลาง (relay)
 $globalAgentsSrc = Join-Path $ScriptDir "templates\GLOBAL_AGENTS.md"
 $globalAgentsDst = Join-Path $HOME ".agents\GLOBAL_AGENTS.md"
+if ((Test-Path $globalAgentsDst) -and ((Get-FileHash $globalAgentsDst).Hash -ne (Get-FileHash $globalAgentsSrc).Hash)) {
+    $globalBak = $globalAgentsDst + ".bak." + (Get-Date -Format "yyyyMMddHHmmss")
+    Move-Item -Force $globalAgentsDst $globalBak
+    Write-Host "📦 สำรองไฟล์เดิมไว้ที่: $globalBak"
+}
 Copy-Item -Force $globalAgentsSrc $globalAgentsDst
 Copy-Item -Force (Join-Path $ScriptDir "templates\relay-roles-SKILL.md") (Join-Path $HOME ".agents\skills\relay-roles\SKILL.md")
 Copy-Item -Force (Join-Path $ScriptDir "templates\playwright-qa-SKILL.md") (Join-Path $HOME ".agents\skills\playwright-qa\SKILL.md")
@@ -50,19 +55,19 @@ if ($userPath -notlike "*$BinDir*") {
     $env:Path = "$BinDir;$env:Path"
 }
 
-# 4. คัดลอกไฟล์กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini) และซิงก์ทักษะเข้า $HOME\.claude\skills
-Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".claude\CLAUDE.md")
-Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".codex\AGENTS.md")
-Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".gemini\GEMINI.md")
-
-foreach ($sDir in (Get-ChildItem -Path (Join-Path $HOME ".agents\skills") -Directory -ErrorAction SilentlyContinue)) {
-    $srcSkill = Join-Path $sDir.FullName "SKILL.md"
-    if (Test-Path $srcSkill) {
-        $dstSkillDir = Join-Path $HOME ".claude\skills\$($sDir.Name)"
-        New-Item -ItemType Directory -Force -Path $dstSkillDir | Out-Null
-        Copy-Item -Force $srcSkill (Join-Path $dstSkillDir "SKILL.md")
+# 4. คัดลอกไฟล์กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini)
+#    (ไฟล์กฎเดิมที่เนื้อหาต่างจากไฟล์ใหม่จะถูกสำรองเป็น *.bak.<เวลา> ก่อนเขียนทับ — เหมือน setup-mac.sh)
+$backupSuffix = ".bak." + (Get-Date -Format "yyyyMMddHHmmss")
+foreach ($rulesFile in @((Join-Path $HOME ".claude\CLAUDE.md"), (Join-Path $HOME ".codex\AGENTS.md"), (Join-Path $HOME ".gemini\GEMINI.md"))) {
+    if ((Test-Path $rulesFile) -and ((Get-FileHash $rulesFile).Hash -ne (Get-FileHash $globalAgentsDst).Hash)) {
+        Move-Item -Force $rulesFile ($rulesFile + $backupSuffix)
+        Write-Host "📦 สำรองไฟล์เดิมไว้ที่: $($rulesFile + $backupSuffix)"
     }
+    Copy-Item -Force $globalAgentsDst $rulesFile
 }
+
+# คัดลอก skill เข้า $HOME\.claude\skills เฉพาะเมื่อเลือกเปิดเอง ($env:RELAY_LINK_CLAUDE_SKILLS) — ดู Sync-ClaudeSkillCopies ใน relay-skills.ps1
+& (Join-Path $ScriptDir "relay-skills.ps1") link-claude
 
 # 5. ตั้งค่า Global Git Pre-commit Hook เพื่อตรวจสอบความปลอดภัยก่อน Commit ในทุกโครงการ
 $hooksPath = (Join-Path $HOME ".agents\hooks") -replace "\\", "/"
