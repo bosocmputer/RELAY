@@ -383,7 +383,7 @@ function Print-DashboardHeader {
     Write-Host ("│ 3. @dev (Worktree)  ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_DEV, $Script:MODEL_DEV, (Get-RoleStatusText $Script:ROLE_DEV $Script:MODEL_DEV))
     Write-Host ("│ 4. @qa & @sec       ➔ {0,-6} │ {1,-22} │ {2}" -f $Script:ROLE_QA, $Script:MODEL_QA, (Get-RoleStatusText $Script:ROLE_QA $Script:MODEL_QA))
     Write-Host "├────────────────────────────────────────────────────────────────────────" -ForegroundColor Blue
-    Write-Host ("│ โควต้าคงเหลือแต่ละค่าย (Real-Time Quota) [อัปเดต {0} • กด [u] หรือ /quota เพื่อดึงข้อมูลสด]:" -f $Script:QUOTA_TIME)
+    Write-Host ("│ โควต้าคงเหลือแต่ละค่าย (ค่าล่าสุดที่ดึงไว้) [อัปเดต {0} • กด [u] หรือ /quota เพื่อดึงข้อมูลสด]:" -f $Script:QUOTA_TIME)
     Write-Host ("│  • agy (Gemini Models)  ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:AGY_GEMINI_5H, $Script:AGY_GEMINI_7D)
     Write-Host ("│  • agy (Claude & GPT)   ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:AGY_CLAUDE_5H, $Script:AGY_CLAUDE_7D)
     Write-Host ("│  • codex (OpenAI Plus)  ➔ 5 ชม.: {0}% │ รายสัปดาห์: {1}%" -f $Script:CODEX_5H, $Script:CODEX_7D)

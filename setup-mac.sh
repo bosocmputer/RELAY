@@ -19,11 +19,12 @@ backup_user_file() {
 echo "⚙️ [RELAY Setup] กำลังติดตั้งการตั้งค่าส่วนกลาง (~/.agents/) สำหรับ macOS / Linux..."
 
 # 1. สร้างโฟลเดอร์ส่วนกลางสำหรับทุกค่าย CLI
-mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons ~/.agents/skills/verification-before-completion/scripts ~/.agents/hooks ~/.agents/bin ~/.claude ~/.codex ~/.gemini
+mkdir -p ~/.agents/skills/relay-roles ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons ~/.agents/skills/verification-before-completion/scripts ~/.agents/hooks ~/.agents/bin ~/.claude ~/.codex ~/.gemini
 
 # 2. คัดลอกไฟล์กฎกลาง สกิลตรวจรับงาน สกิล Flutter สกิลมาตรฐานไอคอน สคริปต์ตรวจสอบงาน และสคริปต์ควบคุมศูนย์กลาง (relay, relay-init, relay-skills, relay-verify-task)
 backup_user_file ~/.agents/GLOBAL_AGENTS.md "$SCRIPT_DIR/templates/GLOBAL_AGENTS.md"
 cp "$SCRIPT_DIR/templates/GLOBAL_AGENTS.md" ~/.agents/GLOBAL_AGENTS.md
+cp "$SCRIPT_DIR/templates/relay-roles-SKILL.md" ~/.agents/skills/relay-roles/SKILL.md
 cp "$SCRIPT_DIR/templates/playwright-qa-SKILL.md" ~/.agents/skills/playwright-qa/SKILL.md
 cp "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ~/.agents/skills/flutter-best-practices/SKILL.md
 cp "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ~/.agents/skills/lucide-icons/SKILL.md

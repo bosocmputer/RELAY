@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ทดสอบ Auto-Relay Loop (AC-4, AC-5, AC-6) ด้วย CLI จำลอง — ไม่ใช้โควต้า AI จริง
 RELAY="$(cd "$(dirname "$0")/.." && pwd)/relay.sh"
-ROOT=/tmp/relay-lt
+ROOT="$(mktemp -d -t relay-loop-test.XXXXXX)"
+trap 'rm -rf "$ROOT"' EXIT
 T=20261029-loopdemo
 pass=0; fail=0
 ok()  { echo "  ✅ $1"; pass=$((pass+1)); }

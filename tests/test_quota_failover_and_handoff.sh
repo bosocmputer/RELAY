@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ชุดทดสอบระบบ Smart Quota Failover, 1-Click Switcher และ 0-Token Worktree Handoff (AC-1 ถึง AC-4)
+# ชุดทดสอบระบบ Smart Quota Failover, 1-Click Switcher และ Worktree Handoff (สรุปด้วยสคริปต์ ไม่เรียก AI) (AC-1 ถึง AC-4)
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -152,7 +152,7 @@ EOF
   git -C "$PROJ" commit -m "init" >/dev/null 2>&1
 }
 
-echo "== AC-1: ทดสอบ 0-Token Worktree Handoff Context (get_worktree_handoff_context_note) =="
+echo "== AC-1: ทดสอบ Worktree Handoff Context (get_worktree_handoff_context_note) =="
 setup_env
 WT="$PROJ/.relay/worktrees/20261030-demo"
 git -C "$PROJ" worktree add -b feat/20261030-demo "$WT" main >/dev/null 2>&1

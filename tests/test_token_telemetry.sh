@@ -52,10 +52,10 @@ cat <<EOF > "$RELAY_AGY_BRAIN_DIR/conv-1/.system_generated/logs/transcript.jsonl
 EOF
 
 AGY_TOK="$(extract_step_token_usage "agy" "$START_EP" "$END_EP")"
-if [ "$AGY_TOK" = "18500|18000|6000|500|2" ]; then
+if [ "$AGY_TOK" = "18500|18000|6000|500|2|est" ]; then
   pass "agy: ดึงและรวม input + cache_read + output เฉพาะในช่วงเวลาได้อย่างแม่นยำ ($AGY_TOK)"
 else
-  fail "agy: ค่าไม่ตรง (ได้ $AGY_TOK, คาดหวัง 18500|18000|6000|500|2)"
+  fail "agy: ค่าไม่ตรง (ได้ $AGY_TOK, คาดหวัง 18500|18000|6000|500|2|est)"
 fi
 
 # 1.2 ทดสอบ codex rollout-*.jsonl (หักลบ baseline ก่อนเริ่ม + ไม่นับซ้ำเมื่อมีบรรทัดซ้ำ)
@@ -69,10 +69,10 @@ cat <<EOF > "$RELAY_CODEX_SESSIONS_DIR/2026/10/30/rollout-test.jsonl"
 EOF
 
 CODEX_TOK="$(extract_step_token_usage "codex" "$START_EP" "$END_EP")"
-if [ "$CODEX_TOK" = "21000|20000|16000|1000|2" ]; then
+if [ "$CODEX_TOK" = "21000|20000|16000|1000|2|all" ]; then
   pass "codex: คำนวณส่วนต่างจาก total_token_usage และไม่นับซ้ำบรรทัดเดิม ($CODEX_TOK)"
 else
-  fail "codex: ค่าไม่ตรง (ได้ $CODEX_TOK, คาดหวัง 21000|20000|16000|1000|2)"
+  fail "codex: ค่าไม่ตรง (ได้ $CODEX_TOK, คาดหวัง 21000|20000|16000|1000|2|all)"
 fi
 
 # 1.3 ทดสอบ claude projects/*.jsonl (กรองซ้ำด้วย requestId เมื่อมีหลาย streaming block)
@@ -85,10 +85,10 @@ cat <<EOF > "$RELAY_CLAUDE_PROJECTS_DIR/proj-a/session-1.jsonl"
 EOF
 
 CLAUDE_TOK="$(extract_step_token_usage "claude" "$START_EP" "$END_EP")"
-if [ "$CLAUDE_TOK" = "10500|10000|8950|500|2" ]; then
+if [ "$CLAUDE_TOK" = "10500|10000|8950|500|2|all" ]; then
   pass "claude: กรองซ้ำตาม requestId และรวม input + cache + output ถูกต้อง ($CLAUDE_TOK)"
 else
-  fail "claude: ค่าไม่ตรง (ได้ $CLAUDE_TOK, คาดหวัง 10500|10000|8950|500|2)"
+  fail "claude: ค่าไม่ตรง (ได้ $CLAUDE_TOK, คาดหวัง 10500|10000|8950|500|2|all)"
 fi
 
 echo "== AC-2: ทดสอบการบันทึก RUN_LOG.jsonl, Step Telemetry Box และรายงาน relay stats =="

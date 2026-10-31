@@ -22,7 +22,7 @@
    - เมื่อคุณเปิด `agy`, `claude`, หรือ `codex` ทำงานทั่วไปในโฟลเดอร์อื่นที่ไม่มี `.relay/` ตัวแทน AI จะทำงานตามคำสั่งปกติทันทีโดยไม่บังคับเขียน `SPEC.md` หรือสร้าง `Git Worktree` (คงไว้เฉพาะกฎพื้นฐานด้านความปลอดภัย เช่น ห้ามอ่าน/แก้ไข `.env*`, `*.key`)
 3. **รองรับโควต้า Google AI Ultra (`agy`) เต็มรูปแบบควบคู่กับ `claude` และ `codex`:**
    - เชื่อมต่อกับ **Antigravity CLI (`~/.gemini/bin/agy`)** เพื่อใช้โควต้าแพ็กเกจ **Google AI Ultra** ได้โดยตรงทั้งก้อน **Gemini Models** (`gemini-4-argon-high`, `gemini-3.8-flash-high`) และก้อน **Claude & GPT Models** (`claude-opus-5-5-high`, `claude-sonnet-5-5-high`, `gpt-oss-120b-medium`)
-   - ดึงรายชื่อโมเดลสดจาก CLI ที่ติดตั้งในเครื่องโดยตรง (`agy models`, `~/.codex/models_cache.json`, `claude`)
+   - ดึงรายชื่อโมเดลจาก CLI และแคชในเครื่อง (`agy models` เมื่อกดอัปเดต, `~/.codex/models_cache.json`, alias ของ `claude`) ถ้าดึงไม่ได้จะใช้รายการมาตรฐานที่ฝังไว้
 
 ---
 
@@ -38,7 +38,7 @@
 ```mermaid
 flowchart TD
     subgraph HUB ["🎛️ หน้าจอควบคุมกลาง: พิมพ์คำสั่ง relay ในหน้าต่าง Terminal เดียว"]
-        S1["ขั้นที่ 1: ตั้งค่าและ Login AI ครบ 4 ตำแหน่ง (agy, claude, codex + เช็กโควต้าสด)"]
+        S1["ขั้นที่ 1: ตั้งค่าและ Login AI ครบ 4 ตำแหน่ง (agy, claude, codex + เช็กโควต้าล่าสุด)"]
         S2["ขั้นที่ 2: เตรียมโปรเจกต์ (.relay/PROJECT_STATE.md)"]
         S3["ขั้นที่ 3: เริ่มสั่งงานตามใบงาน 1 ถึง 5 หรือรัน Auto-Relay Loop"]
     end
@@ -145,7 +145,7 @@ cd RELAY
 ### 4.1.1 การจัดการบทบาท Agent, คำสั่ง Prompt, ทักษะ และการเพิ่มตำแหน่งใหม่ (`[g]` / `/agents` หรือ `relay agents`)
 นอกจากการสลับค่ายและโมเดลผ่านปุ่ม `[c]` แล้ว คุณสามารถกดปุ่ม **`g`** (หรือพิมพ์ `/agents` หรือรัน `relay agents`) เพื่อจัดการบทบาทและคำสั่งได้ทั้งระดับ **ใช้ร่วมกันทุกโปรเจกต์ (`~/.agents/custom-agents.json`)** และ **เฉพาะโปรเจกต์นี้ (`.relay/custom-agents.json`)**:
 - **ปรับแต่ง 4 ตำแหน่งหลัก (`@po`, `@arch`, `@dev`, `@qa`):** แก้ไขชื่อบทบาท กำหนดคำสั่ง Prompt เพิ่มเติม เลือกชุดทักษะ (`Skills`) ประจำตำแหน่ง เปลี่ยนค่าย/โมเดล หรือรีเซ็ตกลับเป็นค่าเริ่มต้นได้ตลอดเวลา
-- **เพิ่มและสั่งงาน Agent ตำแหน่งใหม่ (`@ux`, `@devops`, `@data` ฯลฯ):** สร้างตำแหน่งใหม่พร้อมตั้งชื่อ คำสั่ง Prompt ประจำตำแหน่ง เลือกทักษะ (`Skills`) และกำหนดค่าย AI + โมเดล โดยสามารถสั่งรันงานได้ทันทีจากหน้าจอหลัก (เลือกทำงานใน `Project Root` หรือแยก `Git Worktree`), ทดสอบความพร้อมใน `[t]`, และบันทึกสถิติเวลา + Token จริงใน `[v]` (`relay stats`)
+- **เพิ่มและสั่งงาน Agent ตำแหน่งใหม่ (`@ux`, `@devops`, `@data` ฯลฯ):** สร้างตำแหน่งใหม่พร้อมตั้งชื่อ คำสั่ง Prompt ประจำตำแหน่ง เลือกทักษะ (`Skills`) และกำหนดค่าย AI + โมเดล โดยสามารถสั่งรันงานได้ทันทีจากหน้าจอหลัก (เลือกทำงานใน `Project Root` หรือแยก `Git Worktree`), ทดสอบความพร้อมใน `[t]`, และบันทึกสถิติเวลา + Token จาก session log ใน `[v]` (`relay stats`)
 - **รองรับการย้อนกลับทุกเมนู (`[b] ย้อนกลับ` และปุ่ม `ESC`):** ทุกเมนูย่อย หน้าเลือกค่าย AI หน้าเลือกโมเดล และทุกช่องรับข้อความรองรับการกด `b` หรือ `ESC` เพื่อย้อนกลับไปยังหน้าก่อนหน้าโดยไม่เสียค่าที่ตั้งไว้เดิม
 
 ### 4.2 การเปิดหน้าจอควบคุมกลาง (`relay`)
@@ -186,8 +186,8 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 ```
 
 ### 4.3 การตรวจสอบโควต้าคงเหลือของทุกค่าย (`[u]` / `/quota` หรือ `relay quota`)
-หน้าจอหลักแสดง **ตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์)** พร้อม **นับถอยหลังเวลารีเซ็ต** เช่น `อีก 1ชม.27น. (20:27)` หรือ `อีก 1วัน 13ชม. (31 ต.ค. 08:10)` โดยคำนวณใหม่ทุกครั้งที่วาดหน้าจอ จึงเดินถูกเสมอแม้ข้อมูลจะดึงมาสักพักแล้ว
-- **เลยเวลารีเซ็ตแล้ว:** แสดง `↻ รีเซ็ตแล้ว` และนับโควต้ารอบนั้นเป็น 100% (ทั้งบนหน้าจอและใน Quota Circuit Breaker ของ Auto-Loop)
+หน้าจอหลักแสดง **ตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์)** พร้อม **นับถอยหลังเวลารีเซ็ต** เช่น `อีก 1ชม.27น. (20:27)` หรือ `อีก 1วัน 13ชม. (31 ต.ค. 08:10)` โดยคำนวณจากเวลารีเซ็ตที่แคชไว้ทุกครั้งที่วาดหน้าจอ จึงนับต่อได้แม้ข้อมูลจะดึงมาสักพักแล้ว (แคชถูก refresh เบื้องหลังเมื่อเก่ากว่า 3 นาที)
+- **เลยเวลารีเซ็ตแล้ว:** แสดง `↻ รีเซ็ตแล้ว` และถือว่าโควต้ารอบนั้นเป็น 100% จนกว่าจะดึงค่าใหม่ (ทั้งบนหน้าจอและใน Quota Circuit Breaker ของ Auto-Loop)
 - **อายุข้อมูล:** หัวตารางบอกว่าดึงข้อมูลมาเมื่อไร (`6 นาทีที่แล้ว`) และขึ้นสีเตือนเมื่อเก่ากว่า 15 นาที
 - กดปุ่ม **`u`** (หรือพิมพ์ `/quota`, `/usage`, หรือรัน `relay quota`) เพื่อดึงค่าสดพร้อมหลอดโควต้าละเอียดจากทั้ง 3 ค่าย:
   - **`agy` (Google AI Ultra):** แยกกระเป๋า **Gemini Models** และ **Claude & GPT Models** จาก `agy -p "/usage"`
@@ -197,21 +197,21 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 ### 4.4 การรันลูปอัตโนมัติแบบมีเบรกนิรภัยและการสลับโควต้าอัจฉริยะ (`Bounded Auto-Relay Loop & Smart Quota Failover` — `[a]` / `/loop` หรือ `relay loop`)
 เมื่อคุณร่วมกับ `@po` สรุปขอบเขตงานลงใน `SPEC.md` (ขั้นตอนที่ 1) เสร็จแล้ว คุณสามารถเลือกทำงานต่อได้ทั้งแบบทีละก้าว (`[2] ➔ [3] ➔ [4]`) หรือกด **`a`** (`/loop` หรือ `relay loop`) เพื่อให้ `RELAY` รันวงรอบอัตโนมัติ **`2 (@arch) ➔ 3 (@dev ใน Worktree) ⇄ 4 (@qa ผู้ตรวจรับต่างค่าย)`** พร้อม **ระบบเบรกนิรภัยและการสลับกระเป๋าโควต้าอัตโนมัติ**:
 1. **Quota Guard & Smart Failover (`< 20%`):** ก่อนเริ่มทุกขั้นตอน ระบบตรวจโควต้าคงเหลือจริง (`5h` และ `7d`) ของตำแหน่งถัดไป หากต่ำกว่า **`20%`**:
-   - **โหมด `Smart Auto-Failover` (ค่าเริ่มต้นเมื่อเลือกข้อ `[y]` ในเมนูเริ่มลูป หรือสั่ง `relay loop --auto-failover`):** ระบบจัดอันดับกระเป๋าโควต้าที่พร้อมใช้งานในเครื่อง (`agy Gemini`, `agy Claude/GPT`, `codex`, `claude`) แล้วสลับไปยังกระเป๋าที่มีโควต้าสูงสุด (`>= 50%`) ให้อัตโนมัติและทำงานต่อทันทีโดยไม่สะดุดหยุด
+   - **โหมด `Smart Auto-Failover` (ค่าเริ่มต้นเมื่อเลือกข้อ `[y]` ในเมนูเริ่มลูป หรือสั่ง `relay loop --auto-failover`):** ระบบจัดอันดับกระเป๋าโควต้าที่พร้อมใช้งานในเครื่อง (`agy Gemini`, `agy Claude/GPT`, `codex`, `claude`) แล้วสลับไปยังกระเป๋าที่มีโควต้าสูงสุด (`>= 50%`) ให้อัตโนมัติและทำงานต่อทันที • ค่ายใหม่ถูกบันทึกเฉพาะ `.relay/roles.conf` ของโปรเจกต์นั้น (ไม่แก้ค่า Global ของโปรเจกต์อื่น)
    - **โหมดถามยืนยันหน้าจอ (`1-Click In-Place Quota Switcher`):** แสดงเมนูทางลัดให้กดปุ่มเดียว (`[1]`, `[2]`) เพื่อสลับไปใช้กระเป๋าที่โควต้าเหลือเยอะแล้วทำต่อทันที หรือกด **`[f]`** เพื่อฝืนรันต่อด้วยโมเดลเดิมในรอบนี้โดยไม่ต้องออกจากลูปไปหน้าตั้งค่า
    - **กู้คืนงานเมื่อโควต้าหมดกลางคัน (`Mid-Step Failover Guard`):** หาก CLI จบด้วยข้อผิดพลาดกลางคันระหว่างกำลังเขียนโค้ด ระบบรองรับการสลับค่ายเพื่อรับไม้ต่อใน `Git Worktree` เดิมทันที
-2. **0-Token Worktree Handoff Context:** เมื่อมีการสลับค่ายหรือรันซ้ำใน `Git Worktree` เดิมที่มีงานทำค้างอยู่ สคริปต์ระบบจะรัน `git status --short`, `git diff --shortstat`, และ `git log main..HEAD` (`0 Token`) เพื่อแนบสรุปรายชื่อไฟล์ที่แก้ไขค้างไว้เข้าสู่ Prompt ของ AI ตัวใหม่โดยอัตโนมัติ ทำให้รับไม้ต่อจากจุดเดิมได้ทันทีโดยไม่ต้องเริ่มเขียนใหม่
+2. **Worktree Handoff Context:** เมื่อมีการสลับค่ายหรือรันซ้ำใน `Git Worktree` เดิมที่มีงานทำค้างอยู่ สคริปต์ระบบจะรัน `git status --short`, `git diff --shortstat`, และ `git log main..HEAD` (ไม่เรียก AI แต่ข้อความสรุปที่แนบเข้า Prompt นับเป็น Token ของ Prompt) เพื่อแนบสรุปรายชื่อไฟล์ที่แก้ไขค้างไว้เข้าสู่ Prompt ของ AI ตัวใหม่โดยอัตโนมัติ ทำให้รับไม้ต่อจากจุดเดิมได้ทันทีโดยไม่ต้องเริ่มเขียนใหม่
 3. **Max Remediation Cap = 3 รอบ:** หาก `@qa` ระบุ `VERDICT: FAIL` ระบบส่งกลับให้ `@dev` แก้ไขอัตโนมัติสูงสุด **3 รอบ** (บันทึกทุกรอบใน `.relay/tasks/<task-id>/LOOP_LOG.md` และเก็บรายงานรอบก่อนเป็น `QA_REPORT.before-round-N.md`)
 4. **Cross-Provider Verification:** `@qa` ต้องเขียน **`QA_VERDICT.json`** (`verdict`, `failed_criteria`, `tests_run`, `summary`) — ผ่านเฉพาะเมื่อ `verdict` เป็น `PASS` และไม่มี `failed_criteria`; JSON เสียรูปแบบหรือไม่มี VERDICT จะ**ไม่**นับว่าผ่าน (ถ้าไม่มี JSON จะใช้ `VERDICT:` ใน `QA_REPORT.md` เป็นทางสำรองและบันทึกไว้ใน `LOOP_LOG.md`)
 5. **Step Guard:** หยุดลูปทันทีเมื่อไม่สร้างไฟล์ที่ต้องได้ (`PLAN.md` / `QA_REPORT.md` หรือ `QA_VERDICT.json`), หรือทำงานเกิน **30 นาทีต่อขั้น** (ปรับได้ด้วย `RELAY_STEP_TIMEOUT=<วินาที> relay loop`)
 
-จบลูปแล้วระบบแสดงสรุปเวลา จำนวน Token จริง และโควต้าที่ใช้ต่อขั้น และทุกการเรียก agent (ทั้งแบบกดทีละขั้น โหมดด่วน Fast Track และอัตโนมัติ) ถูกบันทึกลง `.relay/tasks/<task-id>/RUN_LOG.jsonl` เพื่อดูต้นทุนจริงย้อนหลังได้
+จบลูปแล้วระบบแสดงสรุปเวลา จำนวน Token จาก session log และโควต้าที่ใช้ต่อขั้น และทุกการเรียก agent (ทั้งแบบกดทีละขั้น โหมดด่วน Fast Track และอัตโนมัติ) ถูกบันทึกลง `.relay/tasks/<task-id>/RUN_LOG.jsonl` เพื่อดูต้นทุนย้อนหลังได้
 
-### 4.4.1 ตัวชี้วัดความเร็ว + Token จริงรายขั้นตอน/รายโมเดล (`[v]` / `/stats` หรือ `relay stats`) และโหมดด่วน `Fast Track` (`[x]` / `/fast` หรือ `relay fast`)
+### 4.4.1 ตัวชี้วัดความเร็ว + Token รายขั้นตอน/รายโมเดล (`[v]` / `/stats` หรือ `relay stats`) และโหมดด่วน `Fast Track` (`[x]` / `/fast` หรือ `relay fast`)
 เพื่อให้คุณประเมินความคุ้มค่าของ **"ความเร็ว + Token"** ได้ด้วยตัวเองจากตัวเลขจริง ไม่ต้องพึ่งการคาดเดา:
-- **กล่องสรุปหลังจบทุกขั้นตอน (`Step Telemetry Box`):** ทันทีที่จบการรันแต่ละขั้น ระบบดึงตัวเลข Token จริง (`Input`, `Cached`, `Output`, `Total Tokens`) จากไฟล์ Session Log ของ `agy`, `codex`, และ `claude` ในเครื่อง มาแสดงคู่กับเวลาที่ใช้จริง (`⏱`) และโควต้าก่อน➔หลัง (`📉`)
+- **กล่องสรุปหลังจบทุกขั้นตอน (`Step Telemetry Box`):** ทันทีที่จบการรันแต่ละขั้น ระบบดึงตัวเลข Token (`Input`, `Cached`, `Output`, `Total Tokens`) จากไฟล์ Session Log ของ `agy`, `codex`, และ `claude` ในเครื่อง มาแสดงคู่กับเวลาที่ใช้จริง (`⏱`) และโควต้าก่อน➔หลัง (`📉`) • `claude` / `codex` นับเฉพาะ session ในโฟลเดอร์ที่รันขั้นตอนนั้น ส่วน `agy` ไม่บันทึกโฟลเดอร์ จึงเป็นค่าประมาณที่รวม session agy อื่นที่รันช่วงเดียวกัน • ถ้าไม่พบข้อมูลจะแสดง `ไม่พบข้อมูล Token` (ไม่นับเป็น 0)
 - **รายงานเปรียบเทียบรายขั้นตอนและรายโมเดล (`[v]` หรือ `relay stats`):** แสดงตารางแยกตามขั้นตอนของใบงานปัจจุบัน และตารางเปรียบเทียบยอดสะสมแยกตามค่าย/โมเดล (`agy/gemini-4-argon-high`, `agy/claude-opus-5-5-high`, `codex/gpt-6.1-terra`, `claude/sonnet` ฯลฯ)
-- **โหมดด่วน `Fast Track` (`[x]` หรือ `relay fast`):** สำหรับงานเล็กหรือการแก้บั๊กที่ไม่คุ้มจะเปิดครบ 4 บทบาท กด **`x`** เพื่อข้ามพิธีกรรม `@po` และ `@arch` ระบบจะสร้าง Worktree แยกและส่ง `@dev` ลงมือแก้โค้ดพร้อมรันเทสต์ทันที ช่วยประหยัดเวลาเปิด-ปิด CLI และประหยัด Token จากการเขียนเอกสาร `ARCH.md` / `PLAN.md`
+- **โหมดด่วน `Fast Track` (`[x]` หรือ `relay fast`):** สำหรับงานเล็กหรือการแก้บั๊กที่ไม่คุ้มจะเปิดครบ 4 บทบาท กด **`x`** เพื่อข้ามพิธีกรรม `@po` และ `@arch` ระบบจะสร้าง Worktree แยกและส่ง `@dev` ลงมือแก้โค้ดพร้อมรันเทสต์ทันที ช่วยประหยัดเวลาเปิด-ปิด CLI และประหยัด Token จากการเขียนเอกสาร `ARCH.md` / `PLAN.md` • ผลตรวจที่ `@dev` เขียนเองแสดงเป็น `▲ QA PASS (self)` และขั้นตอนที่ 5 ยังถามยืนยันก่อนผสาน (แนะนำให้กด `[4]` ให้ `@qa` ตรวจก่อน)
 
 > [!NOTE]
 > ในโหมดอัตโนมัติ RELAY เรียกแต่ละค่ายด้วยโหมดสิทธิ์ที่ไม่ต้องถามโต้ตอบแต่ไม่ข้ามระบบสิทธิ์ทั้งหมด: `agy --mode auto`, `claude --permission-mode acceptEdits` และ `codex exec --full-auto` — หากใช้ `claude` เป็น `@dev` และต้องการให้รันคำสั่งทดสอบได้เอง ให้เพิ่ม allow rule ของคำสั่งนั้นใน `.claude/settings.json`
@@ -220,6 +220,7 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 ก่อนผสาน ระบบจะแสดงจำนวน commit ใหม่, ไฟล์ที่ยังไม่ commit ใน Worktree, การตรวจหาไฟล์ความลับต้องห้าม และผลตรวจรับล่าสุด แล้วทำงานตามลำดับนี้ **โดยไม่ลบอะไรจนกว่าจะผสานสำเร็จ**:
 - **ด่านตรวจไฟล์ความลับและฐานข้อมูลต้องห้าม (`worktree_forbidden_files`):** หากพบไฟล์ `.env`, `.env.*` (ยกเว้นไฟล์ตัวอย่าง `.env.example`/`.env.sample`/`.env.template`), `*.key`, `*.pem`, `*.sqlite*`, หรือ `*.db` ทั้งในไฟล์ค้างหรือใน commit ของกิ่งงาน ระบบจะ **บล็อกการ commit และผสานทันที** จนกว่าจะลบหรือเพิ่มเข้า `.gitignore`
 - ผลตรวจรับยังไม่เป็น `PASS` ➔ ขอยืนยันเพิ่มอีกชั้น (ค่าเริ่มต้นคือยกเลิก)
+- กิ่งหลักมีไฟล์ที่ track แล้วแก้ค้างไว้ (นอก `.relay/` และ `.gitignore`) ➔ หยุดก่อนผสาน ให้ commit หรือ stash ก่อน
 - มีไฟล์ค้างใน Worktree ➔ เสนอ commit อัตโนมัติ (ไม่รวมโฟลเดอร์ `.relay/` และไม่รวมไฟล์ความลับต้องห้าม) ก่อนผสาน
 - กิ่งไม่มีโค้ดใหม่ ➔ ไม่ลบ Worktree หรือกิ่ง
 - ผสานด้วย `git merge --no-ff`; ถ้าเกิด conflict ➔ ยกเลิกการผสาน (`git merge --abort`) และเก็บ Worktree กับใบงานไว้ครบ
@@ -229,7 +230,7 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 ### 4.6 ระบบทักษะแบบเปิดเผยข้อมูลเป็นขั้นบันได (`Progressive Disclosure Skill Index`), `Scripts as Tools` และการสกัดบทเรียนจากหลักฐานจริง (`[l]` / `/learn` หรือ `relay learn`)
 ผสานแนวคิด **Anthropic Agent Skills (`Progressive Disclosure` + `Scripts as Tools`)** เข้ากับ **Hermes (`Evidence-Based Skill Distillation`)** และ `tigerless-labs/autoharness`:
 - **Progressive Disclosure Skill Index:** แทนที่จะโหลดเนื้อหา `SKILL.md` ทั้งหมดเข้า Context Window ล่วงหน้า ระบบจะสแกนเฉพาะหัว YAML Frontmatter (`name`, `description` ย่อ ≤80 ตัวอักษร), พาธจริงของ `SKILL.md` และรายชื่อสคริปต์ในโฟลเดอร์ `scripts/` ทั้งจาก `.relay/skills/` และ `~/.agents/skills/` เพื่อแนบเป็นสารบัญสั้นๆ ให้ Agent ทุกค่าย (`agy`, `claude`, `codex`) เห็นตรงกันและเปิดอ่าน `SKILL.md` เฉพาะใบที่ตรงกับงานจริง
-- **Scripts as Tools (`relay-verify-task` & `scripts/`):** สนับสนุนการบรรจุสคริปต์ตรวจสอบซ้ำไว้ในโฟลเดอร์ `scripts/` ของแต่ละ Skill พร้อมติดตั้งสคริปต์มาตรฐาน **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh`) ให้ `@dev` และ `@qa` สั่งตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม และตรวจโครงสร้าง `QA_VERDICT.json` ได้ด้วยคำสั่งเดียวแบบ 0-Token
+- **Scripts as Tools (`relay-verify-task` & `scripts/`):** สนับสนุนการบรรจุสคริปต์ตรวจสอบซ้ำไว้ในโฟลเดอร์ `scripts/` ของแต่ละ Skill พร้อมติดตั้งสคริปต์มาตรฐาน **`relay-verify-task`** (`templates/scripts/verify-relay-task.sh`) ให้ `@dev` และ `@qa` สั่งตรวจเพดานบรรทัดเอกสาร (`SPEC.md` ≤40, `ARCH.md`+`PLAN.md` ≤60, `QA_REPORT.md` ≤30), ตรวจไฟล์ความลับต้องห้าม และตรวจโครงสร้าง `QA_VERDICT.json` ได้ด้วยคำสั่งเดียว (สคริปต์ ไม่เรียก AI)
 - **Evidence-Based Skill Distillation (`[l]` / `/learn`):** เมื่อคุณกด **`[5] Merge & Archive`** (หรือกด **`l`** ➔ ข้อ 2) ระบบจะสกัดทั้งกฎสถาปัตยกรรมและ **บทเรียนจากหลักฐานการแก้บั๊กข้ามรอบ** (`QA_VERDICT.before-round-*.json` ที่รอบแรกได้ `FAIL` แล้วแก้จน `PASS` ในรอบถัดไป) เข้าคิว **`.relay/skills/project-learned/PENDING.md`**
 - **กฎในคิวยังไม่ถูกส่งให้ AI** จนกว่าคุณจะกด **`l`** ➔ ข้อ 1 แล้วเลือกอนุมัติรายข้อ (`1,3`), ทั้งหมด (`a`) หรือปฏิเสธทั้งหมด (`x`) — ป้องกันกฎผิดที่ AI เขียนเองถูกส่งต่อไปทุกใบงาน (แดชบอร์ดจะขึ้น `▲ N pending [l]` เมื่อมีกฎในคิว)
 - กฎที่อนุมัติแล้วย้ายเข้า **`.relay/skills/project-learned/SKILL.md`** (ไม่ซ้ำ, ไม่เกิน **25 ข้อ**) และทุกการเสนอ/อนุมัติ/ปฏิเสธถูกบันทึกแบบ Append-Only ใน **`.relay/skills/project-learned/LEDGER.md`** — แก้หรือลบกฎใน `SKILL.md` ด้วยมือได้ตลอด
@@ -247,7 +248,7 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 ### 5.1 Obsidian คืออะไรในระบบ `RELAY`? (ใช้หรือไม่ใช้ก็ได้)
 ระบบ `RELAY` จัดเก็บเอกสารส่งมอบงานทั้งหมดเป็นไฟล์ Markdown (`.md`) และ JSON มาตรฐานในโฟลเดอร์ `.relay/` โดยตรง **ตัวสคริปต์ไม่ได้ผูกติดหรือบังคับต้องมีโปรแกรม Obsidian** คุณสามารถเปิดอ่านและแก้ไขไฟล์ใน `.relay/` ด้วย VS Code, Cursor หรือโปรแกรมแก้ไขข้อความใดก็ได้
 
-อย่างไรก็ตาม หากคุณต้องการแยก **"หน้าจอดูเอกสารและแผนผังของทีม AI"** ออกจากหน้าจอเขียนโค้ด การเปิดโฟลเดอร์ `.relay/` ในโปรแกรม **Obsidian (ทางเลือกเสริม ใช้งานฟรีสำหรับบุคคลทั่วไป)** ไว้ด้านข้าง Terminal จะช่วยให้เห็นเอกสาร `PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md`, แผนภาพ Mermaid และรูปแคปหน้าจอใน `QA_REPORT.md` อัปเดตแบบเรียลไทม์อย่างสวยงาม
+อย่างไรก็ตาม หากคุณต้องการแยก **"หน้าจอดูเอกสารและแผนผังของทีม AI"** ออกจากหน้าจอเขียนโค้ด การเปิดโฟลเดอร์ `.relay/` ในโปรแกรม **Obsidian (ทางเลือกเสริม ใช้งานฟรีสำหรับบุคคลทั่วไป)** ไว้ด้านข้าง Terminal จะช่วยให้เห็นเอกสาร `PROJECT_STATE.md`, `SPEC.md`, `ARCH.md`, `PLAN.md`, แผนภาพ Mermaid และรูปแคปหน้าจอใน `QA_REPORT.md` ที่ Obsidian โหลดใหม่ให้เองเมื่อไฟล์เปลี่ยน
 - **ลิงก์ดาวน์โหลด (ทางเลือกเสริม):** [https://obsidian.md](https://obsidian.md)
 
 ### 5.2 วิธีเปิดโฟลเดอร์ `.relay/` ในโปรแกรม Obsidian (กรณีต้องการใช้)
@@ -312,8 +313,8 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 
 | หัวข้อ | สถานะปัจจุบัน | คำแนะนำ |
 | :-- | :-- | :-- |
-| **Ceremony Overhead ในงานขนาดเล็ก** | การรันครบ 4 บทบาท (`@po ➔ @arch ➔ @dev ➔ @qa`) ต้องเปิด CLI หลายรอบและเขียนเอกสารส่งต่อ ซึ่งเหมาะกับงานขนาดกลาง–ใหญ่ แต่จะช้าและเปลือง Token เกินจำเป็นหากเป็นงานเล็ก | สำหรับงานเล็กหรือการแก้บั๊ก ให้กด **`[x]` (`relay fast`)** เพื่อข้าม `@po`/`@arch` แล้วส่ง `@dev` ทำใน Worktree ทันที และกด **`[v]` (`relay stats`)** เพื่อดูเวลาและ Token ที่ใช้จริง |
-| **การวัดจำนวน Token จริง** | ดึงตัวเลข Token จากไฟล์ Session Log ในเครื่องของ `agy`, `codex`, และ `claude` หลังจบแต่ละขั้น | ใช้เปรียบเทียบต้นทุนจริงระหว่างโมเดลและระหว่างโหมดปกติกับโหมด `Fast Track` ได้ผ่านปุ่ม `[v]` (`relay stats`) |
+| **Ceremony Overhead ในงานขนาดเล็ก** | การรันครบ 4 บทบาท (`@po ➔ @arch ➔ @dev ➔ @qa`) ต้องเปิด CLI หลายรอบและเขียนเอกสารส่งต่อ ซึ่งเหมาะกับงานขนาดกลาง–ใหญ่ แต่จะช้าและเปลือง Token เกินจำเป็นหากเป็นงานเล็ก | สำหรับงานเล็กหรือการแก้บั๊ก ให้กด **`[x]` (`relay fast`)** เพื่อข้าม `@po`/`@arch` แล้วส่ง `@dev` ทำใน Worktree ทันที และกด **`[v]` (`relay stats`)** เพื่อดูเวลาและ Token จาก session log |
+| **การวัดจำนวน Token** | ดึงตัวเลข Token จากไฟล์ Session Log ในเครื่องของ `agy`, `codex`, และ `claude` หลังจบแต่ละขั้น • `agy` ไม่บันทึกโฟลเดอร์ของ session จึงเป็นค่าประมาณเมื่อรันหลาย session พร้อมกัน | ใช้เปรียบเทียบต้นทุนระหว่างโมเดลและระหว่างโหมดปกติกับโหมด `Fast Track` ได้ผ่านปุ่ม `[v]` (`relay stats`) • ถ้าต้องการตัวเลข agy ที่แม่น ให้รันทีละงาน |
 | **ระบบปฏิบัติการ** | ใช้งานได้เต็มรูปแบบบน macOS / Linux • บน Windows (`relay.ps1`) ใช้ได้เฉพาะแดชบอร์ด ตั้งค่า และโควต้า | ผู้ใช้ Windows แนะนำให้ใช้ผ่าน WSL |
 | **การอ่านโควต้า** | อ่านจากช่องทางของ CLI ที่ไม่ใช่ API ทางการ (`agy -p "/usage"`, ไฟล์ session ของ `codex`, `get_usage` ของ `claude`) จึงอาจใช้ไม่ได้เมื่อ CLI อัปเดต | เมื่อดึงไม่สำเร็จ ตารางจะแสดง `? ดึงไม่ได้ • ค่าเมื่อ HH:MM` แทนการแสดงค่าเก่าแบบเงียบ |
 | **Auto-Relay Loop** | ตรรกะของลูปผ่านชุดทดสอบด้วย CLI จำลอง แต่คุณภาพผลงานขึ้นกับโมเดลและ SPEC | รันครั้งแรกกับใบงานเล็กก่อน • ถ้าใช้ `claude` เป็น `@dev` ให้เพิ่ม allow rule ของคำสั่งทดสอบใน `.claude/settings.json` |
@@ -331,4 +332,4 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 - 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
 - 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
 - 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License
-- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 11 ชุดทดสอบ 191/191 ข้อ): `bash tests/test_high_severity_fixes.sh` (H1–H9: เมนูเมื่อ stdin หมด, Ctrl+C, config ของ CLI, ชื่อโปรเจกต์, การสำรองไฟล์กฎ และ Git Hook), `bash tests/test_medium_fixes.sh` (M1–M15: Python 3.9, โควต้า/lockfile, verdict ของ Fast Track, Auto-Loop ใน Worktree, Step 5, เมนู), `bash tests/test_progressive_skills_and_tools.sh` (Progressive Skill Index + `relay-verify-task` Script-as-Tool + `relay-skills.sh create` + Evidence-Based Remediation Distillation), `bash tests/test_security_and_hardening.sh` (Safe Config/Cache Parser + Atomic Writes + Worktree Secret Guard + Process Group Timeout), `bash tests/test_hermes_cli_redesign.sh` (Hermes-Style Split-Header Card + Braille Apple Logo + 4-Level Color Hierarchy), `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + 0-Token Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จริง + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
+- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 12 ชุดทดสอบ 213/213 ข้อ): `bash tests/test_performance_and_accuracy.sh` (P1–P5: แคชผล Login, แคช session log ของ codex, ขนาดกฎกลาง, Token ตามโฟลเดอร์งาน และข้อความที่ไม่อ้างเกินจริง), `bash tests/test_high_severity_fixes.sh` (H1–H9: เมนูเมื่อ stdin หมด, Ctrl+C, config ของ CLI, ชื่อโปรเจกต์, การสำรองไฟล์กฎ และ Git Hook), `bash tests/test_medium_fixes.sh` (M1–M15: Python 3.9, โควต้า/lockfile, verdict ของ Fast Track, Auto-Loop ใน Worktree, Step 5, เมนู), `bash tests/test_progressive_skills_and_tools.sh` (Progressive Skill Index + `relay-verify-task` Script-as-Tool + `relay-skills.sh create` + Evidence-Based Remediation Distillation), `bash tests/test_security_and_hardening.sh` (Safe Config/Cache Parser + Atomic Writes + Worktree Secret Guard + Process Group Timeout), `bash tests/test_hermes_cli_redesign.sh` (Hermes-Style Split-Header Card + Braille Apple Logo + 4-Level Color Hierarchy), `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จาก session log + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)

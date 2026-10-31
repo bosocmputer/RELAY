@@ -94,10 +94,11 @@ sync_manifest_skills() {
   done < "$MANIFEST_FILE"
 
   # คัดลอกสกิล playwright-qa, flutter-best-practices และสกิลมาตรฐานไอคอน (lucide-icons, simple-icons) ของ RELAY ให้เป็นเวอร์ชันล่าสุดเสมอ
-  mkdir -p ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons
+  mkdir -p ~/.agents/skills/relay-roles ~/.agents/skills/playwright-qa ~/.agents/skills/flutter-best-practices ~/.agents/skills/lucide-icons ~/.agents/skills/simple-icons
   if [ -f "$QA_TEMPLATE" ] && [ "$QA_TEMPLATE" != "$HOME/.agents/skills/playwright-qa/SKILL.md" ]; then
     cp "$QA_TEMPLATE" ~/.agents/skills/playwright-qa/SKILL.md
   fi
+  [ -f "$SCRIPT_DIR/templates/relay-roles-SKILL.md" ] && cp "$SCRIPT_DIR/templates/relay-roles-SKILL.md" ~/.agents/skills/relay-roles/SKILL.md || true
   [ -f "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ] && cp "$SCRIPT_DIR/templates/flutter-best-practices-SKILL.md" ~/.agents/skills/flutter-best-practices/SKILL.md || true
   [ -f "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/lucide-icons-SKILL.md" ~/.agents/skills/lucide-icons/SKILL.md || true
   [ -f "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ] && cp "$SCRIPT_DIR/templates/simple-icons-SKILL.md" ~/.agents/skills/simple-icons/SKILL.md || true
