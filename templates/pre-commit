@@ -2,13 +2,30 @@
 set -e
 
 echo "🛡️ [RELAY Guard] กำลังตรวจสอบไฟล์ต้องห้ามก่อน Commit..."
-FORBIDDEN=$(git diff --cached --name-only | grep -E '(^|/)\.env($|\.)|\.(pem|key|p12|sqlite|db)$' | grep -v '\.env\.example$' | grep -v '\.env\.test$' || true)
+# ตรวจเฉพาะไฟล์ที่เพิ่ม/แก้ไข (ACMR) — การลบไฟล์ความลับที่หลุดเข้าไปแล้วต้อง commit ได้
+# กฎชุดเดียวกับ worktree_forbidden_files ใน relay.sh
+FORBIDDEN=""
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  case "$(basename "$path")" in
+    .env.example|.env.sample|.env.template|.env.schema) continue ;;
+    .env|.env.*|*.key|*.pem|*.p12|*.sqlite|*.sqlite3|*.db)
+      FORBIDDEN="${FORBIDDEN}${path}"$'\n'
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR)
 
 if [ -n "$FORBIDDEN" ]; then
   echo "❌ [BLOCKED] พบไฟล์ความลับหรือฐานข้อมูลที่ห้าม Commit:"
-  echo "$FORBIDDEN"
+  printf "%s" "$FORBIDDEN"
   echo "กรุณาเอาออกด้วยคำสั่ง: git reset HEAD <ชื่อไฟล์>"
   exit 1
 fi
 
 echo "✅ [RELAY Guard] ไม่พบรูปแบบไฟล์ความลับที่ต้องห้ามในรายการ Staged"
+
+# core.hooksPath ระดับ global ทำให้ git ไม่เรียก .git/hooks/ ของ repo เอง ➔ ส่งต่อให้ hook เดิมของ repo ทำงานต่อ
+local_hook="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/pre-commit"
+if [ -x "$local_hook" ] && ! [ "$local_hook" -ef "$0" ]; then
+  exec "$local_hook" "$@"
+fi

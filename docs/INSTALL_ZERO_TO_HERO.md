@@ -89,6 +89,8 @@ npm install -g @openai/codex
 
 ขั้นตอนนี้จะทำการติดตั้งไฟล์กฎการทำงานส่วนกลาง (`GLOBAL_AGENTS.md`), คำสั่งควบคุมกลาง (`relay`), สคริปต์เริ่มต้นโครงการ (`relay-init`), กลไกตรวจสอบความปลอดภัยก่อนบันทึกโค้ด (`pre-commit`), เชื่อม Symlink `~/.agents/bin/agy -> ~/.gemini/bin/agy` และติดตั้งชุดทักษะมาตรฐานทั้ง 4 ขั้นตอนไว้ที่โฟลเดอร์ผู้ใช้ของเครื่อง
 
+> **หมายเหตุ (macOS / Linux):** ถ้าเครื่องมี `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` หรือ `~/.agents/GLOBAL_AGENTS.md` ที่แก้ไว้เองอยู่แล้ว สคริปต์จะสำรองเป็น `*.bak.<วันเวลา>` ก่อนแทนที่ • สคริปต์ตั้ง `git config --global core.hooksPath ~/.agents/hooks` เฉพาะเมื่อยังไม่มีค่านี้ และ hook เดิมใน `.git/hooks/` ของแต่ละ repo ยังทำงานต่อผ่านตัวส่งต่อของ RELAY
+
 ### 🍎 สำหรับระบบปฏิบัติการ macOS / Linux:
 ```bash
 git clone https://github.com/bosocmputer/RELAY.git

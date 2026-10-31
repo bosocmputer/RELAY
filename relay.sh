@@ -48,6 +48,31 @@ C_OK=$'\033[38;5;28m'
 C_WARN=$'\033[38;5;166m'
 C_ERR=$'\033[38;5;160m'
 
+# ─── การจัดการ Ctrl+C และการปิดโปรแกรม (คืนเคอร์เซอร์ทุกครั้ง) ─────────────────
+# • Ctrl+C ขณะอยู่ในเมนูหรือช่องพิมพ์ของ relay ➔ ออกโปรแกรม (exit 130)
+# • Ctrl+C ขณะ CLI ของ agent ทำงานอยู่ (RELAY_CHILD_ACTIVE=1) ➔ ให้ CLI จัดการเอง แล้วกลับมาที่ relay ตามเดิม
+RELAY_CHILD_ACTIVE=0
+RELAY_TRAPS_INSTALLED=0
+
+relay_restore_cursor() {
+  [ -t 1 ] && tput cnorm 2>/dev/null
+  return 0
+}
+
+relay_on_interrupt() {
+  relay_restore_cursor
+  [ "${RELAY_CHILD_ACTIVE:-0}" = "1" ] && return 0
+  printf "\n"
+  exit 130
+}
+
+install_interrupt_traps() {
+  trap relay_restore_cursor EXIT
+  trap relay_on_interrupt INT
+  trap 'relay_restore_cursor; exit 143' TERM
+  RELAY_TRAPS_INSTALLED=1
+}
+
 # ─── 1. ตรวจสอบการติดตั้ง CLI, สถานะ Login จริง และดึง Model จาก CLI โดยตรง ───
 is_provider_installed() {
   command -v "$1" >/dev/null 2>&1
@@ -160,7 +185,8 @@ get_cli_default_model() {
     codex)
       if [ -r "$HOME/.codex/config.toml" ]; then
         local xm
-        xm="$(grep -E '^[[:space:]]*model[[:space:]]*=' "$HOME/.codex/config.toml" 2>/dev/null | head -n 1 | sed -E 's/.*=[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/' || true)"
+        # อ่านเฉพาะ model ระดับบนสุด (ก่อนหัวตาราง [..] ตัวแรก) ไม่ใช่ model ใน [profiles.*] หรือ [mcp_servers.*]
+        xm="$(awk '/^[[:space:]]*\[.*\][[:space:]]*(#.*)?$/{exit}/^[[:space:]]*model[[:space:]]*=/{print; exit}' "$HOME/.codex/config.toml" 2>/dev/null | sed -E 's/.*=[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/' || true)"
         [ -n "$xm" ] && { echo "$xm"; return; }
       fi
       if [ -r "$HOME/.codex/models_cache.json" ] && command -v python3 >/dev/null 2>&1; then
@@ -414,21 +440,27 @@ set_cli_default_model() {
       mkdir -p "$HOME/.claude"
       if command -v python3 >/dev/null 2>&1; then
         python3 - "$HOME/.claude/settings.json" "$new_model" <<'PYEOF'
-import json, os, sys
+import json, os, shutil, sys
 path, model = sys.argv[1:3]
 data = {}
 if os.path.isfile(path):
+    # อ่านไม่ผ่าน (เช่น มีคอมเมนต์หรือ JSON เสีย) ➔ ไม่เขียนทับ เพื่อไม่ให้ permissions / การตั้งค่าเดิมหาย
     try:
         loaded = json.load(open(path, encoding="utf-8"))
-        if isinstance(loaded, dict):
-            data = loaded
-    except Exception:
-        pass
+    except Exception as e:
+        sys.stderr.write(f"✖ อ่าน {path} ไม่ผ่าน ({e}) — ไม่ได้แก้ไขไฟล์ กรุณาแก้ JSON แล้วลองใหม่\n")
+        sys.exit(1)
+    if not isinstance(loaded, dict):
+        sys.stderr.write(f"✖ {path} ไม่ใช่ JSON object — ไม่ได้แก้ไขไฟล์\n")
+        sys.exit(1)
+    data = loaded
 data["model"] = model
 tmp = f"{path}.tmp.{os.getpid()}"
 with open(tmp, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
     f.write("\n")
+if os.path.isfile(path):
+    shutil.copymode(path, tmp)
 os.replace(tmp, path)
 PYEOF
       fi
@@ -437,25 +469,32 @@ PYEOF
       mkdir -p "$HOME/.codex"
       if command -v python3 >/dev/null 2>&1; then
         python3 - "$HOME/.codex/config.toml" "$new_model" <<'PYEOF'
-import os, re, sys
+import os, re, shutil, sys
 path, model = sys.argv[1:3]
 lines = []
-found = False
 if os.path.isfile(path):
     try:
-        for line in open(path, encoding="utf-8", errors="ignore"):
-            if not found and re.match(r"^\s*model\s*=", line):
-                lines.append(f'model = "{model}"\n')
-                found = True
-            else:
-                lines.append(line)
-    except Exception:
-        pass
-if not found:
-    lines.append(f'model = "{model}"\n')
+        lines = open(path, encoding="utf-8").read().splitlines(keepends=True)
+    except Exception as e:
+        sys.stderr.write(f"✖ อ่าน {path} ไม่ผ่าน ({e}) — ไม่ได้แก้ไขไฟล์\n")
+        sys.exit(1)
+# key ใน TOML ที่อยู่หลังหัวตาราง [..] เป็นของตารางนั้น ➔ แก้/แทรก model เฉพาะช่วงระดับบนสุด (ก่อนหัวตารางตัวแรก)
+header_re = re.compile(r"^\s*\[.*\]\s*(#.*)?$")
+first_table = next((i for i, l in enumerate(lines) if header_re.match(l)), len(lines))
+new_line = f'model = "{model}"\n'
+for i in range(first_table):
+    if re.match(r"^\s*model\s*=", lines[i]):
+        lines[i] = new_line
+        break
+else:
+    if first_table == len(lines) and lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    lines.insert(first_table, new_line)
 tmp = f"{path}.tmp.{os.getpid()}"
 with open(tmp, "w", encoding="utf-8") as f:
     f.writelines(lines)
+if os.path.isfile(path):
+    shutil.copymode(path, tmp)
 os.replace(tmp, path)
 PYEOF
       fi
@@ -1545,6 +1584,7 @@ compute_stage3_next_step() {
 
 # ─── 3. Interactive Arrow-Key Menu (4-Level Quiet Color Hierarchy + Shortcuts Bar) ───
 MENU_RESULT=""
+MENU_STDIN_EOF=0
 MENU_SHORTCUTS_BAR=""
 EXTRA_MENU_KEYS=""
 
@@ -1594,7 +1634,12 @@ interactive_menu() {
       print_shortcuts_bar_lines
     fi
     local input_val=""
-    read -r input_val || true
+    # stdin หมด (EOF) = ไม่มีคนตอบ ➔ ย้อนกลับเสมอ ห้ามเลือกข้อแรกเอง (กัน merge / เริ่มลูปโดยไม่มีคนยืนยัน)
+    if ! read -r input_val && [ -z "$input_val" ]; then
+      MENU_STDIN_EOF=1
+      MENU_RESULT="b"
+      return 0
+    fi
     if [ -z "$input_val" ]; then
       MENU_RESULT="${items[$selected]%%|*}"
     else
@@ -1605,8 +1650,8 @@ interactive_menu() {
 
   printf "\n  %s%s%s\n" "$C_BOLD" "$title" "$C_RESET"
 
+  [ "${RELAY_TRAPS_INSTALLED:-0}" = "1" ] || install_interrupt_traps
   tput civis 2>/dev/null || true
-  trap 'tput cnorm 2>/dev/null || true' EXIT INT TERM
 
   local footer_lines=1
   [ -n "$has_shortcuts" ] && footer_lines=4
@@ -2583,10 +2628,19 @@ select_or_create_project_dir() {
       if is_back_input "$new_proj_name"; then
         return 0
       fi
-      new_proj_name="$(echo "${new_proj_name:-my-relay-app}" | tr ' ' '-' | sed -E 's/[^a-zA-Z0-9_-]+/-/g; s/^-|-$//g')"
-      mkdir -p "$base_workspace/$new_proj_name"
+      local raw_proj_name="${new_proj_name:-my-relay-app}"
+      new_proj_name="$(printf "%s" "$raw_proj_name" | tr ' ' '-' | sed -E 's/[^a-zA-Z0-9_-]+/-/g; s/^-+//; s/-+$//')"
+      # ชื่อที่กรองแล้วว่าง (เช่น พิมพ์ภาษาไทยล้วน หรือ "..") ➔ ตั้งชื่อให้ใหม่ ห้ามใช้โฟลเดอร์ workspace เองเป็นโปรเจกต์
+      if [ -z "$new_proj_name" ]; then
+        new_proj_name="relay-app-$(date +%Y%m%d-%H%M%S)"
+        printf "%s▲ ชื่อ '%s' ไม่มีอักขระภาษาอังกฤษ/ตัวเลขที่ใช้ตั้งชื่อโฟลเดอร์ได้ — ใช้ชื่อ '%s' แทน%s\n" "$C_WARN" "$raw_proj_name" "$new_proj_name" "$C_RESET"
+      fi
+      if ! mkdir -p "$base_workspace/$new_proj_name"; then
+        printf "\n%s✖ สร้างโฟลเดอร์ %s ไม่สำเร็จ%s\n" "$C_ERR" "$base_workspace/$new_proj_name" "$C_RESET"
+        return 1
+      fi
       PROJECT_DIR="$base_workspace/$new_proj_name"
-      cd "$PROJECT_DIR" || true
+      cd "$PROJECT_DIR" || return 1
       refresh_project_paths
       "$GLOBAL_DIR/bin/relay-init" "$PROJECT_DIR" new
       CURRENT_TASK=""
@@ -2752,6 +2806,7 @@ choose_model_interactive() {
 
 login_single_provider() {
   local provider="$1"
+  RELAY_CHILD_ACTIVE=1
   case "$provider" in
     agy)
       if is_provider_installed agy; then
@@ -2778,6 +2833,7 @@ login_single_provider() {
       fi
       ;;
   esac
+  RELAY_CHILD_ACTIVE=0
   refresh_cli_auth_cache
 }
 
@@ -3027,6 +3083,7 @@ ping_single_role_agent() {
 
   printf "%sกำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_MUTED" "$provider" "$configured_model" "$C_RESET"
   local exit_code=0
+  RELAY_CHILD_ACTIVE=1
   case "$provider" in
     agy)
       agy --model "$configured_model" -p "$self_check_prompt" || exit_code=$?
@@ -3038,6 +3095,7 @@ ping_single_role_agent() {
       codex exec --skip-git-repo-check -m "$configured_model" "$self_check_prompt" || exit_code=$?
       ;;
   esac
+  RELAY_CHILD_ACTIVE=0
 
   if [ "$exit_code" -eq 0 ]; then
     printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งานเรียบร้อย%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
@@ -3584,6 +3642,7 @@ launch_provider_cli() {
   local run_start run_end q_before q_after tok_usage
   run_start="$(date +%s)"
   q_before="$(get_role_quota_pair "$provider" "$configured_model")"
+  RELAY_CHILD_ACTIVE=1
   (
     cd "$work_dir"
     case "$provider" in
@@ -3592,6 +3651,7 @@ launch_provider_cli() {
       codex)  codex -m "$configured_model" "$initial_prompt" || true ;;
     esac
   )
+  RELAY_CHILD_ACTIVE=0
   run_end="$(date +%s)"
   refresh_quota_cache --quiet
   q_after="$(get_role_quota_pair "$provider" "$configured_model")"
@@ -4810,7 +4870,12 @@ PYEOF
   if kill -0 "$pid" 2>/dev/null; then
     wait "$pid" 2>/dev/null || true
   fi
-  trap - INT TERM
+  # คืน trap ของ relay (ถ้าติดตั้งไว้) แทนการล้างทิ้ง เพื่อให้ Ctrl+C ในเมนูถัดไปยังออกโปรแกรมและคืนเคอร์เซอร์ได้
+  if [ "${RELAY_TRAPS_INSTALLED:-0}" = "1" ]; then
+    install_interrupt_traps
+  else
+    trap - INT TERM
+  fi
 
   pkill -P "$wd" 2>/dev/null || true
   kill "$wd" 2>/dev/null || true
@@ -4856,7 +4921,9 @@ exec_provider_autonomous() {
   local rc=0 run_start run_end q_before q_after tok_usage
   run_start="$(date +%s)"
   q_before="$(get_role_quota_pair "$provider" "$configured_model")"
+  RELAY_CHILD_ACTIVE=1
   ( cd "$work_dir" && run_with_timeout "$step_timeout" "${cmd[@]}" ) || rc=$?
+  RELAY_CHILD_ACTIVE=0
   run_end="$(date +%s)"
 
   refresh_quota_cache --quiet
@@ -5506,6 +5573,8 @@ if [ "${RELAY_SOURCE_ONLY:-0}" = "1" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
+install_interrupt_traps
+
 # ─── 14. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
 SUBCOMMAND="${1:-hub}"
 case "$SUBCOMMAND" in
@@ -5564,6 +5633,8 @@ esac
 
 # ─── 15. Interactive Main Loop (Guided 3-Stage Progressive UX) ────────────────
 while true; do
+  # stdin หมดแล้ว (เช่น ถูกเรียกแบบไม่มี TTY) ➔ ออกแทนการวนวาดหน้าจอไม่รู้จบ
+  [ "${MENU_STDIN_EOF:-0}" = "1" ] && exit 0
   print_dashboard_header
 
   if [ "$UX_STAGE" -eq 1 ]; then

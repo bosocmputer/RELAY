@@ -10,6 +10,10 @@ else
   QA_TEMPLATE="$HOME/.agents/skills/playwright-qa/SKILL.md"
 fi
 
+# ล็อกเวอร์ชันแพ็กเกจที่ npx ดาวน์โหลดมารัน (ไม่ใช้ latest แบบไม่ระบุ) • ปรับได้ผ่านตัวแปรสภาพแวดล้อม
+SKILLS_CLI_PKG="${RELAY_SKILLS_CLI_PKG:-skills@1.7.4}"
+PLAYWRIGHT_MCP_PKG="${RELAY_PLAYWRIGHT_MCP_PKG:-@playwright/mcp@0.0.83}"
+
 show_help() {
   echo "=================================================================="
   echo "🧰 RELAY Skill Manager (สำหรับ macOS / Linux)"
@@ -83,9 +87,9 @@ sync_manifest_skills() {
     echo "------------------------------------------------------------------"
     echo "📦 ${desc:-Skill}: $repo ${skill:+(skill: $skill)}"
     if [ -n "$skill" ]; then
-      npx -y skills add "$repo" --skill "$skill" -g -y < /dev/null
+      npx -y "$SKILLS_CLI_PKG" add "$repo" --skill "$skill" -g -y < /dev/null
     else
-      npx -y skills add "$repo" -g -y < /dev/null
+      npx -y "$SKILLS_CLI_PKG" add "$repo" -g -y < /dev/null
     fi
   done < "$MANIFEST_FILE"
 
@@ -108,12 +112,12 @@ sync_manifest_skills() {
   # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
   if command -v claude >/dev/null 2>&1; then
     echo "🔌 ตรวจสอบ/ผูก Playwright MCP เข้ากับ Claude Code..."
-    claude mcp add -s user playwright npx @playwright/mcp@latest 2>/dev/null || true
+    claude mcp add -s user playwright npx "$PLAYWRIGHT_MCP_PKG" 2>/dev/null || true
   fi
 
   if command -v codex >/dev/null 2>&1; then
     echo "🔌 ตรวจสอบ/ผูก Playwright MCP เข้ากับ Codex CLI..."
-    codex mcp add playwright -- npx @playwright/mcp@latest 2>/dev/null || true
+    codex mcp add playwright -- npx "$PLAYWRIGHT_MCP_PKG" 2>/dev/null || true
   fi
 
   echo "=================================================================="
@@ -139,9 +143,9 @@ case "$COMMAND" in
     fi
     echo "➕ กำลังติดตั้งสกิลใหม่จาก: $REPO_URL ${SKILL_NAME:+(skill: $SKILL_NAME)}..."
     if [ -n "$SKILL_NAME" ]; then
-      npx -y skills add "$REPO_URL" --skill "$SKILL_NAME" -g
+      npx -y "$SKILLS_CLI_PKG" add "$REPO_URL" --skill "$SKILL_NAME" -g
     else
-      npx -y skills add "$REPO_URL" -g
+      npx -y "$SKILLS_CLI_PKG" add "$REPO_URL" -g
     fi
     # บันทึกลง skills-manifest.txt หากยังไม่มี
     ENTRY="${REPO_URL}|${SKILL_NAME}|${DESC}"
