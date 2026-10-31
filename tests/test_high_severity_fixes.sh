@@ -155,15 +155,15 @@ check '[ "$(stat -c %a "$H6_HOME/.claude/settings.json" 2>/dev/null || stat -f %
 
 echo "=== [H7] ชื่อโปรเจกต์ที่กรองแล้วว่างต้องไม่ใช้โฟลเดอร์ workspace เป็นโปรเจกต์ ==="
 H7_HOME="$(new_home h7)"
-mkdir -p "$H7_HOME/dev_bos" "$H7_HOME/.agents/bin"
+mkdir -p "$H7_HOME/Projects" "$H7_HOME/.agents/bin"
 cp "$REPO_ROOT/relay-init.sh" "$H7_HOME/.agents/bin/relay-init"
 chmod +x "$H7_HOME/.agents/bin/relay-init"
 ( cd "$H7_HOME" && printf 'n\nแอปบัญชี\n' | relay_src "$H7_HOME" 'PROJECT_DIR="$HOME"; select_or_create_project_dir' >/dev/null 2>&1 )
-check '[ ! -e "$H7_HOME/dev_bos/.relay" ]' "ไม่สร้าง .relay/ ที่ราก workspace (~/dev_bos)"
-created="$(ls -1 "$H7_HOME/dev_bos" | grep '^relay-app-' | head -n 1)"
-check '[ -n "$created" ] && [ -f "$H7_HOME/dev_bos/$created/.relay/PROJECT_STATE.md" ]' "สร้างโปรเจกต์ชื่อใหม่ให้อัตโนมัติ (ได้ '$created')"
+check '[ ! -e "$H7_HOME/Projects/.relay" ]' "ไม่สร้าง .relay/ ที่ราก workspace (~/Projects)"
+created="$(ls -1 "$H7_HOME/Projects" | grep '^relay-app-' | head -n 1)"
+check '[ -n "$created" ] && [ -f "$H7_HOME/Projects/$created/.relay/PROJECT_STATE.md" ]' "สร้างโปรเจกต์ชื่อใหม่ให้อัตโนมัติ (ได้ '$created')"
 ( cd "$H7_HOME" && printf 'n\nระบบ-pos\n' | relay_src "$H7_HOME" 'PROJECT_DIR="$HOME"; select_or_create_project_dir' >/dev/null 2>&1 )
-check '[ -d "$H7_HOME/dev_bos/pos" ]' "ตัดขีดนำหน้าทั้งหมด ('ระบบ-pos' ➔ 'pos')"
+check '[ -d "$H7_HOME/Projects/pos" ]' "ตัดขีดนำหน้าทั้งหมด ('ระบบ-pos' ➔ 'pos')"
 
 echo "=== [H2] setup-mac.sh ต้องสำรองไฟล์กฎเดิมก่อนแทนที่ ==="
 H2_HOME="$(new_home h2)"
