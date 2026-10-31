@@ -115,9 +115,15 @@ R8="$(new_repo m8-repo)"
 git -C "$R8" worktree add -q "$R8/.relay/worktrees/$T" -b "feat/$T"
 mkdir -p "$R8/.relay/tasks/$T" && echo '{"verdict":"PASS","failed_criteria":[],"tests_run":["npm test"],"summary":"ok"}' > "$R8/.relay/tasks/$T/QA_VERDICT.json"
 echo f > "$R8/.relay/worktrees/$T/f.txt"
-echo "งานค้างบน main" > "$R8/wip.txt"
+echo "v1" > "$R8/app.txt" && git -C "$R8" add app.txt && git -C "$R8" commit -q -m app
+git -C "$R8" branch -f "feat/$T" main 2>/dev/null || git -C "$R8/.relay/worktrees/$T" merge -q main
+echo "untracked" > "$R8/scratch.txt"
+echo "งานค้างบน main" > "$R8/app.txt"
 out="$(cd "$R8" && printf 'c\n' | relay_src "$M5_HOME" 'require_all_roles_ready() { return 0; }; PROJECT_DIR="$PWD"; refresh_project_paths; run_phase_5_merge' 2>&1)"
-check '[ "$(git -C "$R8" rev-list --count main)" = "1" ] && printf "%s" "$out" | grep -q "wip.txt"' "ไม่ merge และแสดงไฟล์ค้าง (wip.txt)"
+check '[ "$(git -C "$R8" rev-list --count main)" = "2" ] && printf "%s" "$out" | grep -q "app.txt"' "ไฟล์ที่ track แล้วแก้ค้างบน main ➔ ไม่ merge และแสดงไฟล์ (app.txt)"
+git -C "$R8" checkout -q -- app.txt
+out="$(cd "$R8" && printf 'c\n' | relay_src "$M5_HOME" 'require_all_roles_ready() { return 0; }; distill_project_learned_skills() { :; }; PROJECT_DIR="$PWD"; refresh_project_paths; run_phase_5_merge' 2>&1)"
+check 'git -C "$R8" log --oneline -1 main | grep -q "merge: feat/$T"' "มีแค่ไฟล์ untracked (scratch.txt) ➔ ผสานได้ตามปกติ"
 
 echo "=== [M6/M11] Auto-Loop: @arch รันใน Worktree และรันซ้ำไม่ทับหลักฐานเดิม ==="
 M6_HOME="$(new_home m6)"

@@ -5439,9 +5439,10 @@ run_phase_5_merge() {
     return 1
   fi
 
-  # กิ่งหลักต้องสะอาดก่อนผสาน (merge --abort อาจคืนไฟล์ที่แก้ค้างไว้ไม่ครบ) • .gitignore ยกเว้นเพราะ RELAY เพิ่ม .relay/worktrees/ เอง
+  # ไฟล์ที่ track แล้วในกิ่งหลักต้องไม่มีการแก้ค้างก่อนผสาน (merge --abort อาจคืนไฟล์ที่แก้ค้างไว้ไม่ครบ)
+  # • ไม่นับไฟล์ untracked (merge ไม่แตะ) • .gitignore ยกเว้นเพราะ RELAY เพิ่ม .relay/worktrees/ เอง
   local main_dirty
-  main_dirty="$(git -C "$PROJECT_DIR" status --porcelain -- . ':(exclude).relay' ':(exclude).gitignore' 2>/dev/null || true)"
+  main_dirty="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no -- . ':(exclude).relay' ':(exclude).gitignore' 2>/dev/null || true)"
   if [ -n "$main_dirty" ]; then
     printf "\n%s✖ กิ่ง %s มีไฟล์ที่ยังไม่ commit — กรุณา commit หรือ stash ก่อนกด [5] (ยังไม่มีการผสานหรือลบใดๆ):%s\n" "$C_ERR" "$base" "$C_RESET"
     printf "%s\n" "$main_dirty" | head -n 8 | sed 's/^/    /'
