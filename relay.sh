@@ -2341,7 +2341,8 @@ print_dashboard_header() {
 
   local git_branch="no-git"
   if [ -e "$PROJECT_DIR/.git" ]; then
-    git_branch="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
+    # symbolic-ref ได้ชื่อกิ่งแม้ยังไม่มี commit แรก (rev-parse จะพิมพ์ "HEAD" แล้วจบด้วย error) • detached HEAD ➔ แสดง commit แบบสั้น
+    git_branch="$(git -C "$PROJECT_DIR" symbolic-ref --short -q HEAD 2>/dev/null || git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo "-")"
   fi
 
   local state_badge="${C_WARN}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
@@ -2395,26 +2396,46 @@ print_dashboard_header() {
   s_dev="$(format_role_status_cell "$ROLE_DEV" "$MODEL_DEV")"
   s_qa="$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
 
-  local short_proj="~${PROJECT_DIR#$HOME}"
-  [ "$short_proj" = "$PROJECT_DIR" ] && short_proj="$PROJECT_NAME"
-  if [ "${#short_proj}" -gt 18 ]; then
-    short_proj="…/${PROJECT_NAME}"
-  fi
+  # ── กรอบซ้าย: โปรเจกต์และงานปัจจุบัน (ให้รู้ทันทีว่ากำลังทำงานกับโปรเจกต์ไหน และต้องกดอะไรต่อ) ──
+  local short_path="~${PROJECT_DIR#$HOME}"
+  [ "$short_path" = "~$PROJECT_DIR" ] && short_path="$PROJECT_DIR"
+  [ "${#short_path}" -gt 28 ] && short_path="…${short_path: -27}"
   local short_branch="$git_branch"
-  if [ "${#short_branch}" -gt 12 ]; then
-    short_branch="${short_branch:0:11}…"
+  if [ "${#short_branch}" -gt 14 ]; then
+    short_branch="${short_branch:0:13}…"
   fi
-  local left_proj_line="${short_proj} (${short_branch})"
-  [ "$IN_HOME_DIR" -eq 1 ] && left_proj_line="~ (โฟลเดอร์ Home)"
-
-  local left_task_line="งาน: ยังไม่มี (พร้อมเริ่ม)"
-  [ -n "$ACTIVE_TASK" ] && left_task_line="งาน: ${ACTIVE_TASK}"
-
-  local prov_summary="Google AI Ultra · Codex"
-  if ! is_provider_logged_in agy && is_provider_logged_in codex; then
-    prov_summary="OpenAI Codex CLI"
-  elif is_provider_logged_in agy && ! is_provider_logged_in codex; then
-    prov_summary="Google AI Ultra (agy)"
+  local short_name="$PROJECT_NAME"
+  [ "${#short_name}" -gt 20 ] && short_name="${short_name:0:19}…"
+  local left_info=()
+  left_info+=("${C_ACCENT}${C_BOLD}โปรเจกต์${C_RESET}")
+  if [ "$IN_HOME_DIR" -eq 1 ]; then
+    left_info+=("${C_WARN}${C_BOLD}▲ ยังไม่ได้เลือกโปรเจกต์${C_RESET}")
+    left_info+=("${C_MUTED}ตอนนี้อยู่ที่โฟลเดอร์ Home (~)${C_RESET}")
+  else
+    left_info+=("${C_BOLD}${short_name}${C_RESET} ${C_MUTED}(${short_branch})${C_RESET}")
+    left_info+=("${C_MUTED}${short_path}${C_RESET}")
+    [ "$HAS_PROJECT_STATE" -eq 0 ] && left_info+=("${C_WARN}▲ ยังไม่ได้ติดตั้ง .relay/${C_RESET}")
+  fi
+  if [ "$UX_STAGE" -eq 3 ]; then
+    left_info+=("")
+    left_info+=("${C_ACCENT}${C_BOLD}งานปัจจุบัน${C_RESET}")
+    if [ -n "$ACTIVE_TASK" ]; then
+      left_info+=("${C_BOLD}${ACTIVE_TASK}${C_RESET}")
+    else
+      left_info+=("${C_MUTED}ยังไม่มี • กด [1] หรือ [x]${C_RESET}")
+    fi
+    left_info+=("")
+    left_info+=("${C_MUTED}เปลี่ยนโปรเจกต์: กด [f]${C_RESET}")
+  elif [ "$UX_STAGE" -eq 2 ]; then
+    left_info+=("")
+    if [ "$IN_HOME_DIR" -eq 1 ]; then
+      left_info+=("${C_WARN}กด [1] เพื่อเลือกโปรเจกต์${C_RESET}")
+    else
+      left_info+=("${C_WARN}กด [1] ใหม่ • [2] โค้ดเดิม${C_RESET}")
+    fi
+  else
+    left_info+=("")
+    left_info+=("${C_MUTED}ตั้งค่า AI ให้ครบก่อน แล้วเลือกโปรเจกต์${C_RESET}")
   fi
 
   local right_lines=()
@@ -2471,9 +2492,7 @@ print_dashboard_header() {
     left_lines+=("$l_line")
   done < <(render_relay_logo_lines "$RELAY_LOGO_STYLE")
   left_lines+=("")
-  left_lines+=("${C_ACCENT}${prov_summary}${C_RESET}")
-  left_lines+=("${C_MUTED}${left_proj_line}${C_RESET}")
-  left_lines+=("${C_MUTED}${left_task_line}${C_RESET}")
+  left_lines+=("${left_info[@]}")
 
   if command -v python3 >/dev/null 2>&1; then
     python3 - "$C_MUTED" "$C_ACCENT" "$C_BOLD" "$C_RESET" "${#left_lines[@]}" "${left_lines[@]}" "${right_lines[@]}" <<'PYEOF'
