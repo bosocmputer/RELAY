@@ -54,16 +54,24 @@ C_ERR=$'\033[38;5;160m'
 RELAY_CHILD_ACTIVE=0
 RELAY_TRAPS_INSTALLED=0
 
+# ค่า tty ก่อนเปิดเมนู (stty -g) — คืนค่าทุกครั้งที่ออกจากเมนู, Ctrl+C หรือออกโปรแกรม
+RELAY_STTY_SAVED=""
+
 relay_restore_cursor() {
   if [ -t 1 ]; then
     tput cnorm 2>/dev/null || true
     printf '\033[?7h'
   fi
+  if [ -n "$RELAY_STTY_SAVED" ]; then
+    stty "$RELAY_STTY_SAVED" </dev/tty 2>/dev/null || true
+    # keep = ยังเก็บค่าไว้ให้ EXIT trap คืนซ้ำ (หลัง Ctrl+C ตัว read ของ bash คืนค่า tty ของตัวเองทับอีกรอบ)
+    [ "${1:-}" = "keep" ] || RELAY_STTY_SAVED=""
+  fi
   return 0
 }
 
 relay_on_interrupt() {
-  relay_restore_cursor
+  relay_restore_cursor keep
   [ "${RELAY_CHILD_ACTIVE:-0}" = "1" ] && return 0
   printf "\n"
   exit 130
@@ -86,7 +94,7 @@ install_interrupt_traps() {
     trap relay_restore_cursor EXIT
   fi
   trap relay_on_interrupt INT
-  trap 'relay_restore_cursor; exit 143' TERM
+  trap 'relay_restore_cursor keep; exit 143' TERM
   RELAY_TRAPS_INSTALLED=1
 }
 
@@ -1768,6 +1776,15 @@ interactive_menu() {
   tput civis 2>/dev/null || true
   # ปิด line-wrap ระหว่างวาดเมนู (สำหรับ Terminal ที่รองรับ) — ข้อความยังถูกตัดให้พอดีจอด้านล่างอีกชั้น
   printf '\033[?7l'
+  # ปิด echo ตลอดเวลาที่เมนูเปิด: ปุ่มที่กดระหว่างวาดเมนูใหม่ (นอกช่วง read -s) ถูก tty echo กลับเป็น ESC[B
+  # ใน Terminal ที่ไม่เปิด ECHOCTL ซึ่งเลื่อนเคอร์เซอร์ลงและทำให้เมนูวาดซ้อน
+  if [ -z "$RELAY_STTY_SAVED" ]; then
+    RELAY_STTY_SAVED="$(stty -g </dev/tty 2>/dev/null || true)"
+    [ -n "$RELAY_STTY_SAVED" ] && stty -echo </dev/tty 2>/dev/null
+  fi
+  # echo ปิดอยู่แล้ว ➔ read ไม่ต้องใช้ -s (read -s จะคืนค่า tty ของตัวเองหลัง trap ของ Ctrl+C ทำให้ echo ค้างปิด)
+  local read_silent="-s"
+  [ -n "$RELAY_STTY_SAVED" ] && read_silent=""
   local esc_timeout=1
   [ "${BASH_VERSINFO[0]:-3}" -ge 4 ] && esc_timeout=0.1
 
@@ -1833,7 +1850,7 @@ interactive_menu() {
     fi
 
     local k1=""
-    IFS= read -rsn1 k1 || true
+    IFS= read -r $read_silent -n1 k1 || true
 
     if [ -z "$k1" ]; then
       MENU_RESULT="${items[$selected]%%|*}"
@@ -1842,7 +1859,7 @@ interactive_menu() {
 
     if [ "$k1" = $'\x1b' ]; then
       local k23=""
-      IFS= read -rsn2 -t "$esc_timeout" k23 2>/dev/null || true
+      IFS= read -r $read_silent -n2 -t "$esc_timeout" k23 2>/dev/null || true
       case "$k23" in
         "[A"|"OA")
           selected=$(((selected - 1 + count) % count))
