@@ -7,4 +7,4 @@
   - รองรับ `claude` (ดึงผ่าน Control Request `get_usage` ของ `claude -p --input-format stream-json`)
 - [x] **Task 3:** ผสานการแสดงผลโควต้าคงเหลือเข้ากับหน้าแดชบอร์ดหลัก (`print_dashboard_header`), ตารางตำแหน่งทั้ง 4 (`format_role_status_cell`), เมนู `[u]` (`/quota` / `/usage`), และคำสั่ง `relay quota` ใน `relay.sh` และ `relay.ps1`
 - [x] **Task 4:** ติดตั้ง `relay.sh` ไปยัง `~/.agents/bin/relay` และทดสอบรันจริง (`relay status`, `relay quota`) เพื่อตรวจความแม่นยำของตัวเลขโควต้าทั้ง 3 ค่าย
-- [x] **Task 5:** บันทึกผลลง `QA_REPORT.md`, อัปเดต `README.md`, `docs/`, และ `.relay/PROJECT_STATE.md`, ย้ายใบงานเข้า `.relay/archive/`, ผสานเข้า `main`, Push ขึ้น GitHub และ Sync ไปยัง `/Users/nontawatwongnuk/dev_bos/RELAY`
+- [x] **Task 5:** บันทึกผลลง `QA_REPORT.md`, อัปเดต `README.md`, `docs/`, และ `.relay/PROJECT_STATE.md`, ย้ายใบงานเข้า `.relay/archive/`, ผสานเข้า `main`, Push ขึ้น GitHub และ Sync ไปยัง `<โฟลเดอร์ RELAY>`

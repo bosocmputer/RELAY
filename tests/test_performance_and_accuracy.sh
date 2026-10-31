@@ -170,6 +170,10 @@ mkdir -p "$P7_PROJ/.relay/tasks/t1"
 out="$(cd "$P7_PROJ" && HOME="$P6_HOME" PATH="$STUB_BIN:/bin" RELAY_SOURCE_ONLY=1 /bin/bash -c "source '$RELAY_SH'; refresh_quota_cache() { :; }; extract_step_token_usage() { echo '0|0|0|0|0|dir'; }; PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=t1; launch_provider_cli agy m test \"\$PWD\" hi" 2>&1 </dev/null | sed 's/\x1b\[[0-9;]*m//g')"
 check 'printf "%s" "$out" | grep -q "คัดลอกข้อความด้านล่างไปวางเองได้"' "ไม่มี pbcopy ➔ ไม่อ้างว่าคัดลอกลง Clipboard แล้ว"
 
+echo "=== [PRIVACY] ไม่มีพาธส่วนตัวของผู้พัฒนาในไฟล์ที่ track (เตรียมแจกจ่าย) ==="
+priv="$(git -C "$REPO_ROOT" grep -nE '/Users/[A-Za-z]|/home/[a-z][a-z0-9_-]*/|dev_bos' -- . ':(exclude)tests/test_performance_and_accuracy.sh' 2>/dev/null | head -n 3)"
+check '[ -z "$priv" ]' "ไม่พบพาธ /Users/<ชื่อ>, /home/<ชื่อ> หรือโฟลเดอร์ dev_bos ในไฟล์ที่ track${priv:+ (พบ: $(printf "%s" "$priv" | cut -c1-120 | tr '\n' ' '))}"
+
 echo ""
 echo "=================================================================="
 echo "สรุปผลชุดทดสอบ Performance & Accuracy: ผ่าน ${PASS_COUNT} รายการ, ล้มเหลว ${FAIL_COUNT} รายการ"

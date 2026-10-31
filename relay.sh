@@ -1206,10 +1206,10 @@ else:
 stale = age is None or age > 900
 note = (WARN + f"▲ อัปเดต {upd_at} ({age_s}) — ข้อมูลอาจไม่ตรง กด [u] ดึงข้อมูลสด" + RST) if stale \
     else (MUTED + f"อัปเดต {upd_at} ({age_s}) • กด [u] ดึงข้อมูลสด" + RST)
-print(f"{MUTED}│{RST} {BOLD}{ACC}Quota (5h / 7d){RST}  {note}")
+print(f"{MUTED}│{RST} {BOLD}{ACC}โควต้า (5 ชม. / 7 วัน){RST}  {note}")
 
 cells = [(r[0], cell(r[1], r[2], r[3], r[7] == "0", r[8], True), cell(r[4], r[5], r[6], r[7] == "0", r[8], False)) for r in rows]
-h_name, h5, h7 = "Provider / Pool", "5h Window", "7d Window"
+h_name, h5, h7 = "ค่าย / กระเป๋า", "รอบ 5 ชม.", "รอบ 7 วัน"
 nw = max([width(h_name)] + [width(n) for n, _, _ in cells])
 w5 = max([width(h5)] + [width(c5[1]) for _, c5, _ in cells])
 print(f"{MUTED}│{RST}  {MUTED}{pad(h_name, nw)}  {pad(h5, w5)}  {h7}{RST}")
@@ -1628,29 +1628,29 @@ determine_ux_stage() {
 compute_stage3_next_step() {
   if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
     RECOMMENDED_STEP=1
-    STAGE3_FOCUS_TEXT="[1] @po Define Spec (SPEC.md) หรือ [x] Fast Track"
+    STAGE3_FOCUS_TEXT="[1] @po เขียนความต้องการ (SPEC.md) หรือ [x] งานด่วน"
   elif [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" ]; then
     RECOMMENDED_STEP=2
-    STAGE3_FOCUS_TEXT="[2] @arch & @pm Design Architecture & Plan หรือ [a] Auto Loop (2→3⇄4)"
+    STAGE3_FOCUS_TEXT="[2] @arch & @pm ออกแบบและวางแผน หรือ [a] ลูปอัตโนมัติ (2→3⇄4)"
   elif [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_REPORT.md" ] || [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/QA_VERDICT.json" ]; then
     local s3v
     s3v="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
     if [ "$s3v" = "PASS|self" ]; then
       RECOMMENDED_STEP=4
-      STAGE3_FOCUS_TEXT="[4] @qa ตรวจรับงาน Fast Track (ตอนนี้ @dev ตรวจเอง) หรือ [5] Merge"
+      STAGE3_FOCUS_TEXT="[4] @qa ตรวจรับงานด่วน (ตอนนี้ @dev ตรวจเอง) หรือ [5] ผสานโค้ด"
     elif [ "${s3v%%|*}" = "PASS" ]; then
       RECOMMENDED_STEP=5
-      STAGE3_FOCUS_TEXT="[5] Merge Branch to main & Archive Task (QA PASS)"
+      STAGE3_FOCUS_TEXT="[5] ผสานโค้ดเข้า main และปิดงาน (QA ผ่าน)"
     else
       RECOMMENDED_STEP=3
-      STAGE3_FOCUS_TEXT="[3] @dev แก้ไขตาม QA_REPORT.md (${s3v%%|*}) หรือ [a] Auto Loop"
+      STAGE3_FOCUS_TEXT="[3] @dev แก้ตาม QA_REPORT.md หรือ [a] ลูปอัตโนมัติ"
     fi
   elif [ ! -d "$RELAY_DIR/worktrees/$ACTIVE_TASK" ] && [ "${LAST_COMPLETED_PHASE:-0}" -lt 3 ]; then
     RECOMMENDED_STEP=3
-    STAGE3_FOCUS_TEXT="[3] @dev Implement in Git Worktree หรือ [a] Auto Loop (3⇄4)"
+    STAGE3_FOCUS_TEXT="[3] @dev เขียนโค้ดใน Git Worktree หรือ [a] ลูปอัตโนมัติ (3⇄4)"
   else
     RECOMMENDED_STEP=4
-    STAGE3_FOCUS_TEXT="[4] @qa & @sec Verify Tests, Security & QA_REPORT.md"
+    STAGE3_FOCUS_TEXT="[4] @qa & @sec ตรวจเทสต์ ความปลอดภัย และเขียน QA_REPORT.md"
   fi
 }
 
@@ -1698,16 +1698,16 @@ print_shortcuts_bar_lines() {
   # จอแคบกว่า 80 คอลัมน์ ➔ แบบย่อ (จำนวนบรรทัดเท่าเดิม เพื่อให้การวาดเมนูซ้ำตรงบรรทัด)
   if [ "${RELAY_TERM_COLS:-120}" -lt 80 ]; then
     printf "\033[2K\r\n"
-    printf "\033[2K\r  %s%sShortcuts%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
-    printf "\033[2K\r  %s[c][g][u][v][l]%s Models Agents Quota Stats Rules\n" "$C_MUTED" "$C_RESET"
-    printf "\033[2K\r  %s[n][f][t][d][s][q]%s New Project Test Auth Skills Quit\n" "$C_MUTED" "$C_RESET"
+    printf "\033[2K\r  %s%sปุ่มลัด%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
+    printf "\033[2K\r  %s[c][g][u][v][l]%s โมเดล ตำแหน่ง โควต้า สถิติ กฎ\n" "$C_MUTED" "$C_RESET"
+    printf "\033[2K\r  %s[n][f][t][d][s][q]%s งานใหม่ โปรเจกต์ ทดสอบ Login Skills ออก\n" "$C_MUTED" "$C_RESET"
     return 0
   fi
   printf "\033[2K\r\n"
-  printf "\033[2K\r  %s%sShortcuts%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
-  printf "\033[2K\r  %s[c]%s Models   %s[g]%s Agents   %s[u]%s Quota   %s[v]%s Telemetry   %s[l]%s Rules\n" \
+  printf "\033[2K\r  %s%sปุ่มลัด%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
+  printf "\033[2K\r  %s[c]%s โมเดล    %s[g]%s ตำแหน่ง   %s[u]%s โควต้า   %s[v]%s สถิติ    %s[l]%s กฎ\n" \
     "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET"
-  printf "\033[2K\r  %s[n]%s New Task %s[f]%s Project  %s[t]%s Test    %s[d]%s Auth        %s[s]%s Skills  %s[q]%s Quit\n" \
+  printf "\033[2K\r  %s[n]%s งานใหม่   %s[f]%s โปรเจกต์  %s[t]%s ทดสอบ   %s[d]%s Login    %s[s]%s Skills  %s[q]%s ออก\n" \
     "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET"
 }
 
@@ -2290,22 +2290,26 @@ list_available_skill_names() {
   } 2>/dev/null | sort -u
 }
 
-# ─── 4. แสดงหัวกระดาษสไตล์ Hermes (Split-Header Card + Modular Braille Apple Logo) ───
-RELAY_LOGO_STYLE="${RELAY_LOGO_STYLE:-apple}"
+# ─── 4. หัวกระดาษหน้าจอหลัก (กรองแบ่งซ้าย-ขวา + โลโก้ RELAY) ───────────────────────
+# โลโก้: ตัว R + ลูกศรส่งไม้ต่อ • เปลี่ยนรูปได้ที่ฟังก์ชันนี้จุดเดียว (RELAY_LOGO_STYLE: relay | minimal)
+RELAY_LOGO_STYLE="${RELAY_LOGO_STYLE:-relay}"
 
 render_relay_logo_lines() {
-  local style="${1:-${RELAY_LOGO_STYLE:-apple}}"
+  local style="${1:-${RELAY_LOGO_STYLE:-relay}}"
   case "$style" in
-    apple|*)
-      printf "%s             ⣠⣤⡀             %s\n" "$C_OK" "$C_RESET"
-      printf "%s           ⢀⣾⣿⣿⠏             %s\n" "$C_OK" "$C_RESET"
-      printf "%s       ⢀⣠⣴⣾⡿⠋⣠⣴⣾⣦⣄⡀          %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s     ⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦         %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s     ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋         %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s     ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁          %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s     ⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀         %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s      ⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿         %s\n" "$C_ACCENT" "$C_RESET"
-      printf "%s       ⠈⠻⢿⣿⣿⡿⠛⠻⢿⣿⣿⡿⠋          %s\n" "$C_ACCENT_SH" "$C_RESET"
+    minimal)
+      printf "%s  ▐█▀▀▄ ━▶ RELAY%s\n" "$C_ACCENT" "$C_RESET"
+      ;;
+    relay|*)
+      printf "\n"
+      printf "%s    ▐█████▄%s\n" "$C_ACCENT" "$C_RESET"
+      printf "%s    ▐█    ▐█%s   %s━━━▶%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
+      printf "%s    ▐█████▀%s     %s━━▶%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
+      printf "%s    ▐█   ▀█▄%s     %s━▶%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET"
+      printf "%s    ▐█     ▀█▄%s\n" "$C_ACCENT" "$C_RESET"
+      printf "\n"
+      printf "%s%s     R E L A Y%s\n" "$C_ACCENT" "$C_BOLD" "$C_RESET"
+      printf "%s   ทีม AI ส่งไม้ต่อกัน%s\n" "$C_MUTED" "$C_RESET"
       ;;
   esac
 }
@@ -2323,19 +2327,19 @@ print_dashboard_header() {
     git_branch="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
   fi
 
-  local state_badge="${C_WARN}○ no PROJECT_STATE.md${C_RESET}"
+  local state_badge="${C_WARN}○ ยังไม่มี PROJECT_STATE.md${C_RESET}"
   [ -f "$RELAY_DIR/PROJECT_STATE.md" ] && state_badge="${C_OK}● PROJECT_STATE.md${C_RESET}"
 
   local learned_cnt
   learned_cnt="$(get_learned_skills_count)"
   local learned_pending
   learned_pending="$(get_learned_pending_count)"
-  local rules_badge="${C_MUTED}○ 0 rules${C_RESET}"
+  local rules_badge="${C_MUTED}○ กฎ 0 ข้อ${C_RESET}"
   if [ "${learned_cnt:-0}" -gt 0 ]; then
-    rules_badge="${C_OK}● ${learned_cnt} rules${C_RESET}"
+    rules_badge="${C_OK}● กฎ ${learned_cnt} ข้อ${C_RESET}"
   fi
   if [ "${learned_pending:-0}" -gt 0 ]; then
-    rules_badge="${rules_badge} ${C_WARN}▲ ${learned_pending} pending [l]${C_RESET}"
+    rules_badge="${rules_badge} ${C_WARN}▲ รออนุมัติ ${learned_pending} [l]${C_RESET}"
   fi
 
   local spec_m="${C_MUTED}○ SPEC${C_RESET}"
@@ -2350,11 +2354,14 @@ print_dashboard_header() {
       local hv
       hv="$(qa_verdict "$RELAY_DIR/tasks/$ACTIVE_TASK")"
       if [ "$hv" = "PASS|self" ]; then
-        qa_m="${C_WARN}▲ QA PASS (self)${C_RESET}"
+        qa_m="${C_WARN}▲ QA ผ่าน (@dev ตรวจเอง)${C_RESET}"
       elif [ "${hv%%|*}" = "PASS" ]; then
-        qa_m="${C_OK}● QA PASS${C_RESET}"
+        qa_m="${C_OK}● QA ผ่าน${C_RESET}"
       else
-        qa_m="${C_WARN}▲ QA ${hv%%|*}${C_RESET}"
+        case "${hv%%|*}" in
+          FAIL) qa_m="${C_WARN}▲ QA ไม่ผ่าน${C_RESET}" ;;
+          *)    qa_m="${C_WARN}▲ QA ไม่มีผลชัดเจน${C_RESET}" ;;
+        esac
       fi
     fi
   fi
@@ -2381,10 +2388,10 @@ print_dashboard_header() {
     short_branch="${short_branch:0:11}…"
   fi
   local left_proj_line="${short_proj} (${short_branch})"
-  [ "$IN_HOME_DIR" -eq 1 ] && left_proj_line="~ (Home Directory)"
+  [ "$IN_HOME_DIR" -eq 1 ] && left_proj_line="~ (โฟลเดอร์ Home)"
 
-  local left_task_line="Task: none (ready)"
-  [ -n "$ACTIVE_TASK" ] && left_task_line="Task: ${ACTIVE_TASK}"
+  local left_task_line="งาน: ยังไม่มี (พร้อมเริ่ม)"
+  [ -n "$ACTIVE_TASK" ] && left_task_line="งาน: ${ACTIVE_TASK}"
 
   local prov_summary="Google AI Ultra · Codex"
   if ! is_provider_logged_in agy && is_provider_logged_in codex; then
@@ -2394,7 +2401,7 @@ print_dashboard_header() {
   fi
 
   local right_lines=()
-  right_lines+=("${C_ACCENT}${C_BOLD}Agent Roles${C_RESET}")
+  right_lines+=("${C_ACCENT}${C_BOLD}ตำแหน่ง AI${C_RESET}")
   right_lines+=("${C_MUTED}@po:${C_RESET}       ${ROLE_PO} (${m_po})  ${s_po}")
   right_lines+=("${C_MUTED}@arch/pm:${C_RESET}  ${ROLE_ARCH} (${m_arch})  ${s_arch}")
   right_lines+=("${C_MUTED}@dev:${C_RESET}      ${ROLE_DEV} (${m_dev})  ${s_dev}")
@@ -2418,27 +2425,27 @@ print_dashboard_header() {
   done < <(render_quota_table 2>/dev/null || true)
 
   right_lines+=("")
-  right_lines+=("${C_ACCENT}${C_BOLD}Pipeline & Telemetry${C_RESET}")
+  right_lines+=("${C_ACCENT}${C_BOLD}ความคืบหน้าและสถิติ${C_RESET}")
   if [ "$UX_STAGE" -eq 1 ]; then
-    right_lines+=("${C_MUTED}stage:${C_RESET}    Step 1/3 Setup & Auth AI Roles (${READY_ROLE_COUNT}/4 ready)")
-    right_lines+=("${C_MUTED}next:${C_RESET}     กด [1] ตั้งค่าด่วน Google AI Ultra + Codex หรือ [3] Login CLI")
+    right_lines+=("${C_MUTED}ขั้น:${C_RESET}      ขั้นที่ 1/3 ตั้งค่าและ Login AI (พร้อม ${READY_ROLE_COUNT}/4 ตำแหน่ง)")
+    right_lines+=("${C_MUTED}ถัดไป:${C_RESET}     กด [1] ตั้งค่าด่วน Google AI Ultra + Codex หรือ [3] Login CLI")
   elif [ "$UX_STAGE" -eq 2 ]; then
-    right_lines+=("${C_MUTED}stage:${C_RESET}    Step 2/3 Initialize Project (.relay/PROJECT_STATE.md)")
+    right_lines+=("${C_MUTED}ขั้น:${C_RESET}      ขั้นที่ 2/3 เตรียมโปรเจกต์ (.relay/PROJECT_STATE.md)")
     if [ "$IN_HOME_DIR" -eq 1 ]; then
-      right_lines+=("${C_MUTED}next:${C_RESET}     กด [1] เลือกหรือสร้างโฟลเดอร์โปรเจกต์")
+      right_lines+=("${C_MUTED}ถัดไป:${C_RESET}     กด [1] เลือกหรือสร้างโฟลเดอร์โปรเจกต์")
     else
-      right_lines+=("${C_MUTED}next:${C_RESET}     กด [1] Greenfield หรือ [2] Brownfield สำหรับ '${PROJECT_NAME}'")
+      right_lines+=("${C_MUTED}ถัดไป:${C_RESET}     กด [1] เริ่มโปรเจกต์ใหม่ หรือ [2] ใช้กับโค้ดเดิม สำหรับ '${PROJECT_NAME}'")
     fi
   else
-    right_lines+=("${C_MUTED}status:${C_RESET}   ${spec_m}  ${arch_m}  ${plan_m}  ${qa_m}  ·  ${state_badge}  ·  ${rules_badge}")
+    right_lines+=("${C_MUTED}เอกสาร:${C_RESET}    ${spec_m}  ${arch_m}  ${plan_m}  ${qa_m}  ·  ${state_badge}  ·  ${rules_badge}")
     local task_telem=""
     [ -n "$ACTIVE_TASK" ] && task_telem="$(get_task_telemetry_summary_inline "$ACTIVE_TASK")"
     if [ -n "$task_telem" ]; then
-      right_lines+=("${C_MUTED}session:${C_RESET}  ${task_telem}")
+      right_lines+=("${C_MUTED}สถิติ:${C_RESET}     ${task_telem}")
     else
-      right_lines+=("${C_MUTED}session:${C_RESET}  ${C_MUTED}0 runs in current task · press [v] for telemetry${C_RESET}")
+      right_lines+=("${C_MUTED}สถิติ:${C_RESET}     ${C_MUTED}ยังไม่มีการรัน AI ในงานนี้ · กด [v] ดูสถิติ${C_RESET}")
     fi
-    right_lines+=("${C_MUTED}next:${C_RESET}     ${STAGE3_FOCUS_TEXT}")
+    right_lines+=("${C_MUTED}ถัดไป:${C_RESET}     ${STAGE3_FOCUS_TEXT}")
   fi
 
   local left_lines=()
@@ -2534,29 +2541,29 @@ print_quota_report_box() {
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
-  printf "%s│%s %s%sQuota Monitor (5h / 7d) — สถานะโควต้าแยกตามค่ายและโมเดล%s\n" "$C_MUTED" "$C_RESET" "$C_ACCENT" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s%sสถานะโควต้า (5 ชม. / 7 วัน) — แยกตามค่ายและกระเป๋าโควต้า%s\n" "$C_MUTED" "$C_RESET" "$C_ACCENT" "$C_BOLD" "$C_RESET"
   printf "%s│%s %sอัปเดตล่าสุดเมื่อเวลา: %s  (agy / claude ถามจาก CLI • codex อ่านจาก session log ล่าสุดในเครื่อง)%s\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "${QUOTA_UPDATED_AT:--}" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s1. Google AI Ultra — Gemini Models (agy)%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
   [ "$AGY_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_MUTED" "$C_RESET" "$C_WARN" "$AGY_FETCHED_AT" "$C_RESET"
-  printf "%s│%s    • 5-Hour Window : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$g5")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET")" "$C_RESET"
-  printf "%s│%s    • Weekly 7-Day  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$g7")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 5 ชม.  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$g5")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_5H_RESET_EPOCH" "$AGY_GEMINI_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 7 วัน  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$g7")" "$C_MUTED" "$(format_reset_detail "$AGY_GEMINI_7D_RESET_EPOCH" "$AGY_GEMINI_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s2. Google AI Ultra — Claude & GPT Models (agy)%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s    • 5-Hour Window : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$a5")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET")" "$C_RESET"
-  printf "%s│%s    • Weekly 7-Day  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$a7")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 5 ชม.  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$a5")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_5H_RESET_EPOCH" "$AGY_CLAUDE_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 7 วัน  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$a7")" "$C_MUTED" "$(format_reset_detail "$AGY_CLAUDE_7D_RESET_EPOCH" "$AGY_CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s3. OpenAI Codex CLI — %s (codex)%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$CODEX_PLAN" "$C_RESET"
   [ "$CODEX_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_MUTED" "$C_RESET" "$C_WARN" "$CODEX_FETCHED_AT" "$C_RESET"
-  printf "%s│%s    • 5-Hour Window : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$x5")" "$C_MUTED" "$(format_reset_detail "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET")" "$C_RESET"
-  printf "%s│%s    • Weekly 7-Day  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$x7")" "$C_MUTED" "$(format_reset_detail "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 5 ชม.  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$x5")" "$C_MUTED" "$(format_reset_detail "$CODEX_5H_RESET_EPOCH" "$CODEX_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 7 วัน  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$x7")" "$C_MUTED" "$(format_reset_detail "$CODEX_7D_RESET_EPOCH" "$CODEX_7D_RESET")" "$C_RESET"
   printf "%s│%s\n" "$C_MUTED" "$C_RESET"
   printf "%s│%s %s4. Anthropic Claude Code CLI — %s (claude)%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$CLAUDE_PLAN" "$C_RESET"
   [ "$CLAUDE_FETCH_OK" = "0" ] && printf "%s│%s    %s▲ ดึงข้อมูลสดไม่สำเร็จ — แสดงค่าล่าสุดเมื่อ %s%s\n" "$C_MUTED" "$C_RESET" "$C_WARN" "$CLAUDE_FETCHED_AT" "$C_RESET"
-  printf "%s│%s    • 5-Hour Window : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$c5")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET")" "$C_RESET"
-  printf "%s│%s    • Weekly 7-Day  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$c7")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 5 ชม.  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$c5")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_5H_RESET_EPOCH" "$CLAUDE_5H_RESET")" "$C_RESET"
+  printf "%s│%s    • รอบ 7 วัน  : %b   %s(%s)%s\n" "$C_MUTED" "$C_RESET" "$(format_quota_bar "$c7")" "$C_MUTED" "$(format_reset_detail "$CLAUDE_7D_RESET_EPOCH" "$CLAUDE_7D_RESET")" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_MUTED" "$C_RESET"
-  printf "%s│%s %sStatus Summary:%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %sสรุป:%s\n" "$C_MUTED" "$C_RESET" "$C_BOLD" "$C_RESET"
   # สรุปจากทุกกระเป๋าที่มีข้อมูล: แจ้งกระเป๋าที่ต่ำกว่า 20% และบอกตรงๆ ว่ากระเป๋าไหนไม่มีข้อมูล
   local low_list="" unknown_list="" q_label q_val
   for q_label in "agy-Gemini 5h:$g5" "agy-Gemini 7d:$g7" "agy-Claude/GPT 5h:$a5" "agy-Claude/GPT 7d:$a7" "codex 5h:$x5" "codex 7d:$x7" "claude 5h:$c5" "claude 7d:$c7"; do
@@ -2714,7 +2721,7 @@ list_workspace_projects_tsv() {
   if [ "${#roots[@]}" -eq 0 ]; then
     [ -n "${RELAY_WORKSPACE:-}" ] && roots+=("$RELAY_WORKSPACE")
     local cand
-    for cand in "$HOME/dev_bos" "$HOME/Projects" "$HOME/dev" "$HOME/code" "$HOME/workspace" "$HOME/Developer"; do
+    for cand in "$HOME/Projects" "$HOME/dev" "$HOME/code" "$HOME/workspace" "$HOME/Developer"; do
       [ "$cand" = "${RELAY_WORKSPACE:-}" ] || roots+=("$cand")
     done
   fi
@@ -2730,7 +2737,7 @@ list_workspace_projects_tsv() {
       if [ -f "$d/.relay/PROJECT_STATE.md" ] || [ -d "$d/.relay/tasks" ]; then
         active_t="$(ls -1 "$d/.relay/tasks" 2>/dev/null | grep -v '^\.' | sort | tail -n 1 || true)"
         if [ -n "$active_t" ]; then
-          relay_rows+=("1"$'\t'"$dname"$'\t'"$d"$'\t'"Task: $active_t")
+          relay_rows+=("1"$'\t'"$dname"$'\t'"$d"$'\t'"งาน: $active_t")
         else
           relay_rows+=("1"$'\t'"$dname"$'\t'"$d"$'\t'"พร้อมเริ่มงานใหม่")
         fi
@@ -2749,8 +2756,15 @@ list_workspace_projects_tsv() {
 }
 
 select_or_create_project_dir() {
-  local base_workspace="${RELAY_WORKSPACE:-$HOME/dev_bos}"
-  [ -z "${RELAY_WORKSPACE:-}" ] && [ ! -d "$base_workspace" ] && base_workspace="$HOME/Projects"
+  # โฟลเดอร์สร้างโปรเจกต์ใหม่: RELAY_WORKSPACE ➔ โฟลเดอร์มาตรฐานแรกที่มีอยู่ ➔ ~/Projects
+  local base_workspace="${RELAY_WORKSPACE:-}"
+  if [ -z "$base_workspace" ]; then
+    local ws_cand
+    for ws_cand in "$HOME/Projects" "$HOME/dev" "$HOME/code" "$HOME/workspace" "$HOME/Developer"; do
+      [ -d "$ws_cand" ] && { base_workspace="$ws_cand"; break; }
+    done
+    base_workspace="${base_workspace:-$HOME/Projects}"
+  fi
 
   local folder_items=()
   local folder_paths=()
@@ -2817,7 +2831,7 @@ select_or_create_project_dir() {
       ;;
     p|P)
       echo ""
-      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/dev_bos/my-app หรือพิมพ์ b เพื่อย้อนกลับ): " custom_path || true
+      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/Projects/my-app หรือพิมพ์ b เพื่อย้อนกลับ): " custom_path || true
       if is_back_input "$custom_path" || [ -z "$custom_path" ]; then
         return 0
       fi
@@ -5329,11 +5343,11 @@ run_auto_relay_loop() {
   printf "%s│%s  • ขั้นที่ 3 (@dev Worktree): %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_DEV" "$MODEL_DEV"
   printf "%s│%s  • ขั้นที่ 4 (@qa Verifier) : %s (%s)\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$MODEL_QA"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s  %sระบบเบรกนิรภัยและการสลับโควต้า (Circuit Breakers & Smart Failover):%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
-  printf "%s│%s   1. Quota Guard & Failover : เตือนหรือสลับกระเป๋าโควต้าอัตโนมัติเมื่อโควต้าต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
-  printf "%s│%s   2. Worktree Handoff       : สคริปต์สรุปไฟล์ที่ทำค้างใน Worktree (ไม่เรียก AI) แนบให้ AI ตัวใหม่\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s   3. Max Loop Cap           : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
-  printf "%s│%s   4. Step Guard             : หยุดเมื่อ agent ค้างเกิน %s นาทีต่อขั้น หรือไม่สร้างไฟล์ผลลัพธ์\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
+  printf "%s│%s  %sระบบเบรกนิรภัยและการสลับโควต้า:%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s   1. เบรกโควต้า             : เตือนหรือสลับกระเป๋าโควต้าอัตโนมัติเมื่อโควต้าต่ำกว่า %s%%\n" "$C_ACCENT" "$C_RESET" "$min_quota_pct"
+  printf "%s│%s   2. ส่งต่องานใน Worktree    : สคริปต์สรุปไฟล์ที่ทำค้างใน Worktree (ไม่เรียก AI) แนบให้ AI ตัวใหม่\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s   3. เพดานจำนวนรอบ          : วนแก้บั๊ก (@dev ⇄ @qa) สูงสุด %s รอบ\n" "$C_ACCENT" "$C_RESET" "$max_rounds"
+  printf "%s│%s   4. เพดานเวลาต่อขั้น         : หยุดเมื่อ agent ค้างเกิน %s นาทีต่อขั้น หรือไม่สร้างไฟล์ผลลัพธ์\n" "$C_ACCENT" "$C_RESET" "$((step_timeout / 60))"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if [ "$auto_confirm" != "--yes" ]; then
@@ -5965,19 +5979,19 @@ while true; do
     # ═══════════════════════════════════════════════════════════════════════════
     # ขั้นที่ 3/3: Workflow Menu (7 คำสั่งหลัก + แถบ Shortcuts ด้านล่าง)
     # ═══════════════════════════════════════════════════════════════════════════
-    p1_label="@po            Define Spec (SPEC.md) · ${ROLE_PO}/${MODEL_PO}"
-    p2_label="@arch & @pm    Design Architecture & Plan (ARCH.md, PLAN.md) · ${ROLE_ARCH}/${MODEL_ARCH}"
-    p3_label="@dev           Implement in Git Worktree + Tests · ${ROLE_DEV}/${MODEL_DEV}"
-    p4_label="@qa & @sec     Verify Tests, Security & QA_REPORT.md · ${ROLE_QA}/${MODEL_QA}"
-    p5_label="Merge          Merge Branch to main & Archive Task"
-    pa_label="Auto Loop      Run Steps 2 → 3 ⇄ 4 Automatically (/loop)"
-    px_label="Fast Track     Quick Spec + Step 3 → 4 in Git Worktree (/fast)"
+    p1_label="@po            เขียนความต้องการ (SPEC.md) · ${ROLE_PO}/${MODEL_PO}"
+    p2_label="@arch & @pm    ออกแบบและวางแผน (ARCH.md, PLAN.md) · ${ROLE_ARCH}/${MODEL_ARCH}"
+    p3_label="@dev           เขียนโค้ด + เทสต์ใน Git Worktree · ${ROLE_DEV}/${MODEL_DEV}"
+    p4_label="@qa & @sec     ตรวจเทสต์ ความปลอดภัย (QA_REPORT.md) · ${ROLE_QA}/${MODEL_QA}"
+    p5_label="ผสานโค้ด        ผสานกิ่งเข้า main และปิดงาน"
+    pa_label="ลูปอัตโนมัติ      รันขั้น 2 → 3 ⇄ 4 ให้อัตโนมัติ (/loop)"
+    px_label="งานด่วน         ข้าม @po / @arch ให้ @dev แก้ใน Worktree (/fast)"
 
     default_menu_idx=$((RECOMMENDED_STEP - 1))
     MENU_SHORTCUTS_BAR="1"
     EXTRA_MENU_KEYS="c g u v l n f i t d s q m"
 
-    interactive_menu "Workflow (↑/↓ select, Enter run, or press key)" "$default_menu_idx" \
+    interactive_menu "ขั้นตอนการทำงาน (↑/↓ เลือก • Enter รัน • หรือกดปุ่ม)" "$default_menu_idx" \
       "1|${p1_label}" \
       "2|${p2_label}" \
       "3|${p3_label}" \

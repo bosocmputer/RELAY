@@ -149,41 +149,44 @@ cd RELAY
 - **รองรับการย้อนกลับทุกเมนู (`[b] ย้อนกลับ` และปุ่ม `ESC`):** ทุกเมนูย่อย หน้าเลือกค่าย AI หน้าเลือกโมเดล และทุกช่องรับข้อความรองรับการกด `b` หรือ `ESC` เพื่อย้อนกลับไปยังหน้าก่อนหน้าโดยไม่เสียค่าที่ตั้งไว้เดิม
 
 ### 4.2 การเปิดหน้าจอควบคุมกลาง (`relay`)
-เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางแบบ **Hermes-Style Split-Header Card** คู่กับ **Braille Apple Logo** และระบบนำทาง **Guided 3-Stage Progressive UX** จะแสดงผลดังนี้:
+เมื่อพิมพ์คำสั่ง `relay` ใน Terminal หน้าจอควบคุมกลางจะแสดงเป็นภาษาไทยเป็นหลัก (ชื่อไฟล์ ชื่อบทบาท ปุ่มลัด และชื่อค่าย/โมเดลคงเป็นภาษาอังกฤษ) แบ่งกรอบซ้าย-ขวา: ซ้ายเป็นโลโก้ RELAY + โปรเจกต์และงานปัจจุบัน ขวาเป็นตำแหน่ง AI, ตารางโควต้า และความคืบหน้า พร้อมระบบนำทาง **Guided 3-Stage Progressive UX** (ตัวอย่างด้านล่างเป็นผลจริงจากเครื่องทดสอบ):
 
 ```text
-╭─────────────────────── RELAY v1.0.0 ──────────────────────────────────────────────────────╮
-│                 ⣠⣤⡀          Agent Roles                                                  │
-│                ⣼⣿⣿⡇          po: agy / gemini-4-argon-high ●                              │
-│            ⢀⣠⣤⣄⠈⠛⠁⣠⣤⣄⡀       arch: agy / claude-opus-5-5-high ●                           │
-│           ⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷       dev: agy / claude-sonnet-5-5-high ● (worktree)               │
-│          ▐⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿▌       qa: codex / gpt-6.1-terra ●                                  │
-│          ▐⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿▌                                                                    │
-│           ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿       Quota (5h / 7d) · updated 2m ago · [u]                       │
-│           ⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿       agy (Gemini): ● 81% (1ชม.27น.) · ▲ 49% (1วัน 13ชม.)          │
-│            ⠈⠻⣿⣿⡿⠋⠙⢿⣿⣿⠟⠁      agy (Claude/GPT): ● 100% (↻ รีเซ็ตแล้ว) · ● 99% (6วัน 15ชม.)  │
-│                              codex (Plus): ● 70% (1ชม.18น.) · ● 61% (5วัน 19ชม.)          │
-│         my-project · main    claude (Pro): ● 100% (ยังไม่เริ่มนับรอบ) · ▲ 13% (20ชม.19น.)     │
-│        ~/dev/my-project                                                                   │
-│      Task: 20261030-user-auth Pipeline & Telemetry                                         │
-│                              task: 20261030-user-auth · [✓] SPEC  [✓] PLAN  [ ] QA        │
-│                              telemetry: 2m 14s (2 steps) · 38,420 tokens · [v]            │
-│                              rules: 5 active · ▲ 2 pending [l]                            │
-│                              next: มี PLAN.md แล้ว — กด [3] ให้ @dev เขียนโค้ด หรือกด [a]     │
-╰───────────────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────── RELAY v1.0.0 ─────────────────────────────────────────────────────────────────────╮
+│                                 ตำแหน่ง AI                                                                         │
+│     ▐█████▄                     @po:       agy (gemini-4-argon-high)  ● พร้อมใช้                                    │
+│     ▐█    ▐█   ━━━▶             @arch/pm:  agy (claude-opus-5-5-high)  ● พร้อมใช้                                   │
+│     ▐█████▀     ━━▶             @dev:      agy (claude-sonnet-5-5-high)  ● พร้อมใช้                                 │
+│     ▐█   ▀█▄     ━▶             @qa/sec:   codex (gpt-6.1-terra)  ● พร้อมใช้                                        │
+│     ▐█     ▀█▄                                                                                                    │
+│                                 โควต้า (5 ชม. / 7 วัน)  อัปเดต 10:15:02 (เมื่อสักครู่) • กด [u] ดึงข้อมูลสด                  │
+│      R E L A Y                  ค่าย / กระเป๋า      รอบ 5 ชม.                   รอบ 7 วัน                            │
+│    ทีม AI ส่งไม้ต่อกัน               agy (Gemini)      ● 81%  อีก 1ชม.26น. (11:42)  ▲ 49%  อีก 1วัน 12ชม. (02 พ.ย. 00:10) │
+│                                 agy (Claude/GPT)  ● 100%                      ● 99%                               │
+│    Google AI Ultra · Codex      codex (Plus)      ● 70%  อีก 1ชม.17น. (11:33)  ● 61%                               │
+│      …/my-project (main)        claude (Pro)      ▲ 35%                       ▲ 13%                               │
+│    งาน: 20261031-user-auth                                                                                        │
+│                                 ความคืบหน้าและสถิติ                                                                   │
+│                                 เอกสาร:    ● SPEC  ● ARCH  ● PLAN  ○ QA  ·  ● PROJECT_STATE.md  ·  ○ กฎ 0 ข้อ      │
+│                                 สถิติ:     ยังไม่มีการรัน AI ในงานนี้ · กด [v] ดูสถิติ                                       │
+│                                 ถัดไป:     [3] @dev เขียนโค้ดใน Git Worktree หรือ [a] ลูปอัตโนมัติ (3⇄4)                  │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-Workflow (↑/↓ select, Enter run, or press key)
-    1  @po            Define Spec (SPEC.md) · agy/gemini-4-argon-high
-    2  @arch & @pm    Design Architecture & Plan (ARCH.md, PLAN.md) · agy/claude-opus-5-5-high
-  ❯ 3  @dev           Implement in Git Worktree + Tests · agy/claude-sonnet-5-5-high
-    4  @qa & @sec     Verify Tests, Security & QA_REPORT.md · codex/gpt-6.1-terra
-    5  Merge          Merge Branch to main & Archive Task
-    a  Auto Loop      Run Steps 2 → 3 ⇄ 4 Automatically (/loop)
-    x  Fast Track     Quick Spec + Step 3 → 4 in Git Worktree (/fast)
+  ขั้นตอนการทำงาน (↑/↓ เลือก • Enter รัน • หรือกดปุ่ม)
+    [1] @po            เขียนความต้องการ (SPEC.md) · agy/gemini-4-argon-high
+    [2] @arch & @pm    ออกแบบและวางแผน (ARCH.md, PLAN.md) · agy/claude-opus-5-5-high
+  ❯ [3] @dev           เขียนโค้ด + เทสต์ใน Git Worktree · agy/claude-sonnet-5-5-high
+    [4] @qa & @sec     ตรวจเทสต์ ความปลอดภัย (QA_REPORT.md) · codex/gpt-6.1-terra
+    [5] ผสานโค้ด        ผสานกิ่งเข้า main และปิดงาน
+    [a] ลูปอัตโนมัติ      รันขั้น 2 → 3 ⇄ 4 ให้อัตโนมัติ (/loop)
+    [x] งานด่วน         ข้าม @po / @arch ให้ @dev แก้ใน Worktree (/fast)
 
-Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task  [f] Project  [s] Skills  [t] Test  [d] Connect  [q] Quit
-  › Select [3] (or type /command):
+  ปุ่มลัด
+  [c] โมเดล    [g] ตำแหน่ง   [u] โควต้า   [v] สถิติ    [l] กฎ
+  [n] งานใหม่   [f] โปรเจกต์  [t] ทดสอบ   [d] Login    [s] Skills  [q] ออก
 ```
+
+> **โฟลเดอร์โปรเจกต์:** หน้าเลือกโปรเจกต์ (`[f]`) สแกน `RELAY_WORKSPACE` (ถ้ากำหนด) และ `~/Projects`, `~/dev`, `~/code`, `~/workspace`, `~/Developer` ที่มีอยู่จริง ถ้าเก็บโปรเจกต์ไว้ที่อื่นให้เพิ่ม `export RELAY_WORKSPACE="$HOME/โฟลเดอร์ของคุณ"` ใน `~/.zshrc` • เปลี่ยนรูปโลโก้ได้ด้วย `RELAY_LOGO_STYLE=minimal`
 
 ### 4.3 การตรวจสอบโควต้าคงเหลือของทุกค่าย (`[u]` / `/quota` หรือ `relay quota`)
 หน้าจอหลักแสดง **ตารางโควต้า 3 คอลัมน์ (ค่าย / 5 ชั่วโมง / รายสัปดาห์)** พร้อม **นับถอยหลังเวลารีเซ็ต** เช่น `อีก 1ชม.27น. (20:27)` หรือ `อีก 1วัน 13ชม. (31 ต.ค. 08:10)` โดยคำนวณจากเวลารีเซ็ตที่แคชไว้ทุกครั้งที่วาดหน้าจอ จึงนับต่อได้แม้ข้อมูลจะดึงมาสักพักแล้ว (แคชถูก refresh เบื้องหลังเมื่อเก่ากว่า 3 นาที)
@@ -332,4 +335,4 @@ Shortcuts: [c] Model  [g] Agents  [u] Quota  [v] Stats  [l] Learn  [n] New Task 
 - 🧰 **[`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md)** — คู่มือการอัปเดตทักษะ การเพิ่มทักษะใหม่ และการสร้างไฟล์ `SKILL.md` เฉพาะองค์กร
 - 🌍 **[`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md)** — คู่มือการประยุกต์ใช้ `RELAY` กับสายงานอื่นนอกเหนือจากงานพัฒนาซอฟต์แวร์
 - 🤝 **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** และ **[`LICENSE`](./LICENSE)** — แนวทางการมีส่วนร่วมพัฒนาภายใต้สัญญาอนุญาต MIT License
-- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 231/231 ข้อ): `bash tests/test_terminal_menu.sh` (เมนูบนจอแคบไม่วาดซ้อน + ตัดข้อความภาษาไทยไม่เสีย + ตัวกรองคำเตือนของ claude), `bash tests/test_performance_and_accuracy.sh` (P1–P5: แคชผล Login, แคช session log ของ codex, ขนาดกฎกลาง, การลิงก์ `~/.claude/skills/` แบบเลือกเปิดเอง, Token ตามโฟลเดอร์งาน และข้อความที่ไม่อ้างเกินจริง), `bash tests/test_high_severity_fixes.sh` (H1–H9: เมนูเมื่อ stdin หมด, Ctrl+C, config ของ CLI, ชื่อโปรเจกต์, การสำรองไฟล์กฎ และ Git Hook), `bash tests/test_medium_fixes.sh` (M1–M15: Python 3.9, โควต้า/lockfile, verdict ของ Fast Track, Auto-Loop ใน Worktree, Step 5, เมนู), `bash tests/test_progressive_skills_and_tools.sh` (Progressive Skill Index + `relay-verify-task` Script-as-Tool + `relay-skills.sh create` + Evidence-Based Remediation Distillation), `bash tests/test_security_and_hardening.sh` (Safe Config/Cache Parser + Atomic Writes + Worktree Secret Guard + Process Group Timeout), `bash tests/test_hermes_cli_redesign.sh` (Hermes-Style Split-Header Card + Braille Apple Logo + 4-Level Color Hierarchy), `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จาก session log + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
+- 🧪 **[`tests/`](./tests/)** — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 232/232 ข้อ): `bash tests/test_terminal_menu.sh` (เมนูบนจอแคบไม่วาดซ้อน + ตัดข้อความภาษาไทยไม่เสีย + ตัวกรองคำเตือนของ claude), `bash tests/test_performance_and_accuracy.sh` (P1–P5: แคชผล Login, แคช session log ของ codex, ขนาดกฎกลาง, การลิงก์ `~/.claude/skills/` แบบเลือกเปิดเอง, Token ตามโฟลเดอร์งาน และข้อความที่ไม่อ้างเกินจริง), `bash tests/test_high_severity_fixes.sh` (H1–H9: เมนูเมื่อ stdin หมด, Ctrl+C, config ของ CLI, ชื่อโปรเจกต์, การสำรองไฟล์กฎ และ Git Hook), `bash tests/test_medium_fixes.sh` (M1–M15: Python 3.9, โควต้า/lockfile, verdict ของ Fast Track, Auto-Loop ใน Worktree, Step 5, เมนู), `bash tests/test_progressive_skills_and_tools.sh` (Progressive Skill Index + `relay-verify-task` Script-as-Tool + `relay-skills.sh create` + Evidence-Based Remediation Distillation), `bash tests/test_security_and_hardening.sh` (Safe Config/Cache Parser + Atomic Writes + Worktree Secret Guard + Process Group Timeout), `bash tests/test_cli_layout.sh` (หน้าจอหลักภาษาไทยแบบแบ่งซ้าย-ขวา + โลโก้ RELAY + ระบบสี 4 ระดับ + เมนูและแถบปุ่มลัด + การเรียงโปรเจกต์), `bash tests/test_quota_failover_and_handoff.sh` (Smart Quota Failover + 1-Click Switcher + Worktree Handoff + Mid-Step Recovery), `bash tests/test_custom_agents_and_back_nav.sh` (การย้อนกลับ `[b]` ทุกเมนู + การจัดการบทบาท/Prompt/ทักษะ และเพิ่ม Agent ตำแหน่งใหม่ + ทักษะ `flutter-best-practices`), `bash tests/test_token_telemetry.sh` (การวัด Token จาก session log + `relay stats` + `Fast Track`), `bash tests/test_phase5_merge.sh` (ขั้นตอนที่ 5 + การอนุมัติบทเรียน), `bash tests/test_auto_loop.sh < /dev/null` (Auto-Relay Loop ด้วย CLI จำลอง) และ `bash tests/test_quota_display.sh` (นับถอยหลังและสถานะโควต้า)
