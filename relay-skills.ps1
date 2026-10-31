@@ -75,6 +75,9 @@ function Sync-ManifestSkills([string]$ModeLabel) {
         $srcFile = Join-Path $ScriptDir $ls.File
         if (Test-Path $srcFile) {
             Copy-Item -Force $srcFile (Join-Path $skillDir "SKILL.md")
+            $claudeSkillDir = Join-Path $HOME ".claude\skills\$($ls.Name)"
+            New-Item -ItemType Directory -Force -Path $claudeSkillDir | Out-Null
+            Copy-Item -Force $srcFile (Join-Path $claudeSkillDir "SKILL.md")
         }
     }
 

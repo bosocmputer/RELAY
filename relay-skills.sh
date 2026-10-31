@@ -76,6 +76,19 @@ EOF
   echo "   • สคริปต์เครื่องมือ: $script_file"
 }
 
+sync_claude_skill_links() {
+  mkdir -p ~/.claude/skills
+  local s_dir target_skill
+  for s_dir in ~/.agents/skills/*; do
+    [ -d "$s_dir" ] && [ -f "$s_dir/SKILL.md" ] || continue
+    target_skill="$HOME/.claude/skills/$(basename "$s_dir")"
+    if [ -e "$target_skill" ] && [ ! -L "$target_skill" ]; then
+      continue
+    fi
+    ln -sfn "$s_dir" "$target_skill"
+  done
+}
+
 sync_manifest_skills() {
   local mode_label="$1"
   echo "🚀 [RELAY Skills] กำลัง${mode_label}ชุด Skills จาก skills-manifest.txt..."
@@ -109,6 +122,7 @@ sync_manifest_skills() {
     chmod +x ~/.agents/bin/relay-verify-task ~/.agents/skills/verification-before-completion/scripts/verify-relay-task.sh
   fi
   [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
+  sync_claude_skill_links
 
   # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
   if command -v claude >/dev/null 2>&1; then
@@ -154,6 +168,7 @@ case "$COMMAND" in
       echo "$ENTRY" >> "$MANIFEST_FILE"
       echo "📝 บันทึกสกิลนี้ลงใน skills-manifest.txt เรียบร้อย (จะถูกอัปเดตอัตโนมัติเมื่อรัน ./relay-skills.sh update)"
     fi
+    sync_claude_skill_links
     echo "✅ เพิ่มสกิลใหม่สำเร็จ!"
     ;;
   create)

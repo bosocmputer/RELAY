@@ -50,10 +50,19 @@ if ($userPath -notlike "*$BinDir*") {
     $env:Path = "$BinDir;$env:Path"
 }
 
-# 4. คัดลอกไฟล์กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini)
+# 4. คัดลอกไฟล์กฎการทำงานส่วนกลางไปยังทั้ง 3 ค่าย (Claude, Codex, Gemini) และซิงก์ทักษะเข้า $HOME\.claude\skills
 Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".claude\CLAUDE.md")
 Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".codex\AGENTS.md")
 Copy-Item -Force $globalAgentsDst (Join-Path $HOME ".gemini\GEMINI.md")
+
+foreach ($sDir in (Get-ChildItem -Path (Join-Path $HOME ".agents\skills") -Directory -ErrorAction SilentlyContinue)) {
+    $srcSkill = Join-Path $sDir.FullName "SKILL.md"
+    if (Test-Path $srcSkill) {
+        $dstSkillDir = Join-Path $HOME ".claude\skills\$($sDir.Name)"
+        New-Item -ItemType Directory -Force -Path $dstSkillDir | Out-Null
+        Copy-Item -Force $srcSkill (Join-Path $dstSkillDir "SKILL.md")
+    }
+}
 
 # 5. ตั้งค่า Global Git Pre-commit Hook เพื่อตรวจสอบความปลอดภัยก่อน Commit ในทุกโครงการ
 $hooksPath = (Join-Path $HOME ".agents\hooks") -replace "\\", "/"

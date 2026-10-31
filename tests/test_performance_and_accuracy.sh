@@ -75,8 +75,12 @@ check '[ "$g_bytes" -lt 8000 ]' "ขนาด GLOBAL_AGENTS.md ต่ำกว�
 check 'grep -q "~/.agents/skills/relay-roles/SKILL.md" "$G" && ! grep -q "หน้าที่ความรับผิดชอบ" "$G"' "GLOBAL_AGENTS.md ชี้ไปที่ skill relay-roles และไม่มีรายละเอียดหน้าที่ของแต่ละบทบาท"
 check 'grep -q "^name: relay-roles" "$R" && grep -q "@po" "$R" && grep -q "@arch" "$R" && grep -q "@dev" "$R" && grep -q "@qa" "$R" && grep -q "ไม่เกิน 40 บรรทัด" "$R"' "relay-roles/SKILL.md มีหน้าที่ครบทั้ง 4 บทบาท"
 P3_HOME="$(new_home p3)"
+mkdir -p "$P3_HOME/.claude/skills/user-custom"
+echo "custom-skill" > "$P3_HOME/.claude/skills/user-custom/SKILL.md"
 HOME="$P3_HOME" PATH="$SAFE_PATH" bash "$REPO_ROOT/setup-mac.sh" >/dev/null 2>&1
 check 'cmp -s "$P3_HOME/.agents/skills/relay-roles/SKILL.md" "$R"' "setup-mac.sh ติดตั้ง ~/.agents/skills/relay-roles/SKILL.md"
+check '[ -L "$P3_HOME/.claude/skills/relay-roles" ] && cmp -s "$P3_HOME/.claude/skills/relay-roles/SKILL.md" "$R" && [ -L "$P3_HOME/.claude/skills/flutter-best-practices" ]' "setup-mac.sh เชื่อม symlink ทักษะจาก ~/.agents/skills/* เข้าสู่ ~/.claude/skills/*"
+check '[ -d "$P3_HOME/.claude/skills/user-custom" ] && [ ! -L "$P3_HOME/.claude/skills/user-custom" ] && [ "$(cat "$P3_HOME/.claude/skills/user-custom/SKILL.md")" = "custom-skill" ]' "ไม่เขียนทับโฟลเดอร์ทักษะจริงที่ผู้ใช้สร้างไว้เองใน ~/.claude/skills/"
 check 'grep -q "relay-roles-SKILL.md" "$REPO_ROOT/setup-win.ps1" && grep -q "relay-roles-SKILL.md" "$REPO_ROOT/relay-skills.ps1" && grep -q "relay-roles-SKILL.md" "$REPO_ROOT/relay-skills.sh"' "setup-win.ps1 / relay-skills.ps1 / relay-skills.sh ติดตั้ง relay-roles ด้วย"
 
 echo "=== [P4] นับ Token เฉพาะ session ในโฟลเดอร์ของขั้นตอนนั้น ==="
@@ -121,9 +125,11 @@ mkdir -p "$P5_PROJ/.relay/tasks/t1"
 check 'python3 -c "import json,sys; r=json.loads(open(sys.argv[1]).readline()); sys.exit(0 if r[\"tokens\"][\"found\"] is False and r[\"tokens\"][\"scope\"]==\"dir\" else 1)" "$P5_PROJ/.relay/tasks/t1/RUN_LOG.jsonl"' "RUN_LOG บันทึก found=false และ scope"
 
 echo "=== [ANTI-OVERCLAIM] ข้อความใน UI และเอกสาร ==="
-hits="$(python3 - "$REPO_ROOT" <<'PYEOF'
+MAIN_REPO_ROOT="$(cd "$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd || echo "$REPO_ROOT")"
+hits="$(python3 - "$REPO_ROOT" "$MAIN_REPO_ROOT" <<'PYEOF'
 import os, re, sys
 root = sys.argv[1]
+main_root = sys.argv[2]
 pat = re.compile(r"เรียลไทม์|Real-Time|real-time|Live Sync|0[- ]Token|0 Token\b|\(0 tokens\)|เดินถูกเสมอ|Token จริง|Token ที่ใช้จริง|วัดจากระบบจริง|ดึงสด|โควต้าสด|ทุกตำแหน่งพร้อมทำงานต่อเนื่อง|ดึงข้อมูลจาก CLI ทั้ง 3 ค่ายโดยตรง|เริ่มสั่งงานทั้ง 4 ขั้นตอนให้อัตโนมัติ")
 files = ["relay.sh", "relay.ps1", "relay-init.sh", "relay-init.ps1", "relay-skills.sh", "relay-skills.ps1", "setup-mac.sh", "setup-win.ps1", "README.md"]
 for d in ("docs", "templates", "templates/scripts", "domains/business-accounting", "domains/film-video-production"):
@@ -133,6 +139,12 @@ for f in files:
         m = pat.search(line)
         if m:
             print(f"{f}:{i}:{m.group(0)}")
+ps_file = os.path.join(main_root, ".relay", "PROJECT_STATE.md")
+if os.path.isfile(ps_file):
+    for i, line in enumerate(open(ps_file, encoding="utf-8", errors="ignore"), 1):
+        m = pat.search(line)
+        if m:
+            print(f".relay/PROJECT_STATE.md:{i}:{m.group(0)}")
 PYEOF
 )"
 check '[ -z "$hits" ]' "ไม่พบคำอ้างเกินจริงในโค้ด / สคริปต์ / เอกสาร${hits:+ (พบ: $(printf "%s" "$hits" | tr '\n' ' '))}"
