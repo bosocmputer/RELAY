@@ -52,6 +52,7 @@
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield), ชี้แจงชัดเจนว่าโฟลเดอร์ `.relay/` คือกลไกหลักโดย **Obsidian เป็นเพียงทางเลือกเสริม (Optional Viewer)**, ทุกบทบาทสลับค่าย/โมเดล AI ได้อิสระผ่านปุ่ม `[c]`, ข้อความในเอกสารและ UI ถูกตรวจด้วย `tests/test_performance_and_accuracy.sh` ว่าไม่มีคำอ้างเกินจริงที่กำหนดไว้, อธิบายข้อจำกัดเรื่อง **Ceremony Overhead** คู่กับโหมด `[x] Fast Track` และระบบวัด Token จาก session log (`[v]` / `relay stats`), รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี
 
 ## ประวัติใบงานที่ผสานแล้ว (RELAY อัปเดตอัตโนมัติ)
+- `2026-10-31` `20261031-autoloop-filter-and-ps1-bom` — ใบงานเก็บตก: กรองคำเตือน claude ใน Auto-Loop + ไฟล์ PowerShell อ่านภาษาไทยได้ (20261031-autoloop-filter-and-ps1-bom) (merge `1b8e89e`)
 - `2026-10-31` `20261031-thai-ui-logo-and-privacy` — ใบงานเตรียมแจกจ่าย: หน้าจอภาษาไทยเป็นหลัก + โลโก้ของ RELAY เอง + ล้างข้อมูลส่วนตัว (20261031-thai-ui-logo-and-privacy) (merge `967f208`)
 - `2026-10-31` `20261031-menu-fit-and-claude-warning-filter` — ใบงานแก้เมนูวาดซ้อนเมื่อจอแคบ + ตัวกรองคำเตือนของ claude (20261031-menu-fit-and-claude-warning-filter) (merge `9b7705a`)
 - `2026-10-31` `20261031-fix-claude-skill-links-and-records` — ใบงานแก้จุดที่ตกหล่นจากใบงาน 20261031-final-audit-completion (20261031-fix-claude-skill-links-and-records) (merge `70dff5e`)
