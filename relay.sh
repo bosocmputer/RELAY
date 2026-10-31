@@ -56,7 +56,7 @@ RELAY_TRAPS_INSTALLED=0
 
 relay_restore_cursor() {
   if [ -t 1 ]; then
-    tput cnorm 2>/dev/null
+    tput cnorm 2>/dev/null || true
     printf '\033[?7h'
   fi
   return 0
@@ -70,7 +70,14 @@ relay_on_interrupt() {
 }
 
 install_interrupt_traps() {
-  trap relay_restore_cursor EXIT
+  local prev_exit_trap
+  prev_exit_trap="$(trap -p EXIT 2>/dev/null | sed -E "s/^trap -- '(.*)' EXIT$/\1/")"
+  if [ -n "$prev_exit_trap" ] && [ "$prev_exit_trap" != "relay_restore_cursor" ]; then
+    # shellcheck disable=SC2064
+    trap "relay_restore_cursor; $prev_exit_trap" EXIT
+  else
+    trap relay_restore_cursor EXIT
+  fi
   trap relay_on_interrupt INT
   trap 'relay_restore_cursor; exit 143' TERM
   RELAY_TRAPS_INSTALLED=1
@@ -5729,6 +5736,7 @@ run_skills_menu() {
   esac
 }
 
+# ─── 14. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
 # รองรับการ source เฉพาะฟังก์ชันสำหรับชุดทดสอบอัตโนมัติโดยไม่เข้า Interactive Loop
 if [ "${RELAY_SOURCE_ONLY:-0}" = "1" ]; then
   return 0 2>/dev/null || exit 0
@@ -5736,7 +5744,6 @@ fi
 
 install_interrupt_traps
 
-# ─── 14. รองรับ Subcommands จากบรรทัดคำสั่งโดยตรง ──────────────────────────────
 SUBCOMMAND="${1:-hub}"
 case "$SUBCOMMAND" in
   status)
