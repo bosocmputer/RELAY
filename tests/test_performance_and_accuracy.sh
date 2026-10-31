@@ -79,8 +79,22 @@ mkdir -p "$P3_HOME/.claude/skills/user-custom"
 echo "custom-skill" > "$P3_HOME/.claude/skills/user-custom/SKILL.md"
 HOME="$P3_HOME" PATH="$SAFE_PATH" bash "$REPO_ROOT/setup-mac.sh" >/dev/null 2>&1
 check 'cmp -s "$P3_HOME/.agents/skills/relay-roles/SKILL.md" "$R"' "setup-mac.sh ติดตั้ง ~/.agents/skills/relay-roles/SKILL.md"
-check '[ -L "$P3_HOME/.claude/skills/relay-roles" ] && cmp -s "$P3_HOME/.claude/skills/relay-roles/SKILL.md" "$R" && [ -L "$P3_HOME/.claude/skills/flutter-best-practices" ]' "setup-mac.sh เชื่อม symlink ทักษะจาก ~/.agents/skills/* เข้าสู่ ~/.claude/skills/*"
-check '[ -d "$P3_HOME/.claude/skills/user-custom" ] && [ ! -L "$P3_HOME/.claude/skills/user-custom" ] && [ "$(cat "$P3_HOME/.claude/skills/user-custom/SKILL.md")" = "custom-skill" ]' "ไม่เขียนทับโฟลเดอร์ทักษะจริงที่ผู้ใช้สร้างไว้เองใน ~/.claude/skills/"
+check '[ -z "$(find "$P3_HOME/.claude/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev/null)" ]' "ค่าเริ่มต้น (ไม่ตั้ง RELAY_LINK_CLAUDE_SKILLS) ➔ ไม่ลิงก์ skill เข้า ~/.claude/skills (ไม่เพิ่มคำอธิบาย skill เข้าทุก session ของ Claude Code)"
+check '[ -d "$P3_HOME/.claude/skills/user-custom" ] && [ ! -L "$P3_HOME/.claude/skills/user-custom" ] && [ "$(cat "$P3_HOME/.claude/skills/user-custom/SKILL.md")" = "custom-skill" ]' "ไม่แตะโฟลเดอร์ทักษะจริงของผู้ใช้ใน ~/.claude/skills"
+ln -s "$P3_HOME/.agents/skills/relay-roles" "$P3_HOME/.agents/skills/relay-roles-alias"
+ln -s /somewhere/else "$P3_HOME/.claude/skills/playwright-qa"
+HOME="$P3_HOME" PATH="$SAFE_PATH" RELAY_LINK_CLAUDE_SKILLS="relay-roles,playwright-qa" bash "$REPO_ROOT/relay-skills.sh" link-claude >/dev/null 2>&1
+check '[ -L "$P3_HOME/.claude/skills/relay-roles" ] && cmp -s "$P3_HOME/.claude/skills/relay-roles/SKILL.md" "$R" && [ ! -e "$P3_HOME/.claude/skills/flutter-best-practices" ]' "เลือกรายชื่อ ➔ ลิงก์เฉพาะ skill ที่เลือก"
+check '[ "$(readlink "$P3_HOME/.claude/skills/playwright-qa")" = "/somewhere/else" ]' "ไม่เปลี่ยน symlink ของผู้ใช้ที่ชี้ไปที่อื่น"
+HOME="$P3_HOME" PATH="$SAFE_PATH" RELAY_LINK_CLAUDE_SKILLS=all bash "$REPO_ROOT/relay-skills.sh" link-claude >/dev/null 2>&1
+check '[ -L "$P3_HOME/.claude/skills/flutter-best-practices" ] && [ ! -e "$P3_HOME/.claude/skills/relay-roles-alias" ]' "all ➔ ลิงก์ทุก skill ยกเว้น alias (symlink ใน ~/.agents/skills)"
+HOME="$P3_HOME" PATH="$SAFE_PATH" bash "$REPO_ROOT/relay-skills.sh" link-claude >/dev/null 2>&1
+check '[ ! -e "$P3_HOME/.claude/skills/relay-roles" ] && [ ! -e "$P3_HOME/.claude/skills/flutter-best-practices" ] && [ -L "$P3_HOME/.claude/skills/playwright-qa" ] && [ -d "$P3_HOME/.claude/skills/user-custom" ]' "ปิดอีกครั้ง ➔ ลบเฉพาะลิงก์ที่ชี้เข้า ~/.agents/skills (ลิงก์และโฟลเดอร์ของผู้ใช้ยังอยู่)"
+check '[ -f "$P3_HOME/.agents/skills/relay-roles/SKILL.md" ]' "ลบลิงก์แล้วต้นฉบับใน ~/.agents/skills ยังอยู่"
+check 'grep -q "Sync-ClaudeSkillCopies" "$REPO_ROOT/relay-skills.ps1" && grep -q "Copy-Item -Recurse -Force \$s.FullName \$dst" "$REPO_ROOT/relay-skills.ps1" && grep -q "relay-skills.ps1\") link-claude" "$REPO_ROOT/setup-win.ps1" && ! grep -q "Copy-Item -Force \$srcSkill" "$REPO_ROOT/setup-win.ps1"' "Windows: เลือกเปิดเองเหมือนกัน คัดลอกทั้งโฟลเดอร์ และ setup-win.ps1 ใช้ฟังก์ชันเดียวกัน (ตรวจด้วยข้อความ ไม่ได้รัน PowerShell)"
+check 'grep -q "Move-Item -Force \$rulesFile" "$REPO_ROOT/setup-win.ps1" && grep -q "Move-Item -Force \$globalAgentsDst \$globalBak" "$REPO_ROOT/setup-win.ps1"' "Windows: สำรองไฟล์กฎเดิมก่อนเขียนทับ (ตรวจด้วยข้อความ ไม่ได้รัน PowerShell)"
+out="$(RELAY_SOURCE_ONLY=1 /bin/bash -c "trap 'echo cleanup' EXIT; source '$RELAY_SH'; install_interrupt_traps; install_interrupt_traps; install_interrupt_traps; trap -p EXIT")"
+check '[ "$(printf "%s" "$out" | grep -o "relay_restore_cursor" | wc -l | tr -d " ")" = "1" ] && printf "%s" "$out" | grep -q "cleanup"' "install_interrupt_traps เรียกซ้ำ ➔ ไม่ห่อ EXIT trap ซ้อน และ trap เดิมยังทำงาน"
 check 'grep -q "relay-roles-SKILL.md" "$REPO_ROOT/setup-win.ps1" && grep -q "relay-roles-SKILL.md" "$REPO_ROOT/relay-skills.ps1" && grep -q "relay-roles-SKILL.md" "$REPO_ROOT/relay-skills.sh"' "setup-win.ps1 / relay-skills.ps1 / relay-skills.sh ติดตั้ง relay-roles ด้วย"
 
 echo "=== [P4] นับ Token เฉพาะ session ในโฟลเดอร์ของขั้นตอนนั้น ==="

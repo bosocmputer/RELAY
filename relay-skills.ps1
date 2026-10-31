@@ -6,7 +6,7 @@
 #>
 param(
     [Parameter(Position=0)]
-    [ValidateSet("install", "update", "add", "list", "help")]
+    [ValidateSet("install", "update", "add", "list", "link-claude", "help")]
     [string]$Command = "help",
 
     [Parameter(Position=1)]
@@ -37,6 +37,52 @@ function Show-Help {
     Write-Host "  .\relay-skills.ps1 add <repo_url> [skill_name] # เพิ่มสกิลใหม่เข้าเครื่องและบันทึกลง skills-manifest.txt"
     Write-Host "  .\relay-skills.ps1 list                        # แสดงรายการสกิลทั้งหมดในคลัง"
     Write-Host "==================================================================" -ForegroundColor Cyan
+}
+
+# คัดลอก skill จาก ~/.agents/skills เข้า ~/.claude/skills เฉพาะเมื่อเลือกเปิดเอง (เหมือน sync_claude_skill_links ใน relay-skills.sh)
+# คำอธิบายของทุก skill ใน ~/.claude/skills ถูกโหลดเข้าทุก session ของ Claude Code • คัดลอกทั้งโฟลเดอร์ (scripts/, references/) แทน symlink
+# $env:RELAY_LINK_CLAUDE_SKILLS = "all" | "relay-roles playwright-qa" | ว่าง (ค่าเริ่มต้น: ไม่คัดลอก และลบสำเนาเดิมที่ RELAY สร้าง)
+# แตะเฉพาะโฟลเดอร์ที่มีไฟล์ .relay-managed หรือสำเนา SKILL.md เดี่ยวที่ตรงกับต้นฉบับ (สำเนาจากเวอร์ชันก่อน) — โฟลเดอร์อื่นของผู้ใช้ไม่ถูกแตะ
+function Test-RelayManagedSkillDir([string]$Dir, [string]$AgentsSkills) {
+    if (Test-Path (Join-Path $Dir ".relay-managed")) { return $true }
+    $items = @(Get-ChildItem -Path $Dir -Force -ErrorAction SilentlyContinue)
+    $src = Join-Path (Join-Path $AgentsSkills (Split-Path $Dir -Leaf)) "SKILL.md"
+    if ($items.Count -eq 1 -and $items[0].Name -eq "SKILL.md" -and (Test-Path $src)) {
+        return (Get-FileHash $items[0].FullName).Hash -eq (Get-FileHash $src).Hash
+    }
+    return $false
+}
+
+function Sync-ClaudeSkillCopies {
+    $wanted = ("$env:RELAY_LINK_CLAUDE_SKILLS" -replace ',', ' ').Trim()
+    $wantedList = @($wanted -split '\s+' | Where-Object { $_ })
+    $agentsSkills = Join-Path $HOME ".agents\skills"
+    $claudeSkills = Join-Path $HOME ".claude\skills"
+    if (Test-Path $claudeSkills) {
+        foreach ($d in (Get-ChildItem -Path $claudeSkills -Directory -ErrorAction SilentlyContinue)) {
+            if (-not (Test-RelayManagedSkillDir $d.FullName $agentsSkills)) { continue }
+            if ($wanted -ne "all" -and $wantedList -notcontains $d.Name) { Remove-Item -Recurse -Force $d.FullName }
+        }
+    }
+    $copied = @()
+    if ($wanted) {
+        New-Item -ItemType Directory -Force -Path $claudeSkills | Out-Null
+        foreach ($s in (Get-ChildItem -Path $agentsSkills -Directory -ErrorAction SilentlyContinue)) {
+            if ($s.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+            if (-not (Test-Path (Join-Path $s.FullName "SKILL.md"))) { continue }
+            if ($wanted -ne "all" -and $wantedList -notcontains $s.Name) { continue }
+            $dst = Join-Path $claudeSkills $s.Name
+            if (Test-Path $dst) {
+                if (-not (Test-RelayManagedSkillDir $dst $agentsSkills)) { continue }
+                Remove-Item -Recurse -Force $dst
+            }
+            Copy-Item -Recurse -Force $s.FullName $dst
+            New-Item -ItemType File -Force -Path (Join-Path $dst ".relay-managed") | Out-Null
+            $copied += $s.Name
+        }
+    }
+    $label = if ($copied.Count) { $copied -join " " } else { "ไม่มี (เปิดได้ด้วย `$env:RELAY_LINK_CLAUDE_SKILLS = 'all' หรือรายชื่อ skill)" }
+    Write-Host "🔗 [RELAY Skills] คัดลอกเข้า $claudeSkills : $label"
 }
 
 function Sync-ManifestSkills([string]$ModeLabel) {
@@ -75,9 +121,6 @@ function Sync-ManifestSkills([string]$ModeLabel) {
         $srcFile = Join-Path $ScriptDir $ls.File
         if (Test-Path $srcFile) {
             Copy-Item -Force $srcFile (Join-Path $skillDir "SKILL.md")
-            $claudeSkillDir = Join-Path $HOME ".claude\skills\$($ls.Name)"
-            New-Item -ItemType Directory -Force -Path $claudeSkillDir | Out-Null
-            Copy-Item -Force $srcFile (Join-Path $claudeSkillDir "SKILL.md")
         }
     }
 
@@ -95,8 +138,9 @@ function Sync-ManifestSkills([string]$ModeLabel) {
 }
 
 switch ($Command) {
-    "install" { Sync-ManifestSkills "ติดตั้ง" }
-    "update"  { Sync-ManifestSkills "อัปเดตเวอร์ชันล่าสุดของ" }
+    "install" { Sync-ManifestSkills "ติดตั้ง"; Sync-ClaudeSkillCopies }
+    "link-claude" { Sync-ClaudeSkillCopies }
+    "update"  { Sync-ManifestSkills "อัปเดตเวอร์ชันล่าสุดของ"; Sync-ClaudeSkillCopies }
     "add" {
         if ([string]::IsNullOrWhiteSpace($RepoUrl)) {
             Write-Host "❌ กรุณาระบุลิงก์ GitHub Repo เช่น: .\relay-skills.ps1 add https://github.com/owner/repo [ชื่อสกิล]" -ForegroundColor Red

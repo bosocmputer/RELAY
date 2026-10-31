@@ -24,6 +24,7 @@ show_help() {
   echo "  ./relay-skills.sh add <repo_url> [skill_name]               # เพิ่มสกิลใหม่เข้าเครื่องและบันทึกลง skills-manifest.txt"
   echo "  ./relay-skills.sh create <skill_name> [desc] [target_dir]   # สร้างโฟลเดอร์ Skill มาตรฐาน (SKILL.md + scripts/)"
   echo "  ./relay-skills.sh list                                      # แสดงรายการสกิลทั้งหมดพร้อมสารบัญ Progressive Disclosure"
+  echo "  RELAY_LINK_CLAUDE_SKILLS=all ./relay-skills.sh link-claude  # (เลือกเปิดเอง) ลิงก์สกิลเข้า ~/.claude/skills ให้ Claude Code เห็นเป็น native skill"
   echo "=================================================================="
 }
 
@@ -76,17 +77,56 @@ EOF
   echo "   • สคริปต์เครื่องมือ: $script_file"
 }
 
+in_skill_list() {
+  case " $2 " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+# ลิงก์ skill จาก ~/.agents/skills เข้า ~/.claude/skills เฉพาะเมื่อเลือกเปิดเอง
+# (คำอธิบายของทุก skill ใน ~/.claude/skills ถูกโหลดเข้าทุก session ของ Claude Code ในทุกโปรเจกต์ — relay แนบพาธ skill ใน prompt อยู่แล้ว)
+# RELAY_LINK_CLAUDE_SKILLS = "all" | "relay-roles playwright-qa" (คั่นด้วยช่องว่างหรือจุลภาค) | ว่าง (ค่าเริ่มต้น: ไม่ลิงก์ และลบลิงก์เดิมที่ชี้เข้า ~/.agents/skills)
+# ไม่แตะโฟลเดอร์จริงหรือ symlink ที่ชี้ไปที่อื่นใน ~/.claude/skills และไม่ลิงก์ skill ที่เป็น alias (symlink ใน ~/.agents/skills)
 sync_claude_skill_links() {
-  mkdir -p ~/.claude/skills
-  local s_dir target_skill
-  for s_dir in ~/.agents/skills/*; do
-    [ -d "$s_dir" ] && [ -f "$s_dir/SKILL.md" ] || continue
-    target_skill="$HOME/.claude/skills/$(basename "$s_dir")"
-    if [ -e "$target_skill" ] && [ ! -L "$target_skill" ]; then
-      continue
-    fi
-    ln -sfn "$s_dir" "$target_skill"
-  done
+  local wanted="${RELAY_LINK_CLAUDE_SKILLS:-}"
+  wanted="${wanted//,/ }"
+  local agents_skills="$HOME/.agents/skills"
+  local claude_skills="$HOME/.claude/skills"
+  local link name s_dir linked=""
+  if [ -d "$claude_skills" ]; then
+    for link in "$claude_skills"/*; do
+      [ -L "$link" ] || continue
+      case "$(readlink "$link")" in
+        "$agents_skills"/*) ;;
+        *) continue ;;
+      esac
+      name="$(basename "$link")"
+      if [ ! -e "$link" ] || { [ "$wanted" != "all" ] && ! in_skill_list "$name" "$wanted"; }; then
+        rm -f "$link"
+      fi
+    done
+  fi
+  if [ -n "${wanted// /}" ]; then
+    mkdir -p "$claude_skills"
+    for s_dir in "$agents_skills"/*; do
+      [ -d "$s_dir" ] && [ ! -L "$s_dir" ] && [ -f "$s_dir/SKILL.md" ] || continue
+      name="$(basename "$s_dir")"
+      [ "$wanted" = "all" ] || in_skill_list "$name" "$wanted" || continue
+      link="$claude_skills/$name"
+      if [ -L "$link" ]; then
+        case "$(readlink "$link")" in
+          "$agents_skills"/*) ;;
+          *) continue ;;
+        esac
+      elif [ -e "$link" ]; then
+        continue
+      fi
+      ln -sfn "$s_dir" "$link"
+      linked="${linked:+$linked }$name"
+    done
+  fi
+  echo "🔗 [RELAY Skills] ลิงก์เข้า ~/.claude/skills: ${linked:-ไม่มี (เปิดได้ด้วย RELAY_LINK_CLAUDE_SKILLS=all หรือรายชื่อ skill)}"
 }
 
 sync_manifest_skills() {
@@ -173,6 +213,9 @@ case "$COMMAND" in
     ;;
   create)
     scaffold_skill_folder "${2:-}" "${3:-}" "${4:-}"
+    ;;
+  link-claude)
+    sync_claude_skill_links
     ;;
   list)
     echo "📋 รายการ Skills ใน skills-manifest.txt:"

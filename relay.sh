@@ -72,10 +72,11 @@ relay_on_interrupt() {
 install_interrupt_traps() {
   local prev_exit_trap
   prev_exit_trap="$(trap -p EXIT 2>/dev/null | sed -E "s/^trap -- '(.*)' EXIT$/\1/")"
-  if [ -n "$prev_exit_trap" ] && [ "$prev_exit_trap" != "relay_restore_cursor" ]; then
+  # trap เดิมที่ขึ้นต้นด้วย relay_restore_cursor คือของเราเอง (ติดตั้งซ้ำ) ➔ ไม่ห่อซ้อนอีกชั้น
+  if [ -n "$prev_exit_trap" ] && [[ "$prev_exit_trap" != relay_restore_cursor* ]]; then
     # shellcheck disable=SC2064
     trap "relay_restore_cursor; $prev_exit_trap" EXIT
-  else
+  elif [ -z "$prev_exit_trap" ]; then
     trap relay_restore_cursor EXIT
   fi
   trap relay_on_interrupt INT
