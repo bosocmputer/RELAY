@@ -38,6 +38,7 @@ setup_repo() {
 echo "== AC-1: ไฟล์ค้างไม่ commit ใน Worktree ➔ commit อัตโนมัติแล้วผสาน =="
 setup_repo $ROOT/m1
 echo "feature" > ".relay/worktrees/$T/feature.txt"
+mkdir -p ".relay/worktrees/$T/.playwright-mcp" && echo "snapshot" > ".relay/worktrees/$T/.playwright-mcp/page.yml"
 # หลักฐานการแก้บั๊ก: รอบก่อน @qa ไม่ผ่าน 2 เกณฑ์ แล้วรอบสุดท้ายผ่าน ➔ Self-Learning เสนอบทเรียน 2 ข้อ
 printf '{"verdict":"FAIL","failed_criteria":["ห้ามแก้ไขโค้ดบนกิ่ง main โดยตรง","ต้องเขียนชุดทดสอบก่อนส่งงาน"],"tests_run":["npm test"],"summary":"fail"}' > ".relay/tasks/$T/QA_VERDICT.before-round-2.json"
 printf '{"verdict":"PASS","failed_criteria":[],"tests_run":["npm test"],"summary":"แก้ให้ทำใน Worktree และเพิ่มเทสต์แล้ว"}' > ".relay/tasks/$T/QA_VERDICT.json"
@@ -45,6 +46,7 @@ printf "c\n" | bash "$RELAY" 5 > $ROOT/m1.log 2>&1
 [ -f $ROOT/m1/feature.txt ] && ok "feature.txt อยู่ใน main" || bad "feature.txt ไม่อยู่ใน main"
 git -C $ROOT/m1 log --oneline -1 | grep -q "merge: feat/$T" && ok "มี merge commit" || bad "ไม่มี merge commit"
 git -C $ROOT/m1 ls-files | grep -q "^.relay/" && bad ".relay/ ถูก commit เข้า main" || ok ".relay/ ไม่ถูก commit"
+git -C $ROOT/m1 ls-files | grep -q "^.playwright-mcp/" && bad ".playwright-mcp/ ถูก commit เข้า main" || ok "snapshot ของ Playwright MCP (.playwright-mcp/) ไม่ถูก commit อัตโนมัติ"
 [ ! -d "$ROOT/m1/.relay/worktrees/$T" ] && ok "ลบ Worktree หลังผสานสำเร็จ" || bad "Worktree ยังอยู่"
 git -C $ROOT/m1 show-ref --quiet "refs/heads/feat/$T" && bad "กิ่งยังอยู่" || ok "ลบกิ่งแล้ว"
 [ -f "$ROOT/m1/.relay/archive/$T/QA_REPORT.md" ] && ok "ใบงานเข้า archive พร้อม QA_REPORT จาก Worktree" || bad "ใบงานไม่อยู่ใน archive"

@@ -3989,9 +3989,10 @@ launch_provider_cli() {
   print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
 }
 
-# pathspec ที่ RELAY ไม่ commit ให้อัตโนมัติ: เอกสาร .relay/ และไฟล์ความลับ/ฐานข้อมูลต้องห้าม
+# pathspec ที่ RELAY ไม่ commit ให้อัตโนมัติ: เอกสาร .relay/, ไฟล์ความลับ/ฐานข้อมูลต้องห้าม และไฟล์ของเครื่องมือ (.playwright-mcp)
 RELAY_COMMIT_EXCLUDES=(':(exclude).relay' ':(exclude).env' ':(exclude).env.*' ':(exclude)**/.env' ':(exclude)**/.env.*'
-  ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db')
+  ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db'
+  ':(exclude).playwright-mcp' ':(exclude)**/.playwright-mcp')
 
 # เตรียม repo ให้มี commit แรกก่อนแยก Worktree
 # • โฟลเดอร์มีโค้ดเดิมแต่ยังไม่มี commit ➔ ถามก่อน commit โค้ดเดิม (ถ้า commit ว่าง Worktree ของ @dev จะไม่เห็นโค้ดเดิม)
@@ -4037,11 +4038,21 @@ ensure_relay_gitignore() {
   fi
 }
 
-# รายการไฟล์โค้ดที่ยังไม่ commit ใน Worktree (ไม่นับเอกสารใน .relay/ ที่ RELAY คัดลอกเข้าไปเอง)
+# snapshot ของ Playwright MCP (.playwright-mcp/) ที่ @qa สร้างในโฟลเดอร์งานไม่ใช่ผลงาน ➔ ignore ผ่าน .git/info/exclude
+# (ใช้ร่วมทุก Worktree และไม่แก้ .gitignore ที่ track ของผู้ใช้)
+ensure_tool_artifacts_excluded() {
+  local common_dir
+  common_dir="$(git -C "$PROJECT_DIR" rev-parse --git-common-dir 2>/dev/null)" || return 0
+  case "$common_dir" in /*) ;; *) common_dir="$PROJECT_DIR/$common_dir" ;; esac
+  mkdir -p "$common_dir/info"
+  grep -qxF '.playwright-mcp/' "$common_dir/info/exclude" 2>/dev/null || printf '.playwright-mcp/\n' >> "$common_dir/info/exclude"
+}
+
+# รายการไฟล์โค้ดที่ยังไม่ commit ใน Worktree (ไม่นับเอกสารใน .relay/ ที่ RELAY คัดลอกเข้าไปเอง และไฟล์ของเครื่องมือ)
 worktree_dirty_files() {
   local wt="$1"
   [ -d "$wt" ] || return 0
-  git -C "$wt" status --porcelain -- . ':(exclude).relay' 2>/dev/null || true
+  git -C "$wt" status --porcelain -- . ':(exclude).relay' ':(exclude).playwright-mcp' ':(exclude)**/.playwright-mcp' 2>/dev/null || true
 }
 
 # ตรวจหาไฟล์ความลับหรือฐานข้อมูลที่ห้ามบันทึกตามกฎความปลอดภัยข้อที่ 1 (.env*, *.key, *.pem, *.sqlite*, *.db)
@@ -4094,6 +4105,7 @@ prepare_task_worktree() {
     return 1
   fi
   ensure_relay_gitignore
+  ensure_tool_artifacts_excluded
   mkdir -p "$RELAY_DIR/worktrees"
 
   if [ ! -d "$worktree_dir" ]; then
