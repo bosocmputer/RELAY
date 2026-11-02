@@ -147,6 +147,10 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
    - จากนั้นกด `[2]` → `[3]` → `[4]` ทีละขั้น หรือกด `[a]` ให้ทำต่อเองอัตโนมัติ
 5. **ปิดงาน** — เมื่อ `@qa` ตรวจผ่าน กด `[5]` เพื่อผสานโค้ดเข้ากิ่งหลักและเก็บใบงานเข้า `.relay/archive/`
 
+**ต้องสร้าง git repo เองก่อนไหม?** ไม่ต้อง และไม่ต้องมี repo บน GitHub (RELAY ไม่ push ให้) — ตอนเริ่ม `[3]` หรือ `[x]` ครั้งแรก RELAY จะ `git init` และสร้าง commit แรกให้เอง สิ่งที่ต้องมีคือ `git config user.name` / `user.email`
+- **โปรเจกต์เดิมที่ยังไม่มี git:** RELAY จะแสดงจำนวนไฟล์และถามก่อน commit ไฟล์เดิมเป็น commit แรก (ไม่รวม `.relay/` และไฟล์ความลับ) เพราะ `@dev` ทำงานใน Worktree ที่แยกจาก commit — ตรวจ `.gitignore` ก่อนตอบ เช่น ให้มี `node_modules/`
+- **โปรเจกต์เดิมที่เป็น git อยู่แล้ว:** commit งานที่ค้างก่อน เพราะไฟล์ที่ยังไม่ commit จะไม่อยู่ใน Worktree และ `[5]` จะหยุดถ้ากิ่งหลักมีไฟล์ที่แก้ค้าง
+
 อยากเปลี่ยนโปรเจกต์เมื่อไรก็กด `[f]` • ทุกเมนูกด `b` หรือ `ESC` เพื่อย้อนกลับได้
 
 > ตัวอย่างการใช้งานกับโปรเจกต์ใหม่และโปรเจกต์เดิมแบบละเอียด: [`docs/USE_CASES_NEW_AND_EXISTING.md`](./docs/USE_CASES_NEW_AND_EXISTING.md)
@@ -273,7 +277,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 243/243 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 250/250 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

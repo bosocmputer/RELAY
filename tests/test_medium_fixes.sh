@@ -240,6 +240,36 @@ check '[ "$out" = "1" ]' "RELAY_WORKSPACE ซ้ำกับรายการ�
 out="$(RELAY_WORKSPACE="$M15_HOME/custom" relay_src "$M15_HOME" 'list_workspace_projects_tsv' | cut -f2 | head -n 1)"
 check '[ "$out" = "app-three" ]' "RELAY_WORKSPACE ถูกสแกนก่อน (ได้ '$out')"
 
+echo "=== [M16] โปรเจกต์เดิมที่ยังไม่มี git: commit แรกต้องมีโค้ดเดิม ==="
+M16_HOME="$(new_home m16)"
+m16_proj() {
+  local d="$TMP_ROOT/m16-$1"
+  mkdir -p "$d/src" "$d/.relay/tasks/t1"
+  echo 'console.log(1)' > "$d/src/app.js"
+  echo 'SECRET=1' > "$d/.env"
+  echo '# spec' > "$d/.relay/tasks/t1/SPEC.md"
+  echo "$d"
+}
+m16_run() { (cd "$1" && relay_src "$M16_HOME" 'PROJECT_DIR="$PWD"; refresh_project_paths; ACTIVE_TASK=t1; prepare_task_worktree; echo "rc=$?"') 2>&1; }
+P="$(m16_proj yes)"
+out="$(printf 'y\n' | m16_run "$P")"
+tree="$(git -C "$P" ls-tree -r --name-only HEAD 2>/dev/null | tr '\n' ' ')"
+check 'printf "%s" "$out" | grep -q "มีไฟล์เดิม 1 ไฟล์"' "แจ้งจำนวนไฟล์เดิมก่อน commit (ไม่นับ .env, .relay/, .gitignore)"
+check 'printf "%s" "$out" | grep -q "rc=0" && [ -f "$P/.relay/worktrees/t1/src/app.js" ]' "ยืนยัน ➔ Worktree ของ @dev มีโค้ดเดิม (src/app.js)"
+check '[ "$tree" = ".gitignore src/app.js " ]' "commit แรกมีโค้ดเดิม + .gitignore แต่ไม่มี .env และ .relay/ (ได้: $tree)"
+P="$(m16_proj no)"
+out="$(printf 'b\n' | m16_run "$P")"
+check 'printf "%s" "$out" | grep -q "rc=1" && ! git -C "$P" rev-parse --verify -q HEAD >/dev/null && [ ! -d "$P/.relay/worktrees/t1" ]' "ยกเลิก ➔ ไม่สร้าง commit และไม่สร้าง Worktree"
+P="$(m16_proj eof)"
+out="$(m16_run "$P" </dev/null)"
+check 'printf "%s" "$out" | grep -q "rc=1" && ! git -C "$P" rev-parse --verify -q HEAD >/dev/null' "stdin หมด ➔ ไม่ commit เงียบๆ"
+P="$TMP_ROOT/m16-empty"; mkdir -p "$P/.relay/tasks/t1"
+out="$(m16_run "$P" </dev/null)"
+check 'printf "%s" "$out" | grep -q "rc=0" && [ -d "$P/.relay/worktrees/t1" ] && ! printf "%s" "$out" | grep -q "มีไฟล์เดิม"' "โฟลเดอร์ว่าง ➔ สร้าง commit แรกให้โดยไม่ถาม"
+P="$(m16_proj existing)"; git -C "$P" init -q -b main; git -C "$P" add src; git -C "$P" commit -qm base
+out="$(m16_run "$P" </dev/null)"
+check 'printf "%s" "$out" | grep -q "rc=0" && [ "$(git -C "$P" rev-list --count HEAD)" = "1" ]' "repo ที่มี commit แล้ว ➔ ไม่สร้าง commit เพิ่ม"
+
 echo "=== [Windows] relay-skills.ps1 ล็อกเวอร์ชัน npx ==="
 check '! grep -nE "@latest|npx -y skills " "$REPO_ROOT/relay-skills.ps1"' "relay-skills.ps1 ไม่มี @latest หรือ npx skills ที่ไม่ระบุเวอร์ชัน"
 
