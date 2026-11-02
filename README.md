@@ -150,6 +150,8 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
    - กด `[1]` คุยกับ `@po` บอกสิ่งที่อยากได้ จนได้ `SPEC.md`
    - เมื่อ AI ทำงานของขั้นนั้นเสร็จ จะบอกให้พิมพ์ `/exit` เพื่อกลับมาที่ RELAY แล้ว RELAY จะเสนอขั้นถัดไปให้เลือกทันที (เช่น ได้ `SPEC.md` แล้ว ➔ `[2]` หรือ `[a]`) ไม่ต้องกลับหน้าหลักไปเลือกเอง
    - ทำต่อทีละขั้น `[2]` → `[3]` → `[4]` หรือกด `[a]` ให้ทำต่อเองอัตโนมัติ
+   - ถ้ายังไม่มี `SPEC.md` RELAY จะไม่เปิด AI ในขั้น `[2]` / `[3]` และเสนอให้ไป `[1]` ก่อน
+   - `SPEC.md` เป็นเกณฑ์ตรวจรับของคุณกับ `@po` ถ้า `@dev` แก้ไฟล์นี้ระหว่างทำงาน RELAY จะแสดงส่วนที่ถูกแก้ แล้วให้คุณเลือกคืนฉบับเดิม (ค่าเริ่มต้น) หรือยอมรับ
 5. **ปิดงาน** — เมื่อ `@qa` ตรวจผ่าน กด `[5]` เพื่อผสานโค้ดเข้ากิ่งหลักและเก็บใบงานเข้า `.relay/archive/`
    - dependency ที่ `@dev` ติดตั้งไว้อยู่ใน Worktree ซึ่งถูกลบหลังผสาน ถ้างานเปลี่ยนไฟล์ dependency RELAY จะแสดงคำสั่งให้รันในโฟลเดอร์หลัก เช่น `npm ci` (ระบบแค่แสดง ไม่รันให้เอง)
 
@@ -285,7 +287,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 292/292 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 300/300 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

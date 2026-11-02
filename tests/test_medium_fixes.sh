@@ -370,6 +370,27 @@ check 'printf "%s" "$note" | grep -q "ก่อนเริ่มงานต้
 rm -rf "$M19_HOME/.agents/skills/impeccable"
 check '! printf "%s" "$(m19 "$W" "get_core_role_prompt_note dev")" | grep -q "impeccable"' "skill ที่ไม่ได้ติดตั้ง ➔ ไม่อยู่ในรายการที่สั่งให้อ่าน"
 
+echo "=== [M20] ขั้นที่ 2/3 ต้องมี SPEC.md ก่อน • @dev แก้ SPEC.md เองไม่ได้โดยไม่ถามผู้ใช้ ==="
+M20_HOME="$(new_home m20)"
+M20_P="$TMP_ROOT/m20-proj"; mkdir -p "$M20_P/.relay/tasks/t1"
+M20_STUBS='require_all_roles_ready(){ :; }; ensure_or_create_task(){ :; }; check_role_quota_safe(){ :; }; offer_next_step(){ :; }; run_phase_1_po(){ echo PO_CALLED; }; prepare_task_worktree(){ TASK_WORK_DIR="$PROJECT_DIR/.relay/worktrees/t1"; mkdir -p "$TASK_WORK_DIR/.relay/tasks/t1"; cp "$RELAY_DIR/tasks/t1/SPEC.md" "$TASK_WORK_DIR/.relay/tasks/t1/"; }; launch_provider_cli(){ echo "LAUNCHED"; eval "$DEV_ACTION"; }'
+m20() { (cd "$M20_P" && export DEV_ACTION="$2" && printf "$3" | relay_src "$M20_HOME" "$M20_STUBS; PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=t1; $1") 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
+out="$(m20 run_phase_2_arch "" 'b\n')"
+check 'printf "%s" "$out" | grep -q "ยังไม่มี SPEC.md" && ! printf "%s" "$out" | grep -q LAUNCHED' "ไม่มี SPEC.md ➔ ขั้นที่ 2 ไม่เปิด AI และบอกเหตุผล"
+out="$(m20 run_phase_3_dev "" '1\n')"
+check 'printf "%s" "$out" | grep -q PO_CALLED && ! printf "%s" "$out" | grep -q LAUNCHED' "ไม่มี SPEC.md ➔ ขั้นที่ 3 ไม่เปิด AI • เลือก [1] ➔ ไปขั้น @po"
+printf '# spec\n- [ ] ยอดรวม 100\n' > "$M20_P/.relay/tasks/t1/SPEC.md"
+WT_SPEC="$M20_P/.relay/worktrees/t1/.relay/tasks/t1/SPEC.md"
+out="$(m20 run_phase_3_dev "" '\n')"
+check 'printf "%s" "$out" | grep -q LAUNCHED && ! printf "%s" "$out" | grep -q "@dev แก้ไข SPEC.md"' "มี SPEC.md และ @dev ไม่แตะ SPEC ➔ เปิด AI ตามปกติ ไม่ถามซ้ำ"
+out="$(m20 run_phase_3_dev 'sed -i.bak "s/100/999/" "$RELAY_DIR/tasks/t1/SPEC.md"; sed -i.bak "s/100/999/" "$TASK_WORK_DIR/.relay/tasks/t1/SPEC.md"' '\n')"
+check 'printf "%s" "$out" | grep -q "@dev แก้ไข SPEC.md" && printf "%s" "$out" | grep -q "+- \[ \] ยอดรวม 999" && grep -q "ยอดรวม 100" "$M20_P/.relay/tasks/t1/SPEC.md" && grep -q "ยอดรวม 100" "$WT_SPEC"' "@dev แก้ SPEC.md ➔ แสดง diff • Enter (ค่าเริ่มต้น) ➔ คืนฉบับเดิมทั้งโฟลเดอร์หลักและ Worktree"
+out="$(m20 run_phase_3_dev 'sed -i.bak "s/100/925/" "$TASK_WORK_DIR/.relay/tasks/t1/SPEC.md"' 'k\n')"
+check 'printf "%s" "$out" | grep -q "ใช้ SPEC.md ฉบับที่ @dev แก้" && grep -q "ยอดรวม 925" "$M20_P/.relay/tasks/t1/SPEC.md" && grep -q "ยอดรวม 925" "$WT_SPEC"' "@dev แก้เฉพาะ SPEC.md ใน Worktree ➔ ตรวจเจอ • กด [k] ยอมรับ ➔ ทั้งสองที่ได้ฉบับเดียวกัน"
+out="$(m20 'run_fast_track_dev "แก้บั๊ก"' 'sed -i.bak "s/925/1/" "$RELAY_DIR/tasks/t1/SPEC.md"' '\n')"
+check 'printf "%s" "$out" | grep -q "@dev แก้ไข SPEC.md" && grep -q "ยอดรวม 925" "$M20_P/.relay/tasks/t1/SPEC.md"' "Fast Track ก็ตรวจการแก้ SPEC.md และคืนฉบับเดิมได้"
+check 'relay_src "$M20_HOME" get_dev_quality_note | grep -q "ห้ามแก้ SPEC.md"' "prompt ของ @dev ทุกโหมดห้ามแก้ SPEC.md และให้แจ้งผู้ใช้พร้อมหลักฐาน"
+
 echo "=== [Windows] relay-skills.ps1 ล็อกเวอร์ชัน npx ==="
 check '! grep -nE "@latest|npx -y skills " "$REPO_ROOT/relay-skills.ps1"' "relay-skills.ps1 ไม่มี @latest หรือ npx skills ที่ไม่ระบุเวอร์ชัน"
 
