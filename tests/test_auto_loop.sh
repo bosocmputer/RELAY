@@ -25,6 +25,7 @@ td=".relay/tasks/$FAKE_TASK"
 case "$prompt" in
   *"@arch"*) mkdir -p "$td"; echo "# ARCH" > "$td/ARCH.md"; echo "- [ ] T1" > "$td/PLAN.md" ;;
   *"@dev"*)
+    printf '%s\n' "$prompt" >> "$FAKE_LOG.dev-prompts"
     if [ -n "$FAKE_DEV_SLEEP" ]; then
       trap 'kill $SP 2>/dev/null; touch "$FAKE_LOG.terminated"; exit 143' TERM
       sleep "$FAKE_DEV_SLEEP" & SP=$!; wait $SP
@@ -42,6 +43,7 @@ case "$1" in
   --version) echo "codex-cli fake"; exit 0 ;;
   login) echo "Logged in using ChatGPT"; exit 0 ;;
   exec)
+    printf '%s\n' "$*" >> "$FAKE_LOG.qa-prompts"
     n=$(( $(cat "$FAKE_LOG.qa-count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_LOG.qa-count"
     v=$(echo "$FAKE_QA_SEQUENCE" | cut -d, -f"$n")
     td=".relay/tasks/$FAKE_TASK"; mkdir -p "$td"
@@ -108,6 +110,8 @@ nlines=$(wc -l < "$ROOT/proj/.relay/tasks/$T/RUN_LOG.jsonl" 2>/dev/null | tr -d 
 [ "$nlines" = "5" ] && ok "RUN_LOG.jsonl มี 5 บรรทัด (arch + dev×2 + qa×2) (F5)" || bad "RUN_LOG.jsonl มี ${nlines:-0} บรรทัด"
 python3 -c "import json,sys; [json.loads(l) for l in open(sys.argv[1])]" "$ROOT/proj/.relay/tasks/$T/RUN_LOG.jsonl" 2>/dev/null && ok "RUN_LOG.jsonl เป็น JSON ที่อ่านได้" || bad "RUN_LOG.jsonl อ่านไม่ได้"
 grep -q "สรุปการทำงานของลูป" "$ROOT/out.log" && ok "แสดงสรุปเวลาและโควต้าท้ายลูป" || bad "ไม่แสดงสรุปท้ายลูป"
+[ "$(grep -c "คุณภาพโค้ด (ทุกภาษา)" "$ROOT/fake.dev-prompts" 2>/dev/null)" = "2" ] && ok "prompt ของ @dev ทั้ง 2 รอบมีกฎคุณภาพโค้ด (ใช้ของเดิมซ้ำ ยึดแบบแผนเดิม)" || bad "prompt ของ @dev ไม่มีกฎคุณภาพโค้ดครบทุกรอบ"
+[ "$(grep -c "ตรวจ git diff ด้านคุณภาพโค้ด" "$ROOT/fake.qa-prompts" 2>/dev/null)" = "2" ] && ok "prompt ของ @qa ทั้ง 2 รอบให้ตรวจคุณภาพโค้ดใน diff" || bad "prompt ของ @qa ไม่มีการตรวจคุณภาพโค้ด"
 
 echo "== AC-5: QA_REPORT ไม่มี VERDICT ➔ ไม่นับว่าผ่าน =="
 setup

@@ -172,8 +172,20 @@ check 'printf "%s" "$out" | grep -q "คัดลอกข้อความด�
 
 echo "=== [REALITY] กฎรายงานตามจริง + ไม่เพิ่มพิธีกรรม สำหรับทุกตำแหน่ง ==="
 check 'grep -q "^7\. \*\*\[ใช้กับทุกโครงการ\] รายงานตามจริง (No Over-claiming)" "$G" && grep -q "^8\. \*\*\[ใช้กับทุกโครงการ\] ไม่เพิ่มพิธีกรรม (No Ceremony Overhead)" "$G"' "GLOBAL_AGENTS.md มีกฎข้อ 7 รายงานตามจริง และข้อ 8 ไม่เพิ่มพิธีกรรม (โหลดทุก session ของทุกค่าย)"
+Q_PROJ="$TMP_ROOT/quality-proj"; mkdir -p "$Q_PROJ/.relay/tasks/t1"; echo "# spec" > "$Q_PROJ/.relay/tasks/t1/SPEC.md"
+q_prompt() {
+  (cd "$Q_PROJ" && relay_src "$P5_HOME" "require_all_roles_ready() { :; }; ensure_or_create_task() { :; }; check_role_quota_safe() { :; }
+    prepare_task_worktree() { TASK_WORK_DIR=\"\$PWD\"; }; launch_provider_cli() { printf '%s' \"\$5\"; }
+    PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=t1; $1") </dev/null 2>/dev/null
+}
+for fn in run_phase_3_dev run_fast_track_dev; do
+  p="$(q_prompt "$fn")"
+  check 'printf "%s" "$p" | grep -q "ห้ามคัดลอกโค้ดมาแก้" && printf "%s" "$p" | grep -q "ยึดโครงสร้าง การตั้งชื่อ และแบบแผนเดิม"' "prompt ของ @dev ใน $fn มีกฎคุณภาพโค้ด (ใช้ของเดิมซ้ำ ยึดแบบแผนเดิม)"
+done
+check 'grep -q "ห้ามคัดลอกโค้ดมาแก้" "$REPO_ROOT/templates/relay-roles-SKILL.md" && grep -q "ด้านคุณภาพโค้ด" "$REPO_ROOT/templates/relay-roles-SKILL.md"' "relay-roles SKILL.md (ใช้เมื่อเรียกบทบาทเองใน CLI) มีกฎคุณภาพโค้ดของ @dev และ @qa"
 qa_contract="$(relay_src "$P5_HOME" 'ACTIVE_TASK=t1; get_qa_prompt_contract')"
 check 'printf "%s" "$qa_contract" | grep -q "ถ้ารันเทสต์ไม่ได้ให้ FAIL" && printf "%s" "$qa_contract" | grep -q "tests_run ใส่เฉพาะคำสั่งที่รันจริง"' "สัญญาผลตรวจของ @qa ห้าม PASS ถ้าไม่ได้รันเทสต์จริง"
+check 'printf "%s" "$qa_contract" | grep -q "ตรวจ git diff ด้านคุณภาพโค้ด" && printf "%s" "$qa_contract" | grep -q "file:line"' "สัญญาผลตรวจของ @qa ให้ใส่โค้ดซ้ำ/ผิดแบบแผนใน failed_criteria พร้อม file:line"
 check '! grep -q "ยืนยันชุดทักษะ" "$RELAY_SH" && ! grep -q "สถานะ: พร้อมปฏิบัติงาน" "$RELAY_SH" && grep -q "ทดสอบเฉพาะการเชื่อมต่อ CLI ยังไม่ได้ทดสอบการทำงานจริง" "$RELAY_SH"' "[t] ไม่สั่งให้ AI ยืนยันสิ่งที่ยังไม่ได้ตรวจ และบอกตามจริงว่าทดสอบแค่การเชื่อมต่อ"
 
 echo "=== [PRIVACY] ไม่มีพาธส่วนตัวของผู้พัฒนาในไฟล์ที่ track (เตรียมแจกจ่าย) ==="

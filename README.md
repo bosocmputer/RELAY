@@ -28,7 +28,9 @@
 | `@dev` | เขียนโค้ดและเทสต์ในกิ่งแยก (Git Worktree) | โค้ด + commit |
 | `@qa` / `@sec` | รันเทสต์ ตรวจความปลอดภัย สรุปผ่าน/ไม่ผ่าน | `QA_REPORT.md`, `QA_VERDICT.json` |
 
-แต่ละตำแหน่งเลือกค่ายและโมเดลได้อิสระ เช่น ให้ `@dev` ใช้ `claude` แล้วให้ `@qa` ใช้ `codex` เพื่อให้คนละค่ายตรวจงานกัน เอกสารทั้งหมดเก็บในโฟลเดอร์ `.relay/` ของโปรเจกต์นั้น เป็นไฟล์ `.md` / `.json` ธรรมดาที่เปิดด้วยโปรแกรมไหนก็ได้
+แต่ละตำแหน่งเลือกค่ายและโมเดลได้อิสระ เช่น ให้ `@dev` ใช้ `claude` แล้วให้ `@qa` ใช้ `codex` เพื่อให้คนละค่ายตรวจงานกัน **คุณภาพโค้ด (ทุกภาษา):** `@dev` ได้รับคำสั่งให้อ่านโค้ดเดิมและยึดแบบแผนของโปรเจกต์ ค้นฟังก์ชันหรือคอมโพเนนต์เดิมมาใช้ซ้ำก่อนสร้างใหม่ ห้ามคัดลอกโค้ดมาแก้ และไม่สร้าง abstraction เผื่ออนาคต ส่วน `@qa` ตรวจ diff เรื่องนี้ ถ้าเห็นโค้ดซ้ำหรือผิดแบบแผนชัดเจนจะให้ FAIL พร้อม `file:line` ทั้งหมดนี้เป็นคำสั่งให้ AI ระบบบังคับไม่ได้ ถ้าโปรเจกต์มีแบบแผนเฉพาะ ให้เขียนไว้ใน `AGENTS.md` ของโปรเจกต์ และตั้ง lint ให้ตรวจสิ่งที่ตรวจด้วยสคริปต์ได้
+
+เอกสารทั้งหมดเก็บในโฟลเดอร์ `.relay/` ของโปรเจกต์นั้น เป็นไฟล์ `.md` / `.json` ธรรมดาที่เปิดด้วยโปรแกรมไหนก็ได้
 
 ```mermaid
 flowchart LR
@@ -277,7 +279,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 250/250 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 256/256 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 
