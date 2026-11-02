@@ -348,6 +348,28 @@ out="$(cd "$M18_P" && printf '3\n' | HOME="$M18_HOME" PATH="$SAFE_PATH" RELAY_SO
   ACTIVE_TASK=t1; run_phase_2_arch" 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g')"
 check 'printf "%s" "$out" | grep -q "ได้ PLAN.md แล้ว" && printf "%s" "$out" | grep -q "CALLED:run_phase_3_dev"' "[2] @arch จบแล้วได้ PLAN.md ➔ เสนอ [3] ต่อทันที (ทดสอบทั้งขั้น)"
 
+echo "=== [M19] RELAY เลือก skill ที่ต้องอ่านจากไฟล์โปรเจกต์และเอกสารใบงาน ==="
+M19_HOME="$(new_home m19)"
+for sk in brainstorming founder-skill writing-plans supabase-postgres-best-practices impeccable vercel-react-best-practices flutter-best-practices lucide-icons simple-icons test-driven-development systematic-debugging verification-before-completion differential-review semgrep playwright-qa; do
+  mkdir -p "$M19_HOME/.agents/skills/$sk"; printf -- '---\nname: %s\ndescription: %s skill\n---\n' "$sk" "$sk" > "$M19_HOME/.agents/skills/$sk/SKILL.md"
+done
+m19() { (cd "$1" && relay_src "$M19_HOME" "PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=t1; $2") 2>/dev/null; }
+req() { m19 "$1" "detect_required_skills $2 \"\$(get_core_role_skills $2)\""; }
+W="$TMP_ROOT/m19-web"; mkdir -p "$W/.relay/tasks/t1"; echo "# เว็บไซต์แนะนำร้าน ใช้ React + Tailwind" > "$W/.relay/tasks/t1/SPEC.md"
+check '[ "$(req "$W" dev)" = "test-driven-development impeccable lucide-icons vercel-react-best-practices" ]' "งานเว็บ React (ยังไม่มีโค้ด เห็นจาก SPEC) ➔ @dev ต้องอ่าน TDD + impeccable + lucide-icons + vercel-react (ได้: $(req "$W" dev))"
+check '[ "$(req "$W" po)" = "brainstorming founder-skill" ] && [ "$(req "$W" qa)" = "verification-before-completion differential-review playwright-qa" ]' "โปรเจกต์ใหม่ ➔ @po อ่าน founder-skill ด้วย • งานเว็บ ➔ @qa อ่าน playwright-qa"
+F="$TMP_ROOT/m19-flutter"; mkdir -p "$F/.relay/tasks/t1" "$F/lib"; echo "name: app" > "$F/pubspec.yaml"; echo "void main() {}" > "$F/lib/main.dart"; echo "# เพิ่มหน้าตั้งค่า" > "$F/.relay/tasks/t1/SPEC.md"
+check '[ "$(req "$F" dev)" = "test-driven-development flutter-best-practices" ] && [ "$(req "$F" po)" = "brainstorming" ] && [ "$(req "$F" qa)" = "verification-before-completion differential-review" ]' "Flutter ที่มีโค้ดแล้ว ➔ @dev อ่าน flutter-best-practices • ไม่ใช่โปรเจกต์ใหม่ ➔ ไม่มี founder-skill • ไม่ใช่เว็บ ➔ ไม่มี playwright-qa"
+D="$TMP_ROOT/m19-db"; mkdir -p "$D/.relay/tasks/t1" "$D/supabase/migrations"; echo "create table a();" > "$D/supabase/migrations/1.sql"; echo "# api" > "$D/.relay/tasks/t1/SPEC.md"
+check 'printf "%s" "$(req "$D" arch)" | grep -q "supabase-postgres-best-practices" && printf "%s" "$(req "$D" dev)" | grep -q "supabase-postgres-best-practices"' "มี supabase/ หรือไฟล์ .sql ➔ @arch และ @dev อ่าน supabase-postgres-best-practices"
+printf '{"verdict":"FAIL","failed_criteria":["AC-1"],"tests_run":["npm test"],"summary":"x"}' > "$F/.relay/tasks/t1/QA_VERDICT.json"
+check 'printf "%s" "$(req "$F" dev)" | grep -q "systematic-debugging"' "@qa ตรวจไม่ผ่าน ➔ รอบแก้ของ @dev อ่าน systematic-debugging"
+check '[ "$(m19 "$W" "detect_required_skills dev \"test-driven-development lucide-icons\"")" = "test-driven-development lucide-icons" ]' "ผู้ใช้ปรับชุดทักษะเอง (ไม่มี impeccable) ➔ ไม่บังคับ skill ที่อยู่นอกชุด"
+note="$(m19 "$W" 'get_core_role_prompt_note dev')"
+check 'printf "%s" "$note" | grep -q "ก่อนเริ่มงานต้องเปิดอ่าน SKILL.md เหล่านี้ให้ครบ" && printf "%s" "$note" | grep -q "impeccable ($M19_HOME/.agents/skills/impeccable/SKILL.md)" && printf "%s" "$note" | grep -q "Progressive Skills Index.*flutter-best-practices" && ! printf "%s" "$note" | sed "s/.*Progressive Skills Index//" | grep -q "impeccable"' "prompt ของ @dev สั่งให้อ่าน skill ที่เลือกพร้อมพาธ • skill อื่นยังอยู่ในสารบัญ ไม่ซ้ำกัน"
+rm -rf "$M19_HOME/.agents/skills/impeccable"
+check '! printf "%s" "$(m19 "$W" "get_core_role_prompt_note dev")" | grep -q "impeccable"' "skill ที่ไม่ได้ติดตั้ง ➔ ไม่อยู่ในรายการที่สั่งให้อ่าน"
+
 echo "=== [Windows] relay-skills.ps1 ล็อกเวอร์ชัน npx ==="
 check '! grep -nE "@latest|npx -y skills " "$REPO_ROOT/relay-skills.ps1"' "relay-skills.ps1 ไม่มี @latest หรือ npx skills ที่ไม่ระบุเวอร์ชัน"
 
