@@ -148,6 +148,7 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
    - `[2]` **โปรเจกต์เดิมที่มีโค้ดแล้ว** — ให้ `@arch` อ่านโค้ดเดิมแล้วสรุปเป็น `.relay/PROJECT_STATE.md` (ใช้ AI หนึ่งรอบ)
 4. **ขั้นที่ 3/3: สั่งงาน**
    - กด `[1]` คุยกับ `@po` บอกสิ่งที่อยากได้ จนได้ `SPEC.md`
+   - ช่องพิมพ์ข้อความของ RELAY ใช้ลูกศรซ้าย/ขวา, Home/End แก้ข้อความได้ และวางข้อความหลายบรรทัดได้ในช่องเดียว
    - เมื่อ AI ทำงานของขั้นนั้นเสร็จ จะบอกให้พิมพ์ `/exit` เพื่อกลับมาที่ RELAY แล้ว RELAY จะเสนอขั้นถัดไปให้เลือกทันที (เช่น ได้ `SPEC.md` แล้ว ➔ `[2]` หรือ `[a]`) ไม่ต้องกลับหน้าหลักไปเลือกเอง
    - ทำต่อทีละขั้น `[2]` → `[3]` → `[4]` หรือกด `[a]` ให้ทำต่อเองอัตโนมัติ
    - ถ้ายังไม่มี `SPEC.md` RELAY จะไม่เปิด AI ในขั้น `[2]` / `[3]` และเสนอให้ไป `[1]` ก่อน
@@ -287,7 +288,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 300/300 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 305/305 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

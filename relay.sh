@@ -70,6 +70,49 @@ relay_restore_cursor() {
   return 0
 }
 
+# อ่านคำตอบหนึ่งช่องจากผู้ใช้ (ใช้แทน read -r -p ของช่องพิมพ์ข้อความทุกจุด)
+# • Terminal: ใช้ readline (read -e) ➔ ลูกศรซ้าย/ขวา, Home/End, Backspace แก้ข้อความได้ รวมภาษาไทย
+# • วางข้อความหลายบรรทัด: readline รับแค่บรรทัดแรก ➔ ดึงส่วนที่ค้างใน input ต่อทันทีแล้วรวมเป็นคำตอบเดียว
+#   (ไม่ให้บรรทัดที่เหลือไหลไปตอบเมนูหรือช่องถัดไป) • ไม่ใช่ Terminal (pipe/เทสต์) ➔ read ธรรมดาเหมือนเดิม
+RELAY_PASTE_DRAIN_PY='import os, select, sys, termios
+try:
+    old = termios.tcgetattr(0)
+except Exception:
+    sys.exit(0)
+raw = termios.tcgetattr(0)
+raw[3] &= ~(termios.ICANON | termios.ECHO)
+raw[6][termios.VMIN] = 0
+raw[6][termios.VTIME] = 0
+termios.tcsetattr(0, termios.TCSANOW, raw)
+buf = b""
+try:
+    while select.select([0], [], [], 0.08)[0]:
+        chunk = os.read(0, 4096)
+        if not chunk:
+            break
+        buf += chunk
+finally:
+    termios.tcsetattr(0, termios.TCSANOW, old)
+sys.stdout.buffer.write(buf.replace(b"\r\n", b"\n").replace(b"\r", b"\n"))'
+
+relay_read_input() {
+  local __var="$1" __prompt="$2" __line="" __rest="" __rc=0
+  if [ -t 0 ]; then
+    IFS= read -r -e -p "$__prompt" __line || __rc=$?
+    if [ "$__rc" -eq 0 ]; then
+      __rest="$(python3 -c "$RELAY_PASTE_DRAIN_PY" 2>/dev/null)"
+      if [ -n "$__rest" ]; then
+        printf '%s\n' "$__rest" >&2
+        __line="${__line}"$'\n'"${__rest}"
+      fi
+    fi
+  else
+    IFS= read -r -p "$__prompt" __line || __rc=$?
+  fi
+  printf -v "$__var" '%s' "$__line"
+  return "$__rc"
+}
+
 relay_on_interrupt() {
   relay_restore_cursor keep
   [ "${RELAY_CHILD_ACTIVE:-0}" = "1" ] && return 0
@@ -1882,10 +1925,9 @@ interactive_menu() {
 
     if [ "$k1" = "/" ]; then
       relay_restore_cursor
-      printf "\033[1A\033[2K\r  %s❯ /%s" "$C_SEL" "$C_RESET"
+      printf "\033[1A\033[2K\r"
       local slash_cmd=""
-      read -r slash_cmd || true
-      printf "\n"
+      relay_read_input slash_cmd "  ❯ /" || true
       MENU_RESULT="/${slash_cmd}"
       return 0
     fi
@@ -2893,7 +2935,7 @@ select_or_create_project_dir() {
   case "$MENU_RESULT" in
     n|N)
       echo ""
-      read -r -p "ตั้งชื่อโฟลเดอร์โปรเจกต์ใหม่ (ภาษาอังกฤษ เช่น my-saas-app หรือพิมพ์ b เพื่อย้อนกลับ): " new_proj_name || true
+      relay_read_input new_proj_name "ตั้งชื่อโฟลเดอร์โปรเจกต์ใหม่ (ภาษาอังกฤษ เช่น my-saas-app หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$new_proj_name"; then
         return 0
       fi
@@ -2927,7 +2969,7 @@ select_or_create_project_dir() {
       ;;
     p|P)
       echo ""
-      read -r -p "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/Projects/my-app หรือพิมพ์ b เพื่อย้อนกลับ): " custom_path || true
+      relay_read_input custom_path "ระบุ Path ของโฟลเดอร์โปรเจกต์ (เช่น ~/Projects/my-app หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$custom_path" || [ -z "$custom_path" ]; then
         return 0
       fi
@@ -3055,7 +3097,7 @@ choose_model_interactive() {
     return 1
   elif [ "$MENU_RESULT" = "c" ] || [ "$MENU_RESULT" = "C" ]; then
     local custom_m=""
-    read -r -p "ระบุชื่อ Model ของ ${provider} (หรือพิมพ์ b เพื่อย้อนกลับ): " custom_m || true
+    relay_read_input custom_m "ระบุชื่อ Model ของ ${provider} (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
     custom_m="$(sanitize_model_id "$custom_m")"
     if is_back_input "$custom_m" || [ -z "$custom_m" ]; then
       MODEL_CHOICE_CANCELLED=1
@@ -4320,7 +4362,7 @@ create_new_task() {
   local raw_input="${1:-}"
   if [ -z "$raw_input" ]; then
     echo ""
-    read -r -p "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือพิมพ์ b เพื่อย้อนกลับ): " raw_input || true
+    relay_read_input raw_input "ตั้งชื่อย่อของใบงานใหม่ (ภาษาอังกฤษ เช่น user-auth หรือพิมพ์ b เพื่อย้อนกลับ): " || true
     if is_back_input "$raw_input"; then
       return 1
     fi
@@ -4423,7 +4465,7 @@ run_phase_1_po() {
   get_active_task
   echo ""
   local user_goal=""
-  read -r -p "อธิบายฟีเจอร์หรือความต้องการที่ต้องการให้ @po วิเคราะห์ (หรือพิมพ์ b เพื่อย้อนกลับ): " user_goal || true
+  relay_read_input user_goal "อธิบายฟีเจอร์หรือความต้องการที่ต้องการให้ @po วิเคราะห์ (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
   if is_back_input "$user_goal"; then
     return 0
   fi
@@ -4488,7 +4530,7 @@ run_fast_track_dev() {
   if [ -z "$ACTIVE_TASK" ] || [ ! -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ]; then
     if [ -z "$fast_goal" ]; then
       echo ""
-      read -r -p "⚡ [Fast Track] ระบุงานย่อยหรือบั๊กที่ต้องการให้ @dev แก้ไขทันที (หรือพิมพ์ b เพื่อย้อนกลับ): " fast_goal || true
+      relay_read_input fast_goal "⚡ [Fast Track] ระบุงานย่อยหรือบั๊กที่ต้องการให้ @dev แก้ไขทันที (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$fast_goal"; then
         return 0
       fi
@@ -4595,7 +4637,7 @@ choose_skills_interactive() {
   case "$MENU_RESULT" in
     1)
       local raw_sel=""
-      read -r -p "ระบุหมายเลขทักษะ (เช่น 1,3) หรือชื่อทักษะ (หรือพิมพ์ b เพื่อย้อนกลับ): " raw_sel || true
+      relay_read_input raw_sel "ระบุหมายเลขทักษะ (เช่น 1,3) หรือชื่อทักษะ (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$raw_sel" || [ -z "$raw_sel" ]; then
         return 1
       fi
@@ -4619,7 +4661,7 @@ PYEOF
       ;;
     2)
       local raw_add=""
-      read -r -p "ระบุหมายเลขหรือชื่อทักษะที่ต้องการเพิ่ม (หรือพิมพ์ b เพื่อย้อนกลับ): " raw_add || true
+      relay_read_input raw_add "ระบุหมายเลขหรือชื่อทักษะที่ต้องการเพิ่ม (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$raw_add" || [ -z "$raw_add" ]; then
         return 1
       fi
@@ -4699,7 +4741,7 @@ edit_core_role_menu() {
       2)
         echo ""
         local new_p=""
-        read -r -p "ระบุคำสั่ง Prompt เพิ่มเติมสำหรับ ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_p || true
+        relay_read_input new_p "ระบุคำสั่ง Prompt เพิ่มเติมสำหรับ ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
         if ! is_back_input "$new_p"; then
           set_core_role_override "$target_agents_conf" "$role_key" "prompt" "$new_p"
           printf "%s● บันทึกคำสั่ง Prompt ของ %s เรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
@@ -4714,7 +4756,7 @@ edit_core_role_menu() {
       4)
         echo ""
         local new_t=""
-        read -r -p "ระบุชื่อแสดงผลของตำแหน่ง ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_t || true
+        relay_read_input new_t "ระบุชื่อแสดงผลของตำแหน่ง ${role_code} (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
         if ! is_back_input "$new_t" && [ -n "$new_t" ]; then
           set_core_role_override "$target_agents_conf" "$role_key" "title" "$new_t"
           printf "%s● บันทึกชื่อตำแหน่ง %s เรียบร้อยแล้ว%s\n" "$C_OK" "$role_code" "$C_RESET"
@@ -4756,7 +4798,7 @@ run_custom_agent_task() {
 
   if [ -z "$user_instruction" ]; then
     echo ""
-    read -r -p "ระบุงานที่ต้องการสั่งให้ @${slug} (${title}) ดำเนินการ (หรือพิมพ์ b เพื่อย้อนกลับ): " user_instruction || true
+    relay_read_input user_instruction "ระบุงานที่ต้องการสั่งให้ @${slug} (${title}) ดำเนินการ (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
     if is_back_input "$user_instruction"; then
       return 0
     fi
@@ -4799,7 +4841,7 @@ add_custom_agent_wizard() {
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   local raw_slug=""
-  read -r -p "1. รหัสตำแหน่งภาษาอังกฤษ (เช่น ux, devops, data, sec-audit หรือพิมพ์ b เพื่อย้อนกลับ): " raw_slug || true
+  relay_read_input raw_slug "1. รหัสตำแหน่งภาษาอังกฤษ (เช่น ux, devops, data, sec-audit หรือพิมพ์ b เพื่อย้อนกลับ): " || true
   if is_back_input "$raw_slug" || [ -z "$raw_slug" ]; then
     return 0
   fi
@@ -4810,14 +4852,14 @@ add_custom_agent_wizard() {
   fi
 
   local title=""
-  read -r -p "2. ชื่อบทบาท (เช่น UX/UI Designer หรือ DevOps Engineer • พิมพ์ b เพื่อย้อนกลับ): " title || true
+  relay_read_input title "2. ชื่อบทบาท (เช่น UX/UI Designer หรือ DevOps Engineer • พิมพ์ b เพื่อย้อนกลับ): " || true
   if is_back_input "$title"; then
     return 0
   fi
   [ -z "$title" ] && title="$slug"
 
   local role_prompt=""
-  read -r -p "3. คำสั่ง Prompt บทบาทหน้าที่หลักของ @${slug} (พิมพ์ b เพื่อย้อนกลับ): " role_prompt || true
+  relay_read_input role_prompt "3. คำสั่ง Prompt บทบาทหน้าที่หลักของ @${slug} (พิมพ์ b เพื่อย้อนกลับ): " || true
   if is_back_input "$role_prompt"; then
     return 0
   fi
@@ -4904,7 +4946,7 @@ manage_single_custom_agent_menu() {
         ;;
       4)
         local new_p=""
-        read -r -p "ระบุคำสั่ง Prompt บทบาทหน้าที่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_p || true
+        relay_read_input new_p "ระบุคำสั่ง Prompt บทบาทหน้าที่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
         if ! is_back_input "$new_p" && [ -n "$new_p" ]; then
           upsert_custom_agent "$target_conf" "$slug" "$title" "$prov" "$mod" "$wmode" "$skills" "$new_p"
         fi
@@ -4921,7 +4963,7 @@ manage_single_custom_agent_menu() {
         ;;
       7)
         local new_t=""
-        read -r -p "ระบุชื่อบทบาทใหม่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " new_t || true
+        relay_read_input new_t "ระบุชื่อบทบาทใหม่ของ @${slug} (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
         if ! is_back_input "$new_t" && [ -n "$new_t" ]; then
           upsert_custom_agent "$target_conf" "$slug" "$new_t" "$prov" "$mod" "$wmode" "$skills" "$role_prompt"
         fi
@@ -5288,7 +5330,7 @@ review_pending_learned_rules() {
   grep -E '^[[:space:]]*-[[:space:]]+' "$pending_file" | sed -E 's/^[[:space:]]*-[[:space:]]+//' | awk '{ printf "  [%d] %s\n", NR, $0 }'
   echo ""
   local sel=""
-  read -r -p "พิมพ์หมายเลขที่อนุมัติ (เช่น 1,3) • a = อนุมัติทั้งหมด • x = ปฏิเสธทั้งหมด • b หรือ Enter = ย้อนกลับ: " sel || true
+  relay_read_input sel "พิมพ์หมายเลขที่อนุมัติ (เช่น 1,3) • a = อนุมัติทั้งหมด • x = ปฏิเสธทั้งหมด • b หรือ Enter = ย้อนกลับ: " || true
   if [ -z "$sel" ] || is_back_input "$sel"; then
     printf "%sเก็บกฎไว้ในคิวรออนุมัติตามเดิม%s\n" "$C_MUTED" "$C_RESET"
     return 0
@@ -6208,7 +6250,7 @@ run_skills_menu() {
     2) "$skills_cmd" install ;;
     3) "$skills_cmd" update ;;
     4)
-      read -r -p "ระบุ GitHub Repo URL (หรือพิมพ์ b เพื่อย้อนกลับ): " repo_url || true
+      relay_read_input repo_url "ระบุ GitHub Repo URL (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$repo_url" || [ -z "$repo_url" ]; then
         return 0
       fi
@@ -6220,11 +6262,11 @@ run_skills_menu() {
       ;;
     5)
       local new_sk_name="" new_sk_desc=""
-      read -r -p "ตั้งชื่อ Skill ใหม่ภาษาอังกฤษ (เช่น api-contract-check หรือพิมพ์ b เพื่อย้อนกลับ): " new_sk_name || true
+      relay_read_input new_sk_name "ตั้งชื่อ Skill ใหม่ภาษาอังกฤษ (เช่น api-contract-check หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$new_sk_name" || [ -z "$new_sk_name" ]; then
         return 0
       fi
-      read -r -p "ระบุคำอธิบายสั้นๆ ว่าเมื่อไหร่ควรเปิดใช้ Skill นี้ (หรือพิมพ์ b เพื่อย้อนกลับ): " new_sk_desc || true
+      relay_read_input new_sk_desc "ระบุคำอธิบายสั้นๆ ว่าเมื่อไหร่ควรเปิดใช้ Skill นี้ (หรือพิมพ์ b เพื่อย้อนกลับ): " || true
       if is_back_input "$new_sk_desc"; then
         return 0
       fi
