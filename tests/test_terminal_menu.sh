@@ -250,6 +250,63 @@ for ps in "$REPO_ROOT"/*.ps1; do
 done
 check '[ -z "$no_bom" ]' "ไฟล์ .ps1 ทุกไฟล์มี UTF-8 BOM${no_bom:+ (ไม่มี:$no_bom)}"
 
+echo "=== ช่องพิมพ์ข้อความ: ลูกศรแก้ไขได้ และวางหลายบรรทัดได้คำตอบเดียว (pty จำลอง) ==="
+# ส่งปุ่มทีละชุดเข้า Terminal จำลอง แล้วอ่านค่าที่ relay_read_input ได้ใน 2 ช่องติดกัน
+pty_input() {
+  python3 - "$RELAY_SH" "$HOME" "$1" <<'PYEOF'
+import json, os, pty, select, signal, sys, time
+relay, home, chunks = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+script = (f"export HOME='{home}' TERM=xterm LANG=en_US.UTF-8 RELAY_SOURCE_ONLY=1; source '{relay}'; "
+          "relay_read_input A 'ช่อง 1: '; relay_read_input B 'ช่อง 2: '; printf 'A=%s|B=%s\\n' \"$(printf %s \"$A\" | od -An -tx1 | tr -d ' \\n')\" \"$B\"")
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv("/bin/bash", ["/bin/bash", "-c", script])
+out = b""
+def drain(t):
+    global out
+    end = time.time() + t
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.05)
+        if r:
+            try:
+                d = os.read(fd, 65536)
+            except OSError:
+                return
+            if not d:
+                return
+            out += d
+drain(1.0)
+for c in chunks:
+    try:
+        os.write(fd, c.encode())
+    except OSError:
+        break
+    drain(0.8)
+drain(0.8)
+try:
+    os.kill(pid, signal.SIGKILL)
+except OSError:
+    pass
+line = [l for l in out.decode("utf-8", "replace").replace("\r", "").split("\n") if l.startswith("A=")]
+print(line[-1] if line else "NO-RESULT")
+PYEOF
+}
+# เทียบเป็น hex บรรทัดเดียว (ภาษาไทยและขึ้นบรรทัดใหม่เทียบได้ตรงตัว)
+od_of() { printf %s "$1" | od -An -tx1 | tr -d ' \n'; }
+res="$(pty_input '["สวัสดีz", "\u007f", "\u001b[D\u001b[D", "X", "\u001b[H", "<", "\u001b[F", ">", "\r", "next\r"]')"
+check '[ "$res" = "A=$(od_of "<สวัXสดี>")|B=next" ]' "ลูกศรซ้าย/Home/End/Backspace แก้ข้อความไทยกลางประโยคได้ (ได้: $res)"
+res="$(pty_input '["บรรทัด 1\rบรรทัด 2\r\rบรรทัด 4", "next\r"]')"
+check '[ "$res" = "A=$(od_of "บรรทัด 1
+บรรทัด 2
+
+บรรทัด 4")|B=next" ]' "วางข้อความหลายบรรทัด (CR, มีบรรทัดว่าง, ไม่มี Enter ปิดท้าย) ➔ ได้คำตอบเดียว ช่องถัดไปไม่โดนแย่ง"
+res="$(pty_input '["one line\r", "next\r"]')"
+check '[ "$res" = "A=$(od_of "one line")|B=next" ]' "พิมพ์บรรทัดเดียวแล้ว Enter ➔ ทำงานเหมือนเดิม"
+res="$(printf 'piped\nsecond\n' | RELAY_SOURCE_ONLY=1 bash -c "source '$RELAY_SH'; relay_read_input A 'x: ' 2>/dev/null; relay_read_input B 'y: ' 2>/dev/null; printf '%s|%s' \"\$A\" \"\$B\"")"
+check '[ "$res" = "piped|second" ]' "ไม่ใช่ Terminal (pipe) ➔ อ่านทีละบรรทัดเหมือนเดิม"
+leftover="$(grep -n 'read -r -p "' "$RELAY_SH" | grep -v 'กด Enter' | grep -v '__prompt')"
+check '[ -z "$leftover" ]' "ช่องพิมพ์ข้อความทุกจุดใช้ relay_read_input (เหลือ read -r -p เฉพาะ \"กด Enter\")"
+
 echo ""
 echo "=================================================================="
 echo "สรุปผลชุดทดสอบ Terminal Menu: ผ่าน ${PASS_COUNT} รายการ, ล้มเหลว ${FAIL_COUNT} รายการ"
