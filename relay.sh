@@ -4068,6 +4068,11 @@ sync_task_docs_from_worktree() {
 }
 
 # ข้อความกำชับ @dev ให้ commit งานในกิ่งของใบงาน (ป้องกันโค้ดหายตอนผสานในขั้นตอนที่ 5)
+# กฎคุณภาพโค้ดที่ไม่ผูกกับภาษา แนบท้าย prompt ของ @dev ทุกโหมด (ขั้นที่ 3, Fast Track, Auto-Loop)
+get_dev_quality_note() {
+  printf ' • คุณภาพโค้ด (ทุกภาษา): อ่านโค้ดส่วนที่เกี่ยวข้องก่อนแล้วยึดโครงสร้าง การตั้งชื่อ และแบบแผนเดิมของโปรเจกต์ • ก่อนสร้างฟังก์ชันหรือคอมโพเนนต์ใหม่ให้ค้นของเดิมที่ใช้ซ้ำหรือขยายได้ก่อน ห้ามคัดลอกโค้ดมาแก้ • แยกเป็นของกลางเมื่อมีที่ใช้ซ้ำจริงอย่างน้อย 2 จุด ไม่สร้าง abstraction เผื่ออนาคต • แก้เท่าที่งานต้องการ ไม่ refactor ส่วนที่ไม่เกี่ยวข้อง'
+}
+
 get_dev_commit_note() {
   printf " เมื่อเขียนโค้ดและรันชุดทดสอบผ่านแล้ว ให้ git add และ git commit งานทั้งหมดในกิ่ง feat/%s ของ Worktree นี้ (ห้าม commit โฟลเดอร์ .relay/)" "$ACTIVE_TASK"
 }
@@ -4180,7 +4185,7 @@ run_phase_3_dev() {
 
   local learned_note commit_note role_note handoff_note
   learned_note="$(get_learned_skills_prompt_note)"
-  commit_note="$(get_dev_commit_note)"
+  commit_note="$(get_dev_quality_note)$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
   handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
   local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
@@ -4228,7 +4233,7 @@ run_fast_track_dev() {
 
   local learned_note commit_note role_note handoff_note
   learned_note="$(get_learned_skills_prompt_note)"
-  commit_note="$(get_dev_commit_note)"
+  commit_note="$(get_dev_quality_note)$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
   handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
   local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}${handoff_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
@@ -5289,7 +5294,7 @@ get_qa_prompt_contract() {
   if [ -x "$GLOBAL_DIR/bin/relay-verify-task" ]; then
     verify_tool_note=" (สามารถรันสคริปต์ '$GLOBAL_DIR/bin/relay-verify-task .relay/tasks/$ACTIVE_TASK' เพื่อตรวจเพดานบรรทัดเอกสาร, ไฟล์ความลับ และโครงสร้าง JSON อัตโนมัติ)"
   fi
-  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่างและรันเทสต์จริงแล้ว (tests_run ใส่เฉพาะคำสั่งที่รันจริง • ถ้ารันเทสต์ไม่ได้ให้ FAIL พร้อมเหตุผล • เกณฑ์ที่ตรวจไม่ได้ให้ระบุใน summary) และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
+  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่างและรันเทสต์จริงแล้ว (tests_run ใส่เฉพาะคำสั่งที่รันจริง • ถ้ารันเทสต์ไม่ได้ให้ FAIL พร้อมเหตุผล • เกณฑ์ที่ตรวจไม่ได้ให้ระบุใน summary) • ตรวจ git diff ด้านคุณภาพโค้ดด้วย: โค้ดที่คัดลอกซ้ำ, ฟังก์ชันหรือคอมโพเนนต์ใหม่ที่ซ้ำกับของเดิมที่ใช้ได้, หรือผิดโครงสร้างและแบบแผนเดิมของโปรเจกต์ ➔ ใส่ใน failed_criteria พร้อม file:line (เฉพาะที่เห็นชัด ไม่ใช่เรื่องความชอบส่วนตัว) และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
 }
 
 verdict_source_note() {
@@ -5400,7 +5405,7 @@ run_auto_relay_loop() {
   LOOP_LOG_FILE="$task_dir/LOOP_LOG.md"
   local learned_note commit_note
   learned_note="$(get_learned_skills_prompt_note)"
-  commit_note="$(get_dev_commit_note)"
+  commit_note="$(get_dev_quality_note)$(get_dev_commit_note)"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"

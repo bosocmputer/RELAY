@@ -23,10 +23,11 @@ description: หน้าที่และชุดทักษะของบ�
     - งานระบบหลังบ้านและฐานข้อมูล (Backend & DB): `supabase-postgres-best-practices`
     - งานพัฒนาฟีเจอร์หรือแก้บั๊ก: `test-driven-development` หรือ `systematic-debugging`
   - หน้าที่ความรับผิดชอบ: อ่าน `SPEC.md` เป็นหลัก ร่วมกับ `ARCH.md` และ `PLAN.md` (หากมีในใบงานนั้น) และหากเป็นการแก้ไขงานรอบถัดไปให้อ่าน `QA_REPORT.md` / `QA_VERDICT.json` เพิ่มเติม จากนั้นพัฒนาโค้ดควบคู่กับชุดทดสอบภายใน `Git Worktree` โดยก่อน `git commit` ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น `flutter analyze`, `tsc --noEmit`, หรือ `npm run lint`) คู่กับคำสั่งรัน Unit Test (`flutter test` หรือ `npm test`) ให้ผ่านจริงเสมอ (ห้าม commit โฟลเดอร์ `.relay/`)
+  - คุณภาพโค้ด (ทุกภาษา): อ่านโค้ดส่วนที่เกี่ยวข้องก่อนแล้วยึดโครงสร้าง การตั้งชื่อ และแบบแผนเดิมของโปรเจกต์ • ก่อนสร้างฟังก์ชันหรือคอมโพเนนต์ใหม่ให้ค้นของเดิมที่ใช้ซ้ำหรือขยายได้ก่อน ห้ามคัดลอกโค้ดมาแก้ • แยกเป็นของกลางเมื่อมีที่ใช้ซ้ำจริงอย่างน้อย 2 จุด ไม่สร้าง abstraction เผื่ออนาคต • แก้เท่าที่งานต้องการ ไม่ refactor ส่วนที่ไม่เกี่ยวข้อง
 - **`@qa` & `@sec` (Quality Assurance Verifier & Security Auditor — ขั้นตอนที่ 4: การตรวจสอบคุณภาพและความปลอดภัย):**
   - ทักษะที่เลือกใช้เมื่อจำเป็น: `verification-before-completion`, `differential-review` (`trailofbits/skills`), `semgrep/skills`, `playwright-qa`
   - หน้าที่ความรับผิดชอบ:
     1. รันคำสั่งตรวจสอบโครงสร้างและชุดทดสอบจริงของโครงการผ่าน Terminal ตามเทคโนโลยีของโปรเจกต์ (เช่น เว็บ/Node รัน `npm test` และตรวจ Build, โครงการ Flutter รัน `flutter analyze` และ `flutter test`)
-    2. ตรวจสอบ `git diff` ด้านความมั่นคงปลอดภัย (OWASP Top 10, SQL Injection, XSS, Auth Bypass และข้อมูลความลับที่อาจหลุดรอด)
+    2. ตรวจสอบ `git diff` ด้านความมั่นคงปลอดภัย (OWASP Top 10, SQL Injection, XSS, Auth Bypass และข้อมูลความลับที่อาจหลุดรอด) และด้านคุณภาพโค้ด (โค้ดที่คัดลอกซ้ำ, ฟังก์ชันหรือคอมโพเนนต์ใหม่ที่ซ้ำกับของเดิม, ผิดโครงสร้างและแบบแผนเดิมของโปรเจกต์) ➔ ใส่ใน `failed_criteria` พร้อม `file:line` เฉพาะที่เห็นชัด
     3. เฉพาะเมื่อใบงานมีการแก้ไขส่วนติดต่อผู้ใช้บนเว็บ (Web UI) ตาม `SPEC.md` ให้ใช้เครื่องมือ `playwright` MCP เปิดเบราว์เซอร์ทดสอบจริงและบันทึกภาพหน้าจอไว้ที่ `.relay/tasks/<YYYYMMDD-slug>/screenshots/`
     4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงใน `QA_REPORT.md` (ระบุบรรทัด `VERDICT: PASS` หรือ `VERDICT: FAIL`) คู่กับไฟล์ `QA_VERDICT.json` (ห้ามแก้ไข `.relay/PROJECT_STATE.md`)
