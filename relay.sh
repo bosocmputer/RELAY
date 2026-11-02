@@ -4050,9 +4050,11 @@ launch_provider_cli() {
 }
 
 # pathspec ที่ RELAY ไม่ commit ให้อัตโนมัติ: เอกสาร .relay/, ไฟล์ความลับ/ฐานข้อมูลต้องห้าม และไฟล์ของเครื่องมือ (.playwright-mcp)
-RELAY_COMMIT_EXCLUDES=(':(exclude).relay' ':(exclude).env' ':(exclude).env.*' ':(exclude)**/.env' ':(exclude)**/.env.*'
-  ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db'
-  ':(exclude).playwright-mcp' ':(exclude)**/.playwright-mcp')
+# • ใช้ glob ที่ขึ้นต้นด้วย **/ ทุกตัว: pathspec ที่ขึ้นต้นด้วยชื่อตรงๆ (เช่น '.env') ทำให้ git add จบด้วย exit 1
+#   ("paths are ignored") เมื่อไฟล์นั้นมีอยู่จริงและถูก ignore อยู่แล้ว ➔ commit อัตโนมัติล้มทั้งที่ไม่มีอะไรผิด
+RELAY_COMMIT_EXCLUDES=(':(exclude,glob)**/.relay/**' ':(exclude,glob)**/.env' ':(exclude,glob)**/.env.*'
+  ':(exclude,glob)**/*.key' ':(exclude,glob)**/*.pem' ':(exclude,glob)**/*.sqlite' ':(exclude,glob)**/*.sqlite3' ':(exclude,glob)**/*.db'
+  ':(exclude,glob)**/.playwright-mcp/**')
 
 # เตรียม repo ให้มี commit แรกก่อนแยก Worktree
 # • โฟลเดอร์มีโค้ดเดิมแต่ยังไม่มี commit ➔ ถามก่อน commit โค้ดเดิม (ถ้า commit ว่าง Worktree ของ @dev จะไม่เห็นโค้ดเดิม)
@@ -4353,7 +4355,7 @@ offer_next_step() {
     2) run_phase_2_arch ;;
     3) run_phase_3_dev ;;
     4) run_phase_4_qa ;;
-    5) run_phase_5_merge ;;
+    5) run_phase_5_merge || { [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }; } ;;
     a) run_auto_relay_loop ;;
   esac
   return 0
@@ -6346,7 +6348,7 @@ while true; do
       2|/arch|/pm|/2)       run_phase_2_arch ;;
       3|/dev|/3)            run_phase_3_dev ;;
       4|/qa|/sec|/4)        run_phase_4_qa ;;
-      5|/merge|/5)          run_phase_5_merge ;;
+      5|/merge|/5)          run_phase_5_merge || { [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }; } ;;
       a|A|/loop|/auto)      run_auto_relay_loop ;;
       x|X|/fast|/quick)     run_fast_track_dev ;;
       v|V|/stats|/tokens)   run_task_stats_view ;;

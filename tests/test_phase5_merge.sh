@@ -93,6 +93,19 @@ L4="$ROOT/m4/.relay/skills/project-learned"
 grep -q "ไม่มีบทเรียนใหม่จากใบงานนี้" $ROOT/m4.log && [ ! -f $L4/PENDING.md ] && [ ! -f $L4/LEDGER.md ] && ok "ไม่มีหลักฐาน ➔ แจ้งตามจริง ไม่สร้าง PENDING.md / LEDGER.md ว่าง" || bad "ยังเสนอกฎหรือสร้างไฟล์ว่าง"
 grep -q "ผสานแล้วมีการเปลี่ยนไฟล์ dependency" $ROOT/m4.log && grep -q "npm ci  (package-lock.json)" $ROOT/m4.log && ! grep -q "npm install" $ROOT/m4.log && ok "มี package-lock.json ➔ บอกให้รัน npm ci (ไม่ซ้ำ npm install)" || bad "ไม่บอกคำสั่งติดตั้ง dependency"
 
+echo "== AC-5: ไฟล์ต้องห้ามที่ถูก ignore อยู่แล้ว ➔ commit อัตโนมัติไม่ล้ม และไม่ commit ไฟล์ต้องห้าม =="
+setup_repo $ROOT/m5
+W5=".relay/worktrees/$T"
+printf '.env\n' > .gitignore && git add .gitignore && git commit -qm "ignore env" && git -C "$W5" merge -q main
+echo ".playwright-mcp/" >> "$(git rev-parse --git-common-dir)/info/exclude"
+echo "feature" > "$W5/feature.txt"
+echo "X=1" > "$W5/.env"
+mkdir -p "$W5/.playwright-mcp" "$W5/sub" && echo "snapshot" > "$W5/.playwright-mcp/page.yml"
+echo "X=1" > "$W5/sub/.env" && echo "data" > "$W5/sub/local.db" && echo "k" > "$W5/sub/id.key"
+printf "c\n" | bash "$RELAY" 5 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' > $ROOT/m5.log
+! grep -q "commit ใน Worktree ไม่สำเร็จ" $ROOT/m5.log && git -C $ROOT/m5 log --oneline -1 | grep -q "merge: feat/$T" && [ -f $ROOT/m5/feature.txt ] && ok "มี .env / .playwright-mcp ที่ถูก ignore ➔ commit อัตโนมัติแล้วผสานสำเร็จ" || bad "commit อัตโนมัติล้มเมื่อมีไฟล์ที่ถูก ignore"
+git -C $ROOT/m5 ls-files | grep -qE '(^|/)\.env$|\.db$|\.key$|^\.playwright-mcp/|^\.relay/' && bad "ไฟล์ต้องห้ามถูก commit: $(git -C $ROOT/m5 ls-files | tr '\n' ' ')" || ok "ไม่ commit .env, sub/.env, *.db, *.key, .playwright-mcp/ และ .relay/ ทุกระดับโฟลเดอร์"
+
 echo ""
 echo "ผลรวม: ผ่าน $pass • ไม่ผ่าน $fail"
 [ "$fail" -eq 0 ]
