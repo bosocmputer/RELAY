@@ -303,6 +303,48 @@ out="$(printf 'y\n' | m17 'require_all_roles_ready() { :; }; ensure_or_create_ta
 check '[ -f "$M17_STATE/codex" ] && printf "%s" "$out" | grep -q "LAUNCHED"' "[4] @qa ➔ เสนอเพิ่ม Playwright ก่อน แล้วเปิด @qa ต่อ"
 check '! grep -nE "mcp add .*2>/dev/null \|\| true" "$REPO_ROOT/relay-skills.sh"' "relay-skills.sh ไม่ปิด error ของ mcp add แบบเงียบ"
 
+echo "=== [M18] จบขั้นแบบโต้ตอบแล้ว: บอกให้พิมพ์ /exit และเสนอขั้นถัดไป ==="
+M18_HOME="$(new_home m18)"
+M18_P="$TMP_ROOT/m18-proj"; M18_T="$M18_P/.relay/tasks/t1"; mkdir -p "$M18_T"
+m18() {
+  (cd "$M18_P" && HOME="$M18_HOME" PATH="$SAFE_PATH" RELAY_SOURCE_ONLY=1 bash -c "source \"$RELAY_SH\"; PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=t1
+    for f in run_phase_2_arch run_phase_3_dev run_phase_4_qa run_phase_5_merge run_auto_relay_loop; do eval \"\$f() { echo CALLED:\$f; }\"; done; $1") 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'
+}
+out="$(m18 'refresh_quota_cache() { :; }; extract_step_token_usage() { echo "0|0|0|0|0|dir"; }; claude() { printf "%s" "$3" > "$PROJECT_DIR/prompt.txt"; }; launch_provider_cli claude sonnet test "$PWD" "งานทดสอบ"' </dev/null)"
+check 'grep -q "พิมพ์ /exit เพื่อกลับไปที่ RELAY" "$M18_P/prompt.txt" && printf "%s" "$out" | grep -q "ทำงานเสร็จแล้วให้พิมพ์ /exit"' "prompt ที่ส่งให้ AI สั่งให้ปิดท้ายด้วยการบอกให้พิมพ์ /exit"
+out="$(m18 'offer_next_step 1' </dev/null)"
+check 'printf "%s" "$out" | grep -q "ยังไม่พบ .relay/tasks/t1/SPEC.md — กด \[1\]" && ! printf "%s" "$out" | grep -q "CALLED"' "ขั้น 1 ยังไม่มี SPEC.md ➔ บอกตรงๆ ไม่เสนอขั้นถัดไป"
+echo "# spec" > "$M18_T/SPEC.md"
+out="$(printf '2\n' | m18 'offer_next_step 1')"
+check 'printf "%s" "$out" | grep -q "ได้ SPEC.md แล้ว" && printf "%s" "$out" | grep -q "CALLED:run_phase_2_arch"' "ขั้น 1 ได้ SPEC.md + กด 2 ➔ เข้า @arch ต่อทันที"
+out="$(m18 'offer_next_step 1' </dev/null)"
+check 'printf "%s" "$out" | grep -q "ได้ SPEC.md แล้ว" && ! printf "%s" "$out" | grep -q "CALLED"' "stdin หมด ➔ แสดงเมนู แต่ไม่ไปขั้นถัดไปเอง"
+echo "- [ ] T1" > "$M18_T/PLAN.md"
+out="$(printf 'a\n' | m18 'offer_next_step 2')"
+check 'printf "%s" "$out" | grep -q "CALLED:run_auto_relay_loop"' "ขั้น 2 ได้ PLAN.md + กด a ➔ เข้าลูปอัตโนมัติ"
+git -C "$M18_P" init -q -b main; git -C "$M18_P" commit -q --allow-empty -m base
+out="$(m18 'offer_next_step 3' </dev/null)"
+check 'printf "%s" "$out" | grep -q "ยังไม่พบโค้ดใหม่ในกิ่ง feat/t1"' "ขั้น 3 ยังไม่มีโค้ดใหม่ ➔ บอกให้กด [3] ทำต่อ"
+git -C "$M18_P" worktree add -q "$M18_P/.relay/worktrees/t1" -b feat/t1 2>/dev/null
+echo code > "$M18_P/.relay/worktrees/t1/app.js"; git -C "$M18_P/.relay/worktrees/t1" add app.js; git -C "$M18_P/.relay/worktrees/t1" commit -qm dev
+out="$(printf '4\n' | m18 'offer_next_step 3')"
+check 'printf "%s" "$out" | grep -q "CALLED:run_phase_4_qa"' "ขั้น 3 มี commit ในกิ่งงาน + กด 4 ➔ เข้า @qa ต่อ"
+printf '{"verdict":"PASS","failed_criteria":[],"tests_run":["npm test"],"summary":"ok"}' > "$M18_T/QA_VERDICT.json"
+out="$(printf '5\n' | m18 'offer_next_step 4')"
+check 'printf "%s" "$out" | grep -q "@qa ตรวจผ่าน (PASS)" && printf "%s" "$out" | grep -q "CALLED:run_phase_5_merge"' "ขั้น 4 PASS ➔ เสนอ [5] ผสานโค้ด"
+printf '{"verdict":"FAIL","failed_criteria":["AC-1"],"tests_run":["npm test"],"summary":"bug"}' > "$M18_T/QA_VERDICT.json"
+out="$(printf '3\n' | m18 'offer_next_step 4')"
+check 'printf "%s" "$out" | grep -q "ตรวจไม่ผ่าน (FAIL)" && printf "%s" "$out" | grep -q "CALLED:run_phase_3_dev"' "ขั้น 4 FAIL ➔ เสนอส่งกลับให้ @dev แก้"
+printf '{"verdict":"PASS","failed_criteria":[],"tests_run":["fast-track"],"summary":"ok"}' > "$M18_T/QA_VERDICT.json"
+out="$(m18 'offer_next_step fast' </dev/null)"
+check 'printf "%s" "$out" | grep -q "ให้ @qa ตรวจก่อนผสาน (แนะนำ)"' "งานด่วน (@dev ตรวจเอง) ➔ แนะนำให้ @qa ตรวจก่อนผสาน"
+rm -f "$M18_T/QA_VERDICT.json" "$M18_T/PLAN.md"
+out="$(cd "$M18_P" && printf '3\n' | HOME="$M18_HOME" PATH="$SAFE_PATH" RELAY_SOURCE_ONLY=1 bash -c "source \"$RELAY_SH\"; PROJECT_DIR=\"\$PWD\"; refresh_project_paths
+  require_all_roles_ready() { :; }; ensure_or_create_task() { ACTIVE_TASK=t1; }; check_role_quota_safe() { :; }
+  launch_provider_cli() { echo '- [ ] T1' > \"\$RELAY_DIR/tasks/t1/PLAN.md\"; }; run_phase_3_dev() { echo CALLED:run_phase_3_dev; }
+  ACTIVE_TASK=t1; run_phase_2_arch" 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g')"
+check 'printf "%s" "$out" | grep -q "ได้ PLAN.md แล้ว" && printf "%s" "$out" | grep -q "CALLED:run_phase_3_dev"' "[2] @arch จบแล้วได้ PLAN.md ➔ เสนอ [3] ต่อทันที (ทดสอบทั้งขั้น)"
+
 echo "=== [Windows] relay-skills.ps1 ล็อกเวอร์ชัน npx ==="
 check '! grep -nE "@latest|npx -y skills " "$REPO_ROOT/relay-skills.ps1"' "relay-skills.ps1 ไม่มี @latest หรือ npx skills ที่ไม่ระบุเวอร์ชัน"
 
