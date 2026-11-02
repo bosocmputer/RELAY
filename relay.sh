@@ -3293,8 +3293,8 @@ ping_single_role_agent() {
   local self_check_prompt="นี่คือการทดสอบความพร้อมของระบบ RELAY v1.0 กรุณารายงานตัวสั้นๆ ไม่เกิน 4 บรรทัด (ห้ามรันคำสั่งแก้ไขไฟล์ใดๆ) โดยระบุข้อมูลดังนี้:
 1. รายงานบทบาทของคุณคือ '$role_title' (เรียกใช้งานผ่าน CLI ค่าย $provider)
 2. สรุปหน้าที่หลักของคุณในระบบ RELAY ($expected_duty)
-3. ยืนยันชุดทักษะ (Skills) ประจำตำแหน่งของคุณ ได้แก่: $expected_skills
-4. ปิดท้ายด้วยข้อความ 'สถานะ: พร้อมปฏิบัติงาน'"
+3. ทวนรายชื่อชุดทักษะ (Skills) ที่ระบบกำหนดให้: $expected_skills (ไม่ต้องเปิดอ่านไฟล์ในการทดสอบนี้ และห้ามอ้างว่าตรวจแล้ว)
+4. ถ้ามีอะไรที่ทำไม่ได้หรือไม่แน่ใจ ให้บอกตรงๆ ในบรรทัดนี้ ถ้าไม่มีให้ตอบว่า 'ไม่มีข้อติดขัด'"
 
   printf "%sกำลังส่งคำสั่งทดสอบไปยัง %s (%s)...%s\n" "$C_MUTED" "$provider" "$configured_model" "$C_RESET"
   local exit_code=0
@@ -3313,9 +3313,9 @@ ping_single_role_agent() {
   RELAY_CHILD_ACTIVE=0
 
   if [ "$exit_code" -eq 0 ]; then
-    printf "%s● [ผ่านการทดสอบ] %s เชื่อมต่อกับ %s (%s) และพร้อมใช้งานเรียบร้อย%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s● [เชื่อมต่อได้] %s ตอบกลับผ่าน %s (%s) — ทดสอบเฉพาะการเชื่อมต่อ CLI ยังไม่ได้ทดสอบการทำงานจริง%s\n" "$C_OK" "$role_title" "$provider" "$configured_model" "$C_RESET"
   else
-    printf "%s✖ [ไม่ผ่านการทดสอบ] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
+    printf "%s✖ [เชื่อมต่อไม่ได้] %s ไม่สามารถรับคำสั่งผ่าน %s (%s) ได้%s\n" "$C_ERR" "$role_title" "$provider" "$configured_model" "$C_RESET"
   fi
 }
 
@@ -5259,7 +5259,7 @@ get_qa_prompt_contract() {
   if [ -x "$GLOBAL_DIR/bin/relay-verify-task" ]; then
     verify_tool_note=" (สามารถรันสคริปต์ '$GLOBAL_DIR/bin/relay-verify-task .relay/tasks/$ACTIVE_TASK' เพื่อตรวจเพดานบรรทัดเอกสาร, ไฟล์ความลับ และโครงสร้าง JSON อัตโนมัติ)"
   fi
-  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่าง และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
+  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่างและรันเทสต์จริงแล้ว (tests_run ใส่เฉพาะคำสั่งที่รันจริง • ถ้ารันเทสต์ไม่ได้ให้ FAIL พร้อมเหตุผล • เกณฑ์ที่ตรวจไม่ได้ให้ระบุใน summary) และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
 }
 
 verdict_source_note() {
