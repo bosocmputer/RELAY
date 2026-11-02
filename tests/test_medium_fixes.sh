@@ -270,6 +270,39 @@ P="$(m16_proj existing)"; git -C "$P" init -q -b main; git -C "$P" add src; git 
 out="$(m16_run "$P" </dev/null)"
 check 'printf "%s" "$out" | grep -q "rc=0" && [ "$(git -C "$P" rev-list --count HEAD)" = "1" ]' "repo ที่มี commit แล้ว ➔ ไม่สร้าง commit เพิ่ม"
 
+echo "=== [M17] Playwright MCP ของค่าย @qa: ตรวจก่อนทำงาน และถามก่อนเพิ่ม ==="
+M17_HOME="$(new_home m17)"
+M17_BIN="$TMP_ROOT/m17-bin"; M17_STATE="$TMP_ROOT/m17-state"; mkdir -p "$M17_BIN" "$M17_STATE"
+for c in claude codex; do
+  cat > "$M17_BIN/$c" <<STUB
+#!/bin/sh
+case "\$1 \$2" in
+  "mcp get") [ -f "$M17_STATE/$c" ] && exit 0; exit 1 ;;
+  "mcp add") [ -n "\$FAKE_MCP_FAIL" ] && { echo "boom: config locked" >&2; exit 2; }; echo "\$*" > "$M17_STATE/$c"; exit 0 ;;
+esac
+exit 1
+STUB
+  chmod +x "$M17_BIN/$c"
+done
+m17() { HOME="$M17_HOME" PATH="$M17_BIN:$SAFE_PATH" RELAY_SOURCE_ONLY=1 bash -c "source \"$RELAY_SH\"; PROJECT_DIR=\"$TMP_ROOT\"; $1" 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
+out="$(printf 'y\n' | m17 'ensure_qa_playwright_mcp codex')"
+check 'grep -q "@playwright/mcp@0.0.83" "$M17_STATE/codex" 2>/dev/null && printf "%s" "$out" | grep -q "เพิ่ม Playwright MCP ให้ codex แล้ว"' "codex ยังไม่มี + กด y ➔ เพิ่มด้วยเวอร์ชันที่ล็อกไว้ และแจ้งผล"
+out="$(m17 'ensure_qa_playwright_mcp codex' </dev/null)"
+check '! printf "%s" "$out" | grep -q "ยังไม่มี Playwright MCP"' "มีอยู่แล้ว ➔ ไม่ถามและไม่แก้"
+out="$(m17 'ensure_qa_playwright_mcp claude' </dev/null)"
+check '[ ! -f "$M17_STATE/claude" ] && printf "%s" "$out" | grep -q "claude ยังไม่มี Playwright MCP"' "stdin หมด ➔ แจ้งว่ายังไม่มี แต่ไม่เพิ่มเอง"
+out="$(printf 'y\n' | FAKE_MCP_FAIL=1 m17 'ensure_qa_playwright_mcp claude')"
+check '[ ! -f "$M17_STATE/claude" ] && printf "%s" "$out" | grep -q "เพิ่มไม่สำเร็จ" && printf "%s" "$out" | grep -q "boom: config locked"' "เพิ่มไม่สำเร็จ ➔ แสดง error จริงของ CLI"
+out="$(printf 'x\n' | m17 'ensure_qa_playwright_mcp claude'; m17 'ensure_qa_playwright_mcp claude' </dev/null)"
+check '[ -f "$M17_HOME/.agents/relay-playwright-skip" ] && [ "$(printf "%s" "$out" | grep -c "ยังไม่มี Playwright MCP")" = "1" ]' "กด x ➔ ไม่ถามอีกในครั้งถัดไป"
+rm -f "$M17_HOME/.agents/relay-playwright-skip"
+out="$(m17 'ensure_qa_playwright_mcp agy' </dev/null)"
+check 'printf "%s" "$out" | grep -q "RELAY ยังไม่ได้ตั้ง Playwright MCP ให้ค่ายนี้" && ! printf "%s" "$out" | grep -q "ตอนนี้หรือไม่"' "@qa เป็น agy ➔ แจ้งหนึ่งบรรทัด ไม่แสดงเมนู"
+rm -f "$M17_STATE/codex"
+out="$(printf 'y\n' | m17 'require_all_roles_ready() { :; }; ensure_or_create_task() { :; }; check_role_quota_safe() { :; }; launch_provider_cli() { echo LAUNCHED; }; ROLE_QA=codex; ACTIVE_TASK=t1; RELAY_DIR="$PROJECT_DIR/.relay"; run_phase_4_qa')"
+check '[ -f "$M17_STATE/codex" ] && printf "%s" "$out" | grep -q "LAUNCHED"' "[4] @qa ➔ เสนอเพิ่ม Playwright ก่อน แล้วเปิด @qa ต่อ"
+check '! grep -nE "mcp add .*2>/dev/null \|\| true" "$REPO_ROOT/relay-skills.sh"' "relay-skills.sh ไม่ปิด error ของ mcp add แบบเงียบ"
+
 echo "=== [Windows] relay-skills.ps1 ล็อกเวอร์ชัน npx ==="
 check '! grep -nE "@latest|npx -y skills " "$REPO_ROOT/relay-skills.ps1"' "relay-skills.ps1 ไม่มี @latest หรือ npx skills ที่ไม่ระบุเวอร์ชัน"
 

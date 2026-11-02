@@ -217,7 +217,7 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
 | เพิ่ม PATH | เพิ่มบรรทัด `export PATH="$HOME/.agents/bin:$PATH"` ใน `~/.zshrc` (และ `~/.bashrc` ถ้ามี) — ครั้งเดียว ไม่เพิ่มซ้ำ |
 | เชื่อมไฟล์กฎกลางให้ AI ทุกค่าย | `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` จะชี้ไปที่ `~/.agents/GLOBAL_AGENTS.md` • **ถ้ามีไฟล์เดิมอยู่ จะสำรองเป็น `*.bak.<วันเวลา>` ก่อน** |
 | ตั้ง Git hook กันไฟล์ความลับ | ตั้ง `git config --global core.hooksPath ~/.agents/hooks` **เฉพาะเมื่อยังไม่เคยตั้งค่านี้** • hook เดิมใน `.git/hooks/` ของแต่ละโปรเจกต์ยังทำงานต่อ |
-| เพิ่ม Playwright MCP (ตอน `relay-skills.sh install`) | `claude mcp add -s user playwright ...` และ `codex mcp add playwright ...` สำหรับให้ `@qa` ทดสอบหน้าเว็บ |
+| เพิ่ม Playwright MCP (ตอน `relay-skills.sh install`) | `claude mcp add -s user playwright ...` และ `codex mcp add playwright ...` สำหรับให้ `@qa` ทดสอบหน้าเว็บ • แจ้งผลรายค่าย (เพิ่มแล้ว / มีอยู่แล้ว ใช้ของเดิม / เพิ่มไม่สำเร็จพร้อม error) • ถ้าติดตั้ง CLI ทีหลังหรือเปลี่ยนค่ายของ `@qa` ก่อน `[4]`, `[a]` และใน `[t]` RELAY จะตรวจและถามก่อนเพิ่มให้ (กด `x` เพื่อไม่ให้ถามอีก) • ค่าย `agy` RELAY ยังไม่ได้ตั้งให้ |
 
 **กฎกลางมีผลกับทุกโปรเจกต์อย่างไร:** เพราะไฟล์กฎถูกโหลดทุกครั้งที่เปิด `claude` / `codex` / `agy` แต่ขั้นตอนเต็ม (`SPEC.md` + Worktree) ใช้เฉพาะโปรเจกต์ที่มีโฟลเดอร์ `.relay/` • โปรเจกต์อื่นใช้แค่กฎพื้นฐาน เช่น ห้ามอ่านหรือ commit ไฟล์ `.env*` / `*.key` และให้ AI รายงานตามจริงโดยไม่อ้างเกินจริง
 
@@ -279,7 +279,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 256/256 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 264/264 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

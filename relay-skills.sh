@@ -164,16 +164,29 @@ sync_manifest_skills() {
   [ -d ~/.agents/skills/founder-plan ] && [ ! -e ~/.agents/skills/founder-skill ] && ln -sf ~/.agents/skills/founder-plan ~/.agents/skills/founder-skill || true
   sync_claude_skill_links
 
-  # ผูก Playwright MCP เข้ากับ CLI (หากมี claude หรือ codex ในเครื่อง)
-  if command -v claude >/dev/null 2>&1; then
-    echo "🔌 ตรวจสอบ/ผูก Playwright MCP เข้ากับ Claude Code..."
-    claude mcp add -s user playwright npx "$PLAYWRIGHT_MCP_PKG" 2>/dev/null || true
-  fi
-
-  if command -v codex >/dev/null 2>&1; then
-    echo "🔌 ตรวจสอบ/ผูก Playwright MCP เข้ากับ Codex CLI..."
-    codex mcp add playwright -- npx "$PLAYWRIGHT_MCP_PKG" 2>/dev/null || true
-  fi
+  # ผูก Playwright MCP เข้ากับ CLI ที่มีในเครื่อง แล้วแจ้งผลจริงรายค่าย (มีอยู่แล้ว ➔ ใช้ของเดิม ไม่ทับ)
+  local mcp_cli mcp_out mcp_add_cmd
+  for mcp_cli in claude codex; do
+    if ! command -v "$mcp_cli" >/dev/null 2>&1; then
+      echo "○ Playwright MCP ($mcp_cli): ไม่พบ CLI — ข้าม (ติดตั้งทีหลังได้ relay จะเสนอเพิ่มให้ก่อน @qa ทำงาน)"
+      continue
+    fi
+    if "$mcp_cli" mcp get playwright >/dev/null 2>&1; then
+      echo "● Playwright MCP ($mcp_cli): มีอยู่แล้ว — ใช้ของเดิม"
+      continue
+    fi
+    if [ "$mcp_cli" = "claude" ]; then
+      mcp_add_cmd=(claude mcp add -s user playwright npx "$PLAYWRIGHT_MCP_PKG")
+    else
+      mcp_add_cmd=(codex mcp add playwright -- npx "$PLAYWRIGHT_MCP_PKG")
+    fi
+    if mcp_out="$("${mcp_add_cmd[@]}" 2>&1)"; then
+      echo "● Playwright MCP ($mcp_cli): เพิ่มแล้ว ($PLAYWRIGHT_MCP_PKG)"
+    else
+      echo "✖ Playwright MCP ($mcp_cli): เพิ่มไม่สำเร็จ — $(printf "%s" "$mcp_out" | tail -n 1)"
+    fi
+  done
+  echo "○ Playwright MCP (agy): RELAY ยังไม่ได้ตั้งให้ค่ายนี้"
 
   echo "=================================================================="
   echo "✅ [RELAY Skills] ${mode_label}เสร็จสมบูรณ์! ทุกสกิลเป็นเวอร์ชันล่าสุดแล้ว"

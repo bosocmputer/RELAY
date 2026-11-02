@@ -3319,6 +3319,77 @@ ping_single_role_agent() {
   fi
 }
 
+# ── Playwright MCP ของค่ายที่ @qa ใช้ (ตรวจด้วยคำสั่ง mcp ของ CLI เอง ไม่เรียก AI) ──
+PLAYWRIGHT_MCP_PKG="${RELAY_PLAYWRIGHT_MCP_PKG:-@playwright/mcp@0.0.83}"
+PLAYWRIGHT_SKIP_FILE="$GLOBAL_DIR/relay-playwright-skip"
+
+# พิมพ์ ok | missing | unsupported (ค่ายที่ RELAY ยังไม่ได้ตั้งให้) | nocli
+playwright_mcp_status() {
+  local provider="$1" dir="${2:-$PWD}"
+  case "$provider" in
+    claude|codex)
+      command -v "$provider" >/dev/null 2>&1 || { echo "nocli"; return 0; }
+      if (cd "$dir" 2>/dev/null && "$provider" mcp get playwright >/dev/null 2>&1); then echo "ok"; else echo "missing"; fi
+      ;;
+    *) echo "unsupported" ;;
+  esac
+}
+
+playwright_mcp_status_text() {
+  case "$(playwright_mcp_status "$1" "${2:-$PWD}")" in
+    ok)          printf "%s● มีแล้ว%s" "$C_OK" "$C_RESET" ;;
+    missing)     printf "%s▲ ยังไม่มี — @qa ทดสอบหน้าเว็บด้วยเบราว์เซอร์ไม่ได้%s" "$C_WARN" "$C_RESET" ;;
+    unsupported) printf "%s○ RELAY ยังไม่ได้ตั้งให้ %s (ตั้งเองตามคู่มือของ %s)%s" "$C_MUTED" "$1" "$1" "$C_RESET" ;;
+    *)           printf "%s○ ไม่พบ CLI %s%s" "$C_MUTED" "$1" "$C_RESET" ;;
+  esac
+}
+
+# เพิ่ม Playwright MCP ระดับ user • ล้มเหลว ➔ พิมพ์ error จริงและคืนค่า non-zero
+add_playwright_mcp() {
+  local provider="$1" out="" rc=0
+  case "$provider" in
+    claude) out="$(claude mcp add -s user playwright npx "$PLAYWRIGHT_MCP_PKG" 2>&1)" || rc=$? ;;
+    codex)  out="$(codex mcp add playwright -- npx "$PLAYWRIGHT_MCP_PKG" 2>&1)" || rc=$? ;;
+    *)      return 1 ;;
+  esac
+  [ "$rc" -eq 0 ] || printf "%s\n" "$out" | tail -n 3
+  return "$rc"
+}
+
+# ก่อนให้ @qa ทำงาน: ค่ายของ @qa ยังไม่มี Playwright MCP ➔ ถามก่อนเพิ่ม (ไม่แก้ config ของ CLI เงียบๆ)
+ensure_qa_playwright_mcp() {
+  local provider="$1" dir="${2:-$PROJECT_DIR}"
+  [ -f "$PLAYWRIGHT_SKIP_FILE" ] && return 0
+  case "$(playwright_mcp_status "$provider" "$dir")" in
+    missing) ;;
+    unsupported)
+      printf "%s• @qa ใช้ %s — RELAY ยังไม่ได้ตั้ง Playwright MCP ให้ค่ายนี้ ถ้าเป็นงานหน้าเว็บให้ตั้งเองตามคู่มือของ %s%s\n" "$C_MUTED" "$provider" "$provider" "$C_RESET"
+      return 0 ;;
+    *) return 0 ;;
+  esac
+  echo ""
+  printf "%s▲ %s ยังไม่มี Playwright MCP — @qa จะเปิดเบราว์เซอร์ทดสอบหน้าเว็บไม่ได้%s\n" "$C_WARN" "$provider" "$C_RESET"
+  interactive_menu "เพิ่ม Playwright MCP (${PLAYWRIGHT_MCP_PKG}) ให้ ${provider} ตอนนี้หรือไม่?" 0 \
+    "y|★ เพิ่มให้ ${provider} ตอนนี้ (ระดับ user ใช้ได้ทุกโปรเจกต์)" \
+    "s|ข้ามรอบนี้ (งานที่ไม่ใช่หน้าเว็บไม่ต้องใช้)" \
+    "x|ไม่ต้องถามอีก"
+  case "$MENU_RESULT" in
+    y|Y)
+      local err=""
+      if err="$(add_playwright_mcp "$provider")"; then
+        printf "%s● เพิ่ม Playwright MCP ให้ %s แล้ว%s\n" "$C_OK" "$provider" "$C_RESET"
+      else
+        printf "%s✖ เพิ่มไม่สำเร็จ:%s\n%s\n" "$C_ERR" "$C_RESET" "$err"
+      fi
+      ;;
+    x|X)
+      : > "$PLAYWRIGHT_SKIP_FILE" 2>/dev/null || true
+      printf "%sจะไม่ถามอีก (ลบไฟล์ %s เพื่อให้ถามอีกครั้ง)%s\n" "$C_MUTED" "$PLAYWRIGHT_SKIP_FILE" "$C_RESET"
+      ;;
+  esac
+  return 0
+}
+
 run_agent_readiness_test() {
   check_all_roles_ready
   local po_title arch_title dev_title qa_title
@@ -3356,6 +3427,7 @@ run_agent_readiness_test() {
   printf "%s│%s    • ค่าย / โมเดล : %-6s │ %s │ %b\n" "$C_ACCENT" "$C_RESET" "$ROLE_QA" "$(format_role_model_text "$ROLE_QA" "$MODEL_QA")" "$(format_role_status_cell "$ROLE_QA" "$MODEL_QA")"
   printf "%s│%s    • กฎส่วนกลาง  : %b\n" "$C_ACCENT" "$C_RESET" "$(get_provider_rules_status "$ROLE_QA")"
   printf "%s│%s    • ทักษะประจำตัว: %b\n" "$C_ACCENT" "$C_RESET" "$(check_role_skills_status "$qa_skills")"
+  printf "%s│%s    • Playwright MCP: %b\n" "$C_ACCENT" "$C_RESET" "$(playwright_mcp_status_text "$ROLE_QA" "$PROJECT_DIR")"
 
   local ca_slug ca_title ca_prov ca_mod ca_wmode ca_skills ca_prompt
   local ca_idx=5
@@ -3368,6 +3440,7 @@ run_agent_readiness_test() {
     ca_idx=$((ca_idx + 1))
   done < <(list_custom_agents_tsv)
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  ensure_qa_playwright_mcp "$ROLE_QA" "$PROJECT_DIR"
 
   interactive_menu "เลือกตำแหน่งที่ต้องการทดสอบให้ AI รายงานบทบาทและทักษะจริง" 0 \
     "1|★ ทดสอบครบทุกตำแหน่ง (@po, @arch/@pm, @dev, @qa/@sec และตำแหน่งเพิ่มเติม)" \
@@ -4251,6 +4324,7 @@ run_phase_4_qa() {
   local worktree_dir="$RELAY_DIR/worktrees/$ACTIVE_TASK"
   local target_work_dir="$PROJECT_DIR"
   [ -d "$worktree_dir" ] && target_work_dir="$worktree_dir"
+  ensure_qa_playwright_mcp "$ROLE_QA" "$target_work_dir"
 
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
@@ -5434,6 +5508,7 @@ run_auto_relay_loop() {
       *)   return 0 ;;
     esac
   fi
+  ensure_qa_playwright_mcp "$ROLE_QA" "$PROJECT_DIR"
 
   printf "%sกำลังดึงข้อมูลโควต้าล่าสุดก่อนเริ่มลูป...%s\n" "$C_MUTED" "$C_RESET"
   refresh_quota_cache
