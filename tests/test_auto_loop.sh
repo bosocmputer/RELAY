@@ -31,6 +31,7 @@ case "$prompt" in
       sleep "$FAKE_DEV_SLEEP" & SP=$!; wait $SP
     fi
     echo "code $(date +%s%N)" >> app.txt
+    [ -n "$FAKE_DEV_EDIT_SPEC" ] && echo "- [ ] เกณฑ์ที่ @dev เพิ่มเอง" >> "$td/SPEC.md"
     exit "${FAKE_DEV_RC:-0}"
     ;;
 esac
@@ -145,6 +146,10 @@ LOG | grep -q "ไม่ได้เขียน" && ok "หยุดเมื�
 setup
 FAKE_DEV_RC=1 FAKE_QA_SEQUENCE="PASS" run_loop
 LOG | grep -q "exit 1" && ok "หยุดเมื่อ @dev จบด้วย error" || bad "ไม่หยุดเมื่อ @dev error"
+
+setup
+FAKE_DEV_EDIT_SPEC=1 FAKE_QA_SEQUENCE="PASS" run_loop
+grep -q "@dev แก้ไข SPEC.md" "$ROOT/out.log" && ! grep -q "เกณฑ์ที่ @dev เพิ่มเอง" "$ROOT/proj/.relay/tasks/$T/SPEC.md" && LOG | grep -q "PASS" && ok "Auto-Loop: @dev แก้ SPEC.md ➔ แจ้งเตือนและคืนฉบับเดิม (ค่าเริ่มต้น) แล้วลูปทำต่อ" || bad "Auto-Loop ไม่กันการแก้ SPEC.md"
 
 echo ""
 echo "ผลรวม: ผ่าน $pass • ไม่ผ่าน $fail"

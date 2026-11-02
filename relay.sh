@@ -4219,11 +4219,66 @@ sync_task_docs_from_worktree() {
 # ข้อความกำชับ @dev ให้ commit งานในกิ่งของใบงาน (ป้องกันโค้ดหายตอนผสานในขั้นตอนที่ 5)
 # กฎคุณภาพโค้ดที่ไม่ผูกกับภาษา แนบท้าย prompt ของ @dev ทุกโหมด (ขั้นที่ 3, Fast Track, Auto-Loop)
 get_dev_quality_note() {
-  printf ' • คุณภาพโค้ด (ทุกภาษา): อ่านโค้ดส่วนที่เกี่ยวข้องก่อนแล้วยึดโครงสร้าง การตั้งชื่อ และแบบแผนเดิมของโปรเจกต์ • ก่อนสร้างฟังก์ชันหรือคอมโพเนนต์ใหม่ให้ค้นของเดิมที่ใช้ซ้ำหรือขยายได้ก่อน ห้ามคัดลอกโค้ดมาแก้ • แยกเป็นของกลางเมื่อมีที่ใช้ซ้ำจริงอย่างน้อย 2 จุด ไม่สร้าง abstraction เผื่ออนาคต • แก้เท่าที่งานต้องการ ไม่ refactor ส่วนที่ไม่เกี่ยวข้อง'
+  printf ' • คุณภาพโค้ด (ทุกภาษา): อ่านโค้ดส่วนที่เกี่ยวข้องก่อนแล้วยึดโครงสร้าง การตั้งชื่อ และแบบแผนเดิมของโปรเจกต์ • ก่อนสร้างฟังก์ชันหรือคอมโพเนนต์ใหม่ให้ค้นของเดิมที่ใช้ซ้ำหรือขยายได้ก่อน ห้ามคัดลอกโค้ดมาแก้ • แยกเป็นของกลางเมื่อมีที่ใช้ซ้ำจริงอย่างน้อย 2 จุด ไม่สร้าง abstraction เผื่ออนาคต • แก้เท่าที่งานต้องการ ไม่ refactor ส่วนที่ไม่เกี่ยวข้อง • ห้ามแก้ SPEC.md (เกณฑ์ตรวจรับเป็นของ @po และผู้ใช้) ถ้าเห็นว่าเกณฑ์ผิดหรือขัดกับข้อมูลจริง ให้แจ้งผู้ใช้ในคำตอบพร้อมหลักฐาน'
 }
 
 get_dev_commit_note() {
   printf " เมื่อเขียนโค้ดและรันชุดทดสอบผ่านแล้ว ให้ git add และ git commit งานทั้งหมดในกิ่ง feat/%s ของ Worktree นี้ (ห้าม commit โฟลเดอร์ .relay/)" "$ACTIVE_TASK"
+}
+
+# ขั้นที่ 2/3 ต้องมี SPEC.md จาก @po ก่อน (กันการเปิด AI ทำงานโดยไม่มีเกณฑ์ตรวจรับ)
+require_task_spec() {
+  [ -n "$ACTIVE_TASK" ] && [ -f "$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" ] && return 0
+  echo ""
+  printf "%s▲ ใบงาน %s ยังไม่มี SPEC.md — %s ต้องใช้ความต้องการและเกณฑ์ตรวจรับจาก @po ก่อน (ยังไม่เปิด AI)%s\n" "$C_WARN" "${ACTIVE_TASK:-}" "$1" "$C_RESET"
+  interactive_menu "เลือกการดำเนินการ" 0 \
+    "1|★ ไปขั้นที่ 1: @po เขียน SPEC.md ก่อน" \
+    "b|กลับหน้าหลัก"
+  [ "$MENU_RESULT" = "1" ] && run_phase_1_po
+  return 1
+}
+
+# เก็บสำเนา SPEC.md ก่อนส่งงานให้ @dev ➔ guard_spec_after_dev ตรวจหลังจบรอบว่าเกณฑ์ตรวจรับถูกแก้หรือไม่
+snapshot_task_spec() {
+  local spec="$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" snap
+  [ -f "$spec" ] || return 0
+  snap="$(mktemp -t relay-spec.XXXXXX 2>/dev/null)" || return 0
+  cp "$spec" "$snap" && printf '%s' "$snap"
+}
+
+# @dev ไม่มีสิทธิ์แก้เกณฑ์ตรวจรับ: ถ้า SPEC.md (โฟลเดอร์หลักหรือ Worktree) ต่างจากสำเนา ➔ แสดง diff ให้ผู้ใช้เลือกคืนฉบับเดิมหรือยอมรับ
+guard_spec_after_dev() {
+  local snap="$1" wt_dir="${2:-}"
+  [ -n "$snap" ] && [ -f "$snap" ] || return 0
+  local spec="$RELAY_DIR/tasks/$ACTIVE_TASK/SPEC.md" wt_spec="" changed=""
+  [ -n "$wt_dir" ] && wt_spec="$wt_dir/.relay/tasks/$ACTIVE_TASK/SPEC.md"
+  if [ -f "$spec" ] && ! cmp -s "$snap" "$spec"; then
+    changed="$spec"
+  elif [ -n "$wt_spec" ] && [ -f "$wt_spec" ] && ! cmp -s "$snap" "$wt_spec"; then
+    changed="$wt_spec"
+  fi
+  if [ -z "$changed" ]; then
+    rm -f "$snap"
+    return 0
+  fi
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s %s▲ @dev แก้ไข SPEC.md (เกณฑ์ตรวจรับ) ระหว่างทำงาน — ต้องให้คุณตัดสินก่อน%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$C_RESET"
+  diff -u "$snap" "$changed" 2>/dev/null | tail -n +4 | grep '^[-+]' | head -n 12 | sed "s/^/${C_WARN}│${C_RESET}   /"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+  interactive_menu "เลือกฉบับ SPEC.md ที่จะใช้ตรวจรับ" 0 \
+    "r|★ คืนฉบับเดิมก่อน @dev แก้ (ถ้าเกณฑ์ผิดจริง ให้ @po หรือคุณแก้เอง)" \
+    "k|ยอมรับการแก้ไขนี้ (คุณตรวจแล้วว่าถูกต้อง)"
+  local keep="$snap"
+  [ "$MENU_RESULT" = "k" ] && keep="$changed"
+  if [ "$keep" != "$spec" ]; then cp "$keep" "$spec"; fi
+  if [ -n "$wt_spec" ] && [ -d "$(dirname "$wt_spec")" ] && [ "$keep" != "$wt_spec" ]; then cp "$keep" "$wt_spec"; fi
+  if [ "$MENU_RESULT" = "k" ]; then
+    printf "%s● ใช้ SPEC.md ฉบับที่ @dev แก้ตามที่คุณยอมรับ%s\n" "$C_OK" "$C_RESET"
+  else
+    printf "%s● คืน SPEC.md เป็นฉบับเดิมแล้ว%s\n" "$C_OK" "$C_RESET"
+  fi
+  rm -f "$snap"
 }
 
 # สรุปสถานะไฟล์ที่ทำค้างไว้ใน Git Worktree ด้วยสคริปต์ระบบ (ไม่เรียก AI — แต่ข้อความนี้ถูกแนบเข้า prompt จึงนับเป็น Token ของ prompt) เพื่อให้ Agent ตัวใหม่รับไม้ต่อได้ทันทีเมื่อสลับค่ายหรือทำต่อ
@@ -4387,6 +4442,7 @@ run_phase_1_po() {
 run_phase_2_arch() {
   require_all_roles_ready || return 0
   ensure_or_create_task || return 0
+  require_task_spec "ขั้นตอนที่ 2 (@arch & @pm)" || return 0
   check_role_quota_safe "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" 20 "arch" || return 0
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
@@ -4400,6 +4456,7 @@ run_phase_2_arch() {
 run_phase_3_dev() {
   require_all_roles_ready || return 0
   ensure_or_create_task || return 0
+  require_task_spec "ขั้นตอนที่ 3 (@dev)" || return 0
   check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev" 20 "dev" || return 0
   if ! prepare_task_worktree; then
     [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
@@ -4412,7 +4469,10 @@ run_phase_3_dev() {
   role_note="$(get_core_role_prompt_note dev)"
   handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
   local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
+  local spec_snap
+  spec_snap="$(snapshot_task_spec)"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
+  guard_spec_after_dev "$spec_snap" "$TASK_WORK_DIR"
   LAST_COMPLETED_PHASE=3
   offer_next_step 3
 }
@@ -4461,7 +4521,10 @@ run_fast_track_dev() {
   role_note="$(get_core_role_prompt_note dev)"
   handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
   local prompt="@dev [โหมดด่วน Fast Track — ข้ามพิธีกรรมเอกสาร ARCH/PLAN] กรุณาอ่านโจทย์ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}${handoff_note} แล้วลงมือแก้ไขโค้ด รันชุดทดสอบที่เกี่ยวข้องให้ผ่าน และเขียนไฟล์ .relay/tasks/$ACTIVE_TASK/QA_VERDICT.json เป็น {\"verdict\":\"PASS\",\"failed_criteria\":[],\"tests_run\":[\"fast-track\"],\"summary\":\"Fast track completed\"} เมื่อทดสอบผ่านแล้ว${commit_note}"
+  local spec_snap
+  spec_snap="$(snapshot_task_spec)"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "โหมดด่วน Fast Track: @dev (ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
+  guard_spec_after_dev "$spec_snap" "$TASK_WORK_DIR"
   if [ -d "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
@@ -5725,6 +5788,8 @@ run_auto_relay_loop() {
     fi
 
     rc=0
+    local spec_snap
+    spec_snap="$(snapshot_task_spec)"
     exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds)" "$worktree_dir" "$dev_prompt" || rc=$?
     if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "dev" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" "$min_quota_pct"; then
       handoff_note="$(get_worktree_handoff_context_note "$worktree_dir")"
@@ -5732,7 +5797,8 @@ run_auto_relay_loop() {
       rc=0
       exec_provider_autonomous "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev (รอบที่ $round/$max_rounds — รับไม้ต่อหลังสลับค่าย)" "$worktree_dir" "$dev_prompt" || rc=$?
     fi
-    loop_check_rc "$rc" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" || return 1
+    loop_check_rc "$rc" "ขั้นตอนที่ 3 (@dev รอบที่ $round)" || { rm -f "$spec_snap"; return 1; }
+    guard_spec_after_dev "$spec_snap" "$worktree_dir"
     LAST_COMPLETED_PHASE=3
 
     if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct" "qa"; then
