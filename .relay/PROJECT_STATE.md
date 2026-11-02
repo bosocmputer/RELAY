@@ -52,6 +52,7 @@
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield), ชี้แจงชัดเจนว่าโฟลเดอร์ `.relay/` คือกลไกหลักโดย **Obsidian เป็นเพียงทางเลือกเสริม (Optional Viewer)**, ทุกบทบาทสลับค่าย/โมเดล AI ได้อิสระผ่านปุ่ม `[c]`, ข้อความในเอกสารและ UI ถูกตรวจด้วย `tests/test_performance_and_accuracy.sh` ว่าไม่มีคำอ้างเกินจริงที่กำหนดไว้, อธิบายข้อจำกัดเรื่อง **Ceremony Overhead** คู่กับโหมด `[x] Fast Track` และระบบวัด Token จาก session log (`[v]` / `relay stats`), รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี
 
 ## ประวัติใบงานที่ผสานแล้ว (RELAY อัปเดตอัตโนมัติ)
+- `2026-11-02` `20261102-ignore-playwright-artifacts` — ใบงาน: ไม่ให้ไฟล์ snapshot ของ Playwright MCP ถูก commit (20261102-ignore-playwright-artifacts) (merge `60ff056`)
 - `2026-11-02` `20261102-learn-evidence-and-deps-hint` — ใบงาน: Self-Learning เสนอเฉพาะบทเรียนที่มีหลักฐาน + บอกให้ติดตั้ง dependency หลังผสาน (20261102-learn-evidence-and-deps- (merge `b97b86e`)
 - `2026-11-02` `20261102-guided-next-step` — ใบงาน: บอกผู้ใช้ว่าต้องทำอะไรต่อหลังจบแต่ละขั้น (20261102-guided-next-step) (merge `a20bca0`)
 - `2026-11-02` `20261102-playwright-mcp-check` — ใบงาน: ตรวจและเพิ่ม Playwright MCP ให้ค่ายของ @qa (20261102-playwright-mcp-check) (merge `90f77ea`)
@@ -66,4 +67,3 @@
 - `2026-10-31` `20261031-menu-fit-and-claude-warning-filter` — ใบงานแก้เมนูวาดซ้อนเมื่อจอแคบ + ตัวกรองคำเตือนของ claude (20261031-menu-fit-and-claude-warning-filter) (merge `9b7705a`)
 - `2026-10-31` `20261031-fix-claude-skill-links-and-records` — ใบงานแก้จุดที่ตกหล่นจากใบงาน 20261031-final-audit-completion (20261031-fix-claude-skill-links-and-records) (merge `70dff5e`)
 - `2026-10-31` `20261031-skill-rewrite-on-reject` — ใบงานด่วน: ไม่เขียน SKILL.md ใหม่เมื่อไม่ได้อนุมัติกฎใด (20261031-skill-rewrite-on-reject) (merge `a27e546`)
-- `2026-10-31` `20261031-performance-and-accuracy-cleanup` — ใบงานปรับความเร็ว ลด Token และแก้ข้อความอ้างเกินจริง (20261031-performance-and-accuracy-cleanup) (merge `2aa0e94`)
