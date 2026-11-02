@@ -38,6 +38,9 @@ setup_repo() {
 echo "== AC-1: ไฟล์ค้างไม่ commit ใน Worktree ➔ commit อัตโนมัติแล้วผสาน =="
 setup_repo $ROOT/m1
 echo "feature" > ".relay/worktrees/$T/feature.txt"
+# หลักฐานการแก้บั๊ก: รอบก่อน @qa ไม่ผ่าน 2 เกณฑ์ แล้วรอบสุดท้ายผ่าน ➔ Self-Learning เสนอบทเรียน 2 ข้อ
+printf '{"verdict":"FAIL","failed_criteria":["ห้ามแก้ไขโค้ดบนกิ่ง main โดยตรง","ต้องเขียนชุดทดสอบก่อนส่งงาน"],"tests_run":["npm test"],"summary":"fail"}' > ".relay/tasks/$T/QA_VERDICT.before-round-2.json"
+printf '{"verdict":"PASS","failed_criteria":[],"tests_run":["npm test"],"summary":"แก้ให้ทำใน Worktree และเพิ่มเทสต์แล้ว"}' > ".relay/tasks/$T/QA_VERDICT.json"
 printf "c\n" | bash "$RELAY" 5 > $ROOT/m1.log 2>&1
 [ -f $ROOT/m1/feature.txt ] && ok "feature.txt อยู่ใน main" || bad "feature.txt ไม่อยู่ใน main"
 git -C $ROOT/m1 log --oneline -1 | grep -q "merge: feat/$T" && ok "มี merge commit" || bad "ไม่มี merge commit"
@@ -48,7 +51,10 @@ git -C $ROOT/m1 show-ref --quiet "refs/heads/feat/$T" && bad "กิ่งยั
 grep -q '^.relay/worktrees/$' $ROOT/m1/.gitignore 2>/dev/null && bad "ไม่ควรแก้ .gitignore ในขั้นตอนที่ 5" || ok ".gitignore ไม่ถูกแตะ"
 grep -q "\`$T\` — SPEC demo (merge" $ROOT/m1/.relay/PROJECT_STATE.md && ok "บันทึกใบงานลง PROJECT_STATE.md หลังผสาน (F4)" || bad "ไม่มีรายการใน PROJECT_STATE.md"
 L="$ROOT/m1/.relay/skills/project-learned"
-[ "$(grep -c '^- ' $L/PENDING.md 2>/dev/null)" = "2" ] && ok "กฎที่สกัดเข้าคิว PENDING.md 2 ข้อ (F2)" || bad "PENDING.md ไม่ถูกต้อง"
+[ "$(grep -c '^- ' $L/PENDING.md 2>/dev/null)" = "2" ] && ok "บทเรียนจากหลักฐาน FAIL ➔ PASS เข้าคิว PENDING.md 2 ข้อ (F2)" || bad "PENDING.md ไม่ถูกต้อง"
+grep -q "ต้องป้องกันปัญหา 'ห้ามแก้ไขโค้ดบนกิ่ง main โดยตรง'" $L/PENDING.md && grep -q "แก้ให้ทำใน Worktree และเพิ่มเทสต์แล้ว" $L/PENDING.md && ok "บทเรียนอ้างเกณฑ์ที่เคยไม่ผ่านและวิธีแก้ที่ผ่าน QA" || bad "บทเรียนไม่อ้างหลักฐาน"
+! grep -q "SPEC demo\|ต้องเขียนชุดทดสอบก่อนส่งงานให้ QA ตรวจรับทุกครั้ง" $L/PENDING.md && ok "ไม่คัดบรรทัดจาก SPEC.md มาเป็นกฎ" || bad "ยังคัดบรรทัดจาก SPEC.md"
+! grep -q "ไฟล์ dependency" $ROOT/m1.log && ok "ไม่มีไฟล์ dependency เปลี่ยน ➔ ไม่แสดงคำสั่งติดตั้ง" || bad "แสดงคำสั่งติดตั้งทั้งที่ไม่มี dependency เปลี่ยน"
 [ ! -f $L/SKILL.md ] && ok "SKILL.md ยังไม่ถูกสร้างก่อนอนุมัติ" || bad "SKILL.md ถูกสร้างโดยไม่อนุมัติ"
 ( cd $ROOT/m1 && printf "1\n1\n" | bash "$RELAY" learn > $ROOT/m1-learn.log 2>&1 )
 grep -q "ห้ามแก้ไขโค้ดบนกิ่ง main" $L/SKILL.md 2>/dev/null && ok "อนุมัติข้อ 1 ➔ เข้า SKILL.md" || bad "ข้อ 1 ไม่เข้า SKILL.md"
@@ -74,6 +80,16 @@ printf "n\n" | bash "$RELAY" 5 > $ROOT/m3.log 2>&1
 [ -d "$ROOT/m3/.relay/worktrees/$T" ] && ok "Worktree ยังอยู่" || bad "Worktree ถูกลบ"
 git -C $ROOT/m3 show-ref --quiet "refs/heads/feat/$T" && ok "กิ่งยังอยู่" || bad "กิ่งถูกลบ"
 grep -q "ไม่มีโค้ดใหม่ให้ผสาน" $ROOT/m3.log && ok "แจ้งว่าไม่มีโค้ดใหม่" || bad "ไม่แจ้งเตือน"
+
+echo "== AC-4: ไม่มีหลักฐาน FAIL ➔ ไม่เสนอกฎ • merge เปลี่ยน dependency ➔ บอกคำสั่งติดตั้ง =="
+setup_repo $ROOT/m4
+echo '{"name":"demo"}' > ".relay/worktrees/$T/package.json"
+echo '{"lockfileVersion":3}' > ".relay/worktrees/$T/package-lock.json"
+git -C ".relay/worktrees/$T" add package.json package-lock.json && git -C ".relay/worktrees/$T" commit -qm "add deps"
+printf "y\ny\n" | bash "$RELAY" 5 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' > $ROOT/m4.log
+L4="$ROOT/m4/.relay/skills/project-learned"
+grep -q "ไม่มีบทเรียนใหม่จากใบงานนี้" $ROOT/m4.log && [ ! -f $L4/PENDING.md ] && [ ! -f $L4/LEDGER.md ] && ok "ไม่มีหลักฐาน ➔ แจ้งตามจริง ไม่สร้าง PENDING.md / LEDGER.md ว่าง" || bad "ยังเสนอกฎหรือสร้างไฟล์ว่าง"
+grep -q "ผสานแล้วมีการเปลี่ยนไฟล์ dependency" $ROOT/m4.log && grep -q "npm ci  (package-lock.json)" $ROOT/m4.log && ! grep -q "npm install" $ROOT/m4.log && ok "มี package-lock.json ➔ บอกให้รัน npm ci (ไม่ซ้ำ npm install)" || bad "ไม่บอกคำสั่งติดตั้ง dependency"
 
 echo ""
 echo "ผลรวม: ผ่าน $pass • ไม่ผ่าน $fail"

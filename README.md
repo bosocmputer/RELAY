@@ -268,7 +268,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 | **คุณภาพผลงาน** | ขึ้นกับโมเดลที่เลือกและความชัดเจนของ `SPEC.md` • ตรรกะของลูปผ่านชุดทดสอบด้วย CLI จำลอง ไม่ได้รับประกันผลงานของ AI • รันลูปครั้งแรกกับงานเล็กก่อน |
 | **ตัวเลขโควต้า** | อ่านจากช่องทางของ CLI ที่ไม่ใช่ API ทางการ (`agy -p "/usage"`, ไฟล์ session ของ `codex`, `get_usage` ของ `claude`) อาจใช้ไม่ได้เมื่อ CLI อัปเดต — ถ้าดึงไม่ได้จะขึ้น `? ดึงไม่ได้` แทนการแสดงค่าเก่าเงียบๆ |
 | **ตัวเลข Token** | อ่านจาก session log ในเครื่อง • `claude` / `codex` นับเฉพาะโฟลเดอร์ที่รัน • `agy` ไม่บันทึกโฟลเดอร์ จึงเป็นค่าประมาณเมื่อรันหลายงานพร้อมกัน |
-| **กฎที่เรียนรู้ (`[l]`)** | คัดจากคำสำคัญ ไม่ได้ใช้ AI สรุป และจะไม่ถูกส่งให้ AI จนกว่าคุณจะอนุมัติทีละข้อ |
+| **กฎที่เรียนรู้ (`[l]`)** | เสนอเฉพาะเมื่อมีหลักฐาน: รอบที่ `@qa` ไม่ผ่านแล้วแก้จนผ่าน (ใช้เกณฑ์ที่เคยไม่ผ่านและสรุปวิธีแก้จาก `QA_VERDICT.json` ไม่ได้ใช้ AI สรุป) • งานที่ผ่านตั้งแต่รอบแรกจะไม่มีกฎเสนอ • จะไม่ถูกส่งให้ AI จนกว่าคุณจะอนุมัติทีละข้อ |
 
 ---
 
@@ -280,7 +280,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 275/275 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 280/280 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

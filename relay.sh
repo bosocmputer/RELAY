@@ -4981,17 +4981,14 @@ def bullets(text):
 def norm(s):
     return re.sub(r"\W+", "", s.lower())[:60]
 
-spec_txt = read_text(os.path.join(task_dir, "SPEC.md"))
-arch_txt = read_text(os.path.join(task_dir, "ARCH.md"))
-qa_txt = read_text(os.path.join(task_dir, "QA_REPORT.md"))
-
 known = {norm(r) for r in bullets(read_text(skill_file))}
 pending = bullets(read_text(pending_file))
 known |= {norm(r) for r in pending}
 
 candidates = []
 
-# 1. สกัดบทเรียนจากหลักฐานการแก้บั๊กจริง (Evidence-Based Remediation: รอบก่อนหน้า FAIL แล้วแก้จน PASS)
+# เสนอเฉพาะบทเรียนจากหลักฐานการแก้บั๊กจริง (รอบก่อนหน้า FAIL แล้วแก้จน PASS)
+# • ไม่คัดบรรทัดจาก SPEC/ARCH/QA ด้วยคำสำคัญ — ได้แต่ข้อความเฉพาะงานที่ผู้ใช้ต้องกดปฏิเสธทุกครั้ง
 import glob, json
 before_verdicts = sorted(glob.glob(os.path.join(task_dir, "QA_VERDICT.before-round-*.json")))
 final_verdict_path = os.path.join(task_dir, "QA_VERDICT.json")
@@ -5011,21 +5008,6 @@ if before_verdicts and os.path.isfile(final_verdict_path):
     except Exception:
         pass
 
-# 2. สกัดกฎเชิงสถาปัตยกรรมและข้อควรระวังจาก QA_REPORT.md, ARCH.md, SPEC.md
-for content in (qa_txt, arch_txt, spec_txt):
-    for line in content.splitlines():
-        s = line.strip()
-        if not s.startswith("- "):
-            continue
-        item = s[2:].strip()
-        if len(item) < 30 or len(item) > 220 or item.endswith(":") or item.startswith("[ ]") or item.startswith("[x]"):
-            continue
-        if any(k in item.lower() for k in [
-            "circuit breaker", "quota", "worktree", "skill", "security", "timeout", "guard",
-            "fallback", "verdict", "โควต้า", "ความปลอดภัย", "ห้าม", "ต้อง", "มาตรฐาน", "ป้องกัน", "แยกอิสระ",
-        ]):
-            candidates.append(re.sub(r"\s+", " ", item))
-
 added = []
 for c in candidates:
     k = norm(c)
@@ -5034,6 +5016,10 @@ for c in candidates:
         added.append(c)
         if len(added) >= 5:
             break
+
+if not added:
+    print("● ไม่มีบทเรียนใหม่จากใบงานนี้ (ระบบเสนอเฉพาะเมื่อมีรอบที่ @qa ไม่ผ่านแล้วแก้จนผ่าน)")
+    sys.exit(0)
 
 pending = (pending + added)[-30:]
 tmp_pending = f"{pending_file}.tmp.{os.getpid()}"
@@ -5976,7 +5962,63 @@ run_phase_5_merge() {
   local pend
   pend="$(get_learned_pending_count)"
   [ "$pend" -gt 0 ] && printf "%s▲ มีกฎที่เสนอจากใบงานนี้ %s ข้อรออนุมัติ — กด [l] เพื่อทบทวนก่อนนำไปใช้%s\n" "$C_WARN" "$pend" "$C_RESET"
+  print_dependency_install_hints "HEAD^1" "HEAD"
   printf "%s• หากโครงสร้างระบบเปลี่ยนมาก ให้ @arch ทบทวนส่วนบนของ .relay/PROJECT_STATE.md ในใบงานถัดไป%s\n" "$C_MUTED" "$C_RESET"
+}
+
+# คำสั่งติดตั้ง dependency ตามไฟล์ที่ merge เปลี่ยน (หนึ่งบรรทัดต่อโฟลเดอร์: "<โฟลเดอร์>|<คำสั่ง>|<ไฟล์>")
+# • ใช้ lockfile ก่อน package.json เพื่อให้ได้เวอร์ชันเดียวกับที่ @dev / @qa ทดสอบ
+dependency_install_hints() {
+  local from_rev="$1" to_rev="$2"
+  git -C "$PROJECT_DIR" diff --name-only "$from_rev" "$to_rev" 2>/dev/null | awk -F/ '
+    {
+      f = $NF; d = (NF > 1) ? substr($0, 1, length($0) - length(f) - 1) : "."
+      c = ""
+      if (f == "package-lock.json")      { c = "npm ci" }
+      else if (f == "pnpm-lock.yaml")    { c = "pnpm install --frozen-lockfile" }
+      else if (f == "yarn.lock")         { c = "yarn install --frozen-lockfile" }
+      else if (f == "bun.lock" || f == "bun.lockb") { c = "bun install" }
+      else if (f == "package.json")      { c = "npm install" }
+      else if (f == "pubspec.yaml" || f == "pubspec.lock") { c = "flutter pub get" }
+      else if (f == "uv.lock")           { c = "uv sync" }
+      else if (f == "poetry.lock")       { c = "poetry install" }
+      else if (f == "requirements.txt")  { c = "pip install -r requirements.txt" }
+      else if (f == "go.mod" || f == "go.sum") { c = "go mod download" }
+      else if (f == "Cargo.toml" || f == "Cargo.lock") { c = "cargo fetch" }
+      else if (f == "Gemfile" || f == "Gemfile.lock") { c = "bundle install" }
+      else if (f == "composer.json" || f == "composer.lock") { c = "composer install" }
+      if (c == "") next
+      k = d SUBSEP c
+      if (!(k in seen)) { seen[k] = 1; order[++n] = k; file[k] = $0 }
+    }
+    END {
+      for (i = 1; i <= n; i++) {
+        k = order[i]; split(k, p, SUBSEP)
+        # มี lockfile ของ Node ในโฟลเดอร์เดียวกัน ➔ ไม่ต้องแสดง npm install จาก package.json ซ้ำ
+        if (p[2] == "npm install") {
+          dup = 0
+          for (j = 1; j <= n; j++) { split(order[j], q, SUBSEP); if (q[1] == p[1] && q[2] ~ /^(npm ci|pnpm|yarn|bun)/) dup = 1 }
+          if (dup) continue
+        }
+        print p[1] "|" p[2] "|" file[k]
+      }
+    }'
+}
+
+print_dependency_install_hints() {
+  local hints
+  hints="$(dependency_install_hints "$1" "$2")"
+  [ -n "$hints" ] || return 0
+  printf "%s▲ ผสานแล้วมีการเปลี่ยนไฟล์ dependency — ติดตั้งในโฟลเดอร์หลักก่อนใช้งาน%s\n" "$C_WARN" "$C_RESET"
+  printf "%s  (dependency ที่ @dev ติดตั้งไว้อยู่ใน Worktree ที่ลบไปแล้ว)%s\n" "$C_MUTED" "$C_RESET"
+  local dir cmd file
+  while IFS='|' read -r dir cmd file; do
+    if [ "$dir" = "." ]; then
+      printf "    %s%s%s  %s(%s)%s\n" "$C_BOLD" "$cmd" "$C_RESET" "$C_MUTED" "$file" "$C_RESET"
+    else
+      printf "    %scd %s && %s%s  %s(%s)%s\n" "$C_BOLD" "$dir" "$cmd" "$C_RESET" "$C_MUTED" "$file" "$C_RESET"
+    fi
+  done <<< "$hints"
 }
 
 run_init_greenfield() {
