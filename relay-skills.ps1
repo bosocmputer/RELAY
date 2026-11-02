@@ -124,14 +124,29 @@ function Sync-ManifestSkills([string]$ModeLabel) {
         }
     }
 
-    if (Get-Command claude -ErrorAction SilentlyContinue) {
-        Write-Host "🔌 ผูก Playwright MCP เข้ากับ Claude Code..." -ForegroundColor Cyan
-        try { claude mcp add -s user playwright cmd /c npx $PlaywrightMcpPkg } catch {}
+    # ผูก Playwright MCP แล้วแจ้งผลจริงรายค่าย (มีอยู่แล้ว ➔ ใช้ของเดิม ไม่ทับ)
+    foreach ($McpCli in @("claude", "codex")) {
+        if (-not (Get-Command $McpCli -ErrorAction SilentlyContinue)) {
+            Write-Host "○ Playwright MCP ($McpCli): ไม่พบ CLI — ข้าม" -ForegroundColor DarkGray
+            continue
+        }
+        & $McpCli mcp get playwright *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "● Playwright MCP ($McpCli): มีอยู่แล้ว — ใช้ของเดิม" -ForegroundColor Green
+            continue
+        }
+        if ($McpCli -eq "claude") {
+            $McpOut = claude mcp add -s user playwright cmd /c npx $PlaywrightMcpPkg 2>&1
+        } else {
+            $McpOut = codex mcp add playwright -- cmd /c npx $PlaywrightMcpPkg 2>&1
+        }
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "● Playwright MCP ($McpCli): เพิ่มแล้ว ($PlaywrightMcpPkg)" -ForegroundColor Green
+        } else {
+            Write-Host "✖ Playwright MCP ($McpCli): เพิ่มไม่สำเร็จ — $(($McpOut | Select-Object -Last 1))" -ForegroundColor Red
+        }
     }
-    if (Get-Command codex -ErrorAction SilentlyContinue) {
-        Write-Host "🔌 ผูก Playwright MCP เข้ากับ Codex CLI..." -ForegroundColor Cyan
-        try { codex mcp add playwright -- cmd /c npx $PlaywrightMcpPkg } catch {}
-    }
+    Write-Host "○ Playwright MCP (agy): RELAY ยังไม่ได้ตั้งให้ค่ายนี้" -ForegroundColor DarkGray
 
     Write-Host "==================================================================" -ForegroundColor Green
     Write-Host "✅ [RELAY Skills] $ModeLabelเสร็จสมบูรณ์! ทุกสกิลเป็นเวอร์ชันล่าสุดแล้ว" -ForegroundColor Green
