@@ -3914,13 +3914,43 @@ launch_provider_cli() {
   print_step_telemetry_box "$role_name" "$provider" "$configured_model" "$cli_rc" "$run_start" "$run_end" "$q_before" "$q_after" "$tok_usage"
 }
 
+# pathspec ที่ RELAY ไม่ commit ให้อัตโนมัติ: เอกสาร .relay/ และไฟล์ความลับ/ฐานข้อมูลต้องห้าม
+RELAY_COMMIT_EXCLUDES=(':(exclude).relay' ':(exclude).env' ':(exclude).env.*' ':(exclude)**/.env' ':(exclude)**/.env.*'
+  ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db')
+
+# เตรียม repo ให้มี commit แรกก่อนแยก Worktree
+# • โฟลเดอร์มีโค้ดเดิมแต่ยังไม่มี commit ➔ ถามก่อน commit โค้ดเดิม (ถ้า commit ว่าง Worktree ของ @dev จะไม่เห็นโค้ดเดิม)
 ensure_git_repo_ready_for_worktree() {
   if [ ! -d "$PROJECT_DIR/.git" ]; then
     printf "%sกำลังเตรียม Git Repository (git init -b main) สำหรับโครงการ %s...%s\n" "$C_ACCENT" "$PROJECT_NAME" "$C_RESET"
     git -C "$PROJECT_DIR" init -b main >/dev/null 2>&1 || git -C "$PROJECT_DIR" init >/dev/null 2>&1 || true
   fi
-  if [ -d "$PROJECT_DIR/.git" ] && ! git -C "$PROJECT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+  [ -d "$PROJECT_DIR/.git" ] || return 0
+  git -C "$PROJECT_DIR" rev-parse --verify HEAD >/dev/null 2>&1 && return 0
+
+  ensure_relay_gitignore
+  local files file_count
+  files="$(git -C "$PROJECT_DIR" ls-files --others --exclude-standard -- . "${RELAY_COMMIT_EXCLUDES[@]}" 2>/dev/null | grep -vxF '.gitignore' || true)"
+  file_count="$(printf "%s" "$files" | grep -c . || true)"
+  if [ "$file_count" -eq 0 ]; then
+    git -C "$PROJECT_DIR" add -- .gitignore >/dev/null 2>&1 || true
     git -C "$PROJECT_DIR" commit --allow-empty -m "chore: initial commit for RELAY" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  echo ""
+  printf "%s▲ โปรเจกต์นี้ยังไม่มี commit แรก แต่มีไฟล์เดิม %s ไฟล์ เช่น:%s\n" "$C_WARN" "$file_count" "$C_RESET"
+  printf "%s\n" "$files" | head -n 5 | sed 's/^/    /'
+  printf "%s  @dev ทำงานใน Worktree ที่แยกจาก commit — ไฟล์ที่ไม่ได้ commit จะไม่อยู่ใน Worktree%s\n" "$C_MUTED" "$C_RESET"
+  printf "%s  ไม่รวม .relay/ และไฟล์ความลับ (.env*, *.key, *.pem, *.sqlite*, *.db) • ตรวจ .gitignore ก่อน (เช่น node_modules/)%s\n" "$C_MUTED" "$C_RESET"
+  interactive_menu "commit ไฟล์เดิมเป็น commit แรกก่อนสร้าง Worktree?" 0 \
+    "y|★ commit ไฟล์เดิม ${file_count} ไฟล์เป็น commit แรก" \
+    "b|ยกเลิก — จัดการ git เอง (git add แล้ว git commit) แล้วค่อยกลับมา"
+  [ "$MENU_RESULT" = "y" ] || return 0
+
+  local commit_out=""
+  if ! commit_out="$( { git -C "$PROJECT_DIR" add -A -- . "${RELAY_COMMIT_EXCLUDES[@]}" && git -C "$PROJECT_DIR" commit -m "chore: initial snapshot of existing project (RELAY)"; } 2>&1 )"; then
+    printf "\n%s✖ commit แรกไม่สำเร็จ:%s\n%s\n" "$C_ERR" "$C_RESET" "$(printf "%s" "$commit_out" | tail -n 8)"
   fi
 }
 
@@ -3985,7 +4015,7 @@ prepare_task_worktree() {
   ensure_git_repo_ready_for_worktree
   if ! git -C "$PROJECT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
     echo ""
-    printf "%s✖ ไม่สามารถเตรียม Git Repository ได้ (ยังไม่มี commit แรก — ตรวจสอบ git config user.name / user.email)%s\n" "$C_ERR" "$C_RESET"
+    printf "%s✖ ยังไม่สร้าง Worktree เพราะโปรเจกต์ยังไม่มี commit แรก — commit โค้ดเดิมเอง หรือตรวจสอบ git config user.name / user.email%s\n" "$C_ERR" "$C_RESET"
     return 1
   fi
   ensure_relay_gitignore
@@ -5719,7 +5749,7 @@ run_phase_5_merge() {
   case "$MENU_RESULT" in
     c|C)
       local commit_out=""
-      if ! commit_out="$( { git -C "$worktree_dir" add -A -- . ':(exclude).relay' ':(exclude).env' ':(exclude).env.*' ':(exclude)**/.env' ':(exclude)**/.env.*' ':(exclude)*.key' ':(exclude)*.pem' ':(exclude)*.sqlite' ':(exclude)*.sqlite3' ':(exclude)*.db' && git -C "$worktree_dir" commit -m "feat(${task}): งานจาก @dev (RELAY auto-commit ก่อนผสาน)"; } 2>&1 )"; then
+      if ! commit_out="$( { git -C "$worktree_dir" add -A -- . "${RELAY_COMMIT_EXCLUDES[@]}" &&git -C "$worktree_dir" commit -m "feat(${task}): งานจาก @dev (RELAY auto-commit ก่อนผสาน)"; } 2>&1 )"; then
         printf "\n%s✖ commit ใน Worktree ไม่สำเร็จ — ยังไม่มีการผสานหรือลบใดๆ:%s\n%s\n" "$C_ERR" "$C_RESET" "$(printf "%s" "$commit_out" | tail -n 8)"
         return 1
       fi
