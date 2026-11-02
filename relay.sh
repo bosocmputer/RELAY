@@ -2119,6 +2119,52 @@ get_role_progressive_skills_note() {
   printf " [Progressive Skills Index — เปิดอ่านไฟล์ SKILL.md หรือรันสคริปต์ใน scripts/ เฉพาะเมื่อตรงกับงานนี้เท่านั้น: %s]" "$joined"
 }
 
+# เลือก skill ที่ตำแหน่งนี้ต้องอ่านก่อนเริ่มงาน จากไฟล์ในโปรเจกต์และเอกสารใบงาน (สคริปต์ ไม่เรียก AI)
+# • ถ้าแค่บอกว่า "อ่านเมื่อตรงกับงาน" AI มักข้าม (session log จริง: claude/agy ไม่เปิด SKILL.md เลย)
+# • คืนเฉพาะ skill ที่อยู่ในชุดทักษะของตำแหน่งนั้น (เคารพที่ผู้ใช้ปรับใน [g])
+detect_required_skills() {
+  local role_key="$1" role_skills="$2"
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK" docs="" picked=""
+  [ -n "$ACTIVE_TASK" ] && docs="$(cat "$task_dir/SPEC.md" "$task_dir/ARCH.md" "$task_dir/PLAN.md" 2>/dev/null)"
+  local files
+  files="$(cd "$PROJECT_DIR" 2>/dev/null && find . -maxdepth 4 \( -name node_modules -o -name .git -o -name .relay -o -name build -o -name dist \) -prune -o -type f -print 2>/dev/null | head -n 2000)"
+  local has_web=0 has_react=0 has_flutter=0 has_db=0 has_code=0
+  printf "%s" "$files" | grep -qE '\.(tsx|jsx|vue|svelte|html|css)$' && has_web=1
+  printf "%s" "$docs" | grep -qiE 'react|next\.js|nextjs|vue|svelte|tailwind|vite|html|css|frontend|หน้าเว็บ|เว็บไซต์|landing page' && has_web=1
+  { grep -qE '"(react|next)"' "$PROJECT_DIR/package.json" 2>/dev/null || printf "%s" "$docs" | grep -qiE 'react|next\.js|nextjs'; } && has_react=1
+  { [ -f "$PROJECT_DIR/pubspec.yaml" ] || printf "%s" "$docs" | grep -qiE 'flutter'; } && has_flutter=1
+  { [ -d "$PROJECT_DIR/supabase" ] || printf "%s" "$files" | grep -qE '\.sql$' || printf "%s" "$docs" | grep -qiE 'supabase|postgres'; } && has_db=1
+  printf "%s" "$files" | grep -qvE '^\./(\.gitignore|README(\.md)?|LICENSE)$' && has_code=1
+
+  case "$role_key" in
+    po)
+      picked="brainstorming"
+      [ "$has_code" -eq 0 ] && picked="$picked founder-skill"
+      ;;
+    arch)
+      picked="writing-plans"
+      [ "$has_db" -eq 1 ] && picked="$picked supabase-postgres-best-practices"
+      ;;
+    dev)
+      picked="test-driven-development"
+      [ "$has_web" -eq 1 ] && picked="$picked impeccable lucide-icons"
+      [ "$has_react" -eq 1 ] && picked="$picked vercel-react-best-practices"
+      [ "$has_flutter" -eq 1 ] && picked="$picked flutter-best-practices"
+      [ "$has_db" -eq 1 ] && picked="$picked supabase-postgres-best-practices"
+      case "$(qa_verdict "$task_dir")" in FAIL\|*) picked="$picked systematic-debugging" ;; esac
+      ;;
+    qa)
+      picked="verification-before-completion differential-review"
+      [ "$has_web" -eq 1 ] && picked="$picked playwright-qa"
+      ;;
+  esac
+  local sk out=""
+  for sk in $picked; do
+    case " $(printf "%s" "$role_skills" | tr ',' ' ') " in *" $sk "*) out="$out $sk" ;; esac
+  done
+  printf "%s" "${out# }"
+}
+
 get_core_role_prompt_note() {
   local role_key="$1"
   local ep sk_def sk_cur prog_idx extra=""
@@ -2128,7 +2174,21 @@ get_core_role_prompt_note() {
   if [ -n "$sk_cur" ] && [ "$sk_cur" != "$sk_def" ]; then
     extra="${extra} (ใช้ชุดทักษะประจำบทบาท: ${sk_cur})"
   fi
-  prog_idx="$(get_role_progressive_skills_note "$role_key" "$sk_cur")"
+  # skill ที่ตรงกับงาน ➔ สั่งให้อ่านพร้อมพาธ • ที่เหลือในชุดยังเป็นสารบัญให้เปิดเมื่อจำเป็น
+  local required req_tsv req_list="" slug md_path desc scripts rest="" sk
+  required="$(detect_required_skills "$role_key" "$sk_cur")"
+  if [ -n "$required" ]; then
+    req_tsv="$(build_skill_index_tsv "$required")"
+    while IFS=$'\t' read -r slug md_path desc scripts; do
+      [ -z "$slug" ] && continue
+      case " $required " in *" $slug "*) req_list="${req_list:+$req_list | }${slug} (${md_path})" ;; esac
+    done <<< "$req_tsv"
+  fi
+  [ -n "$req_list" ] && extra="${extra} [ก่อนเริ่มงานต้องเปิดอ่าน SKILL.md เหล่านี้ให้ครบ แล้วทำตามแนวทางในนั้น (RELAY เลือกจากไฟล์ในโปรเจกต์และเอกสารใบงาน): ${req_list}]"
+  for sk in $(printf "%s" "$sk_cur" | tr ',' ' '); do
+    case " $required " in *" $sk "*) ;; *) rest="$rest $sk" ;; esac
+  done
+  [ -n "${rest# }" ] && prog_idx="$(get_role_progressive_skills_note "$role_key" "${rest# }")"
   if [ -n "$prog_idx" ]; then
     extra="${extra}${prog_idx}"
   fi
