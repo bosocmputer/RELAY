@@ -3937,6 +3937,8 @@ launch_provider_cli() {
   local role_name="$3"
   local work_dir="$4"
   local initial_prompt="$5"
+  # คำแนะนำ /exit ในกรอบด้านล่างถูกหน้าจอของ CLI บัง ➔ ให้ AI บอกผู้ใช้เองเมื่อทำงานเสร็จ
+  initial_prompt="${initial_prompt} • เมื่อทำงานของขั้นตอนนี้เสร็จแล้ว ให้ปิดท้ายคำตอบด้วยบรรทัด: 'เสร็จขั้นตอนนี้แล้ว — พิมพ์ /exit เพื่อกลับไปที่ RELAY แล้วเลือกขั้นถัดไป'"
 
   echo ""
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
@@ -3949,7 +3951,7 @@ launch_provider_cli() {
   printf "%s│%s คำสั่งเริ่มต้น (%s):\n" "$C_ACCENT" "$C_RESET" "$clip_note"
   printf "%s%s%s\n" "$C_MUTED" "$initial_prompt" "$C_RESET"
   printf "%s├────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
-  printf "%s│%s เมื่อสร้างเอกสารของขั้นตอนนี้เสร็จแล้ว ให้พิมพ์ %s/exit%s เพื่อกลับมาหน้าจอ RELAY\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  printf "%s│%s %s▶ ทำงานเสร็จแล้วให้พิมพ์ /exit เพื่อกลับมาที่ RELAY — ระบบจะเสนอขั้นถัดไปให้%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN$C_BOLD" "$C_RESET"
   printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
 
   if command -v pbcopy >/dev/null 2>&1; then
@@ -4213,6 +4215,78 @@ create_new_task() {
   return 0
 }
 
+# หลังกลับจาก CLI ของขั้นแบบโต้ตอบ: ได้ผลของขั้นนั้นแล้ว ➔ เสนอขั้นถัดไปทันที (ไม่ต้องกลับหน้าหลักแล้วเลือกเอง)
+# ยังไม่ได้ผล ➔ บอกตรงๆ ว่าขาดอะไร • stdin หมด/ไม่ใช่ TTY ➔ เมนูคืนค่า b จึงไม่ไปต่อเอง
+offer_next_step() {
+  local done_step="$1"
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
+  local items=() title=""
+  echo ""
+  case "$done_step" in
+    1)
+      if [ ! -f "$task_dir/SPEC.md" ]; then
+        printf "%s▲ ยังไม่พบ .relay/tasks/%s/SPEC.md — กด [1] เพื่อคุยกับ @po ต่อ%s\n" "$C_WARN" "$ACTIVE_TASK" "$C_RESET"
+        return 0
+      fi
+      title="● ได้ SPEC.md แล้ว — ทำขั้นถัดไปเลยไหม?"
+      items=("2|★ ขั้นตอนที่ 2: @arch ออกแบบและวางแผน (ARCH.md, PLAN.md)" "a|ลูปอัตโนมัติ (2 → 3 ⇄ 4)")
+      ;;
+    2)
+      if [ ! -f "$task_dir/PLAN.md" ]; then
+        printf "%s▲ ยังไม่พบ .relay/tasks/%s/PLAN.md — กด [2] เพื่อให้ @arch ทำต่อ%s\n" "$C_WARN" "$ACTIVE_TASK" "$C_RESET"
+        return 0
+      fi
+      title="● ได้ PLAN.md แล้ว — ทำขั้นถัดไปเลยไหม?"
+      items=("3|★ ขั้นตอนที่ 3: @dev เขียนโค้ด + เทสต์ใน Git Worktree" "a|ลูปอัตโนมัติ (3 ⇄ 4)")
+      ;;
+    3)
+      local wt="$RELAY_DIR/worktrees/$ACTIVE_TASK" changes=0
+      if [ -d "$wt" ]; then
+        changes="$(git -C "$PROJECT_DIR" rev-list --count "HEAD..feat/$ACTIVE_TASK" 2>/dev/null || echo 0)"
+        [ "$changes" -gt 0 ] || changes="$(worktree_dirty_files "$wt" | grep -c . || true)"
+      fi
+      if [ "${changes:-0}" -eq 0 ]; then
+        printf "%s▲ ยังไม่พบโค้ดใหม่ในกิ่ง feat/%s — กด [3] เพื่อให้ @dev ทำต่อ%s\n" "$C_WARN" "$ACTIVE_TASK" "$C_RESET"
+        return 0
+      fi
+      title="● @dev มีงานในกิ่ง feat/${ACTIVE_TASK} แล้ว — ทำขั้นถัดไปเลยไหม?"
+      items=("4|★ ขั้นตอนที่ 4: @qa ตรวจเทสต์และความปลอดภัย")
+      ;;
+    4|fast)
+      local res
+      res="$(qa_verdict "$task_dir")"
+      case "$res" in
+        "PASS|self")
+          title="● @dev รายงานว่าผ่าน (ตรวจเอง ยังไม่ผ่าน @qa) — ทำขั้นถัดไปเลยไหม?"
+          items=("4|★ ขั้นตอนที่ 4: ให้ @qa ตรวจก่อนผสาน (แนะนำ)" "5|ขั้นตอนที่ 5: ผสานโค้ดเลย")
+          ;;
+        PASS\|*)
+          title="● @qa ตรวจผ่าน (PASS) — ผสานโค้ดเลยไหม?"
+          items=("5|★ ขั้นตอนที่ 5: ผสานโค้ดเข้ากิ่งหลักและปิดงาน")
+          ;;
+        FAIL\|*)
+          title="▲ @qa ตรวจไม่ผ่าน (FAIL) — ดูรายละเอียดใน QA_REPORT.md"
+          items=("3|★ ขั้นตอนที่ 3: ส่งกลับให้ @dev แก้ตามรายงาน")
+          ;;
+        *)
+          printf "%s▲ ยังไม่พบผลตรวจ (QA_VERDICT.json / QA_REPORT.md) — กด [4] เพื่อตรวจต่อ%s\n" "$C_WARN" "$C_RESET"
+          return 0
+          ;;
+      esac
+      ;;
+    *) return 0 ;;
+  esac
+  interactive_menu "$title" 0 "${items[@]}" "b|กลับหน้าหลัก"
+  case "$MENU_RESULT" in
+    2) run_phase_2_arch ;;
+    3) run_phase_3_dev ;;
+    4) run_phase_4_qa ;;
+    5) run_phase_5_merge ;;
+    a) run_auto_relay_loop ;;
+  esac
+  return 0
+}
+
 run_phase_1_po() {
   require_all_roles_ready || return 0
   refresh_project_paths
@@ -4233,6 +4307,7 @@ run_phase_1_po() {
   local prompt="@po ฉันต้องการพัฒนาฟีเจอร์สำหรับใบงาน .relay/tasks/$ACTIVE_TASK เกี่ยวกับ: ${user_goal:-ตามที่ฉันกำลังจะอธิบายต่อไปนี้}${role_note} กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md (ถ้ามี) หากข้อมูลชัดเจนเพียงพอแล้ว ให้สรุปขอบเขตงานและเกณฑ์ตรวจรับ (Acceptance Criteria) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md ได้ทันที (เน้น Bullet Point ความยาวไม่เกิน 40 บรรทัด) แต่หากมีประเด็นสำคัญที่ยังไม่ชัดเจน ให้ถามรวบยอดในครั้งเดียวสั้นๆ ไม่เกิน 3 ข้อก่อนเขียน SPEC.md (ห้ามแก้ไขโค้ดในขั้นตอนนี้)"
   launch_provider_cli "$ROLE_PO" "$MODEL_PO" "ขั้นตอนที่ 1: @po ($(get_core_role_title po))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=1
+  offer_next_step 1
 }
 
 run_phase_2_arch() {
@@ -4245,6 +4320,7 @@ run_phase_2_arch() {
   local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ): 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm ($(get_core_role_title arch))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
+  offer_next_step 2
 }
 
 run_phase_3_dev() {
@@ -4264,6 +4340,7 @@ run_phase_3_dev() {
   local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   LAST_COMPLETED_PHASE=3
+  offer_next_step 3
 }
 
 # โหมดด่วน Fast Track ([x] / /fast / relay fast): สำหรับงานเล็กหรือแก้บั๊ก ข้าม @po และ @arch ส่งตรงให้ @dev ใน Worktree ทันที
@@ -4315,6 +4392,7 @@ run_fast_track_dev() {
     sync_task_docs_from_worktree "$TASK_WORK_DIR/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
   LAST_COMPLETED_PHASE=4
+  offer_next_step fast
 }
 
 run_phase_4_qa() {
@@ -4336,6 +4414,7 @@ run_phase_4_qa() {
     sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
   LAST_COMPLETED_PHASE=4
+  offer_next_step 4
 }
 
 # ─── 13.4 การจัดการบทบาท Agent, คำสั่ง Prompt และทักษะ ([g] / /agents / relay agents) ───
