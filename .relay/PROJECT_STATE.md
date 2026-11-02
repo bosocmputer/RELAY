@@ -52,6 +52,7 @@
   - ครอบคลุมการติดตั้งตั้งแต่ศูนย์ การใช้งานทั้งในโครงการใหม่ (Greenfield) และโครงการเดิม (Brownfield), ชี้แจงชัดเจนว่าโฟลเดอร์ `.relay/` คือกลไกหลักโดย **Obsidian เป็นเพียงทางเลือกเสริม (Optional Viewer)**, ทุกบทบาทสลับค่าย/โมเดล AI ได้อิสระผ่านปุ่ม `[c]`, ข้อความในเอกสารและ UI ถูกตรวจด้วย `tests/test_performance_and_accuracy.sh` ว่าไม่มีคำอ้างเกินจริงที่กำหนดไว้, อธิบายข้อจำกัดเรื่อง **Ceremony Overhead** คู่กับโหมด `[x] Fast Track` และระบบวัด Token จาก session log (`[v]` / `relay stats`), รวมถึงแม่แบบสำหรับสายงานผลิตภาพยนตร์/วิดีโอ และสายงานบริหารธุรกิจ/บัญชี
 
 ## ประวัติใบงานที่ผสานแล้ว (RELAY อัปเดตอัตโนมัติ)
+- `2026-11-02` `20261102-guided-next-step` — ใบงาน: บอกผู้ใช้ว่าต้องทำอะไรต่อหลังจบแต่ละขั้น (20261102-guided-next-step) (merge `a20bca0`)
 - `2026-11-02` `20261102-playwright-mcp-check` — ใบงาน: ตรวจและเพิ่ม Playwright MCP ให้ค่ายของ @qa (20261102-playwright-mcp-check) (merge `90f77ea`)
 - `2026-11-02` `20261102-code-quality-rules` — ใบงาน: กฎคุณภาพโค้ดสำหรับ @dev และ @qa ใช้ได้ทุกภาษา (20261102-code-quality-rules) (merge `fc4bf38`)
 - `2026-11-02` `20261102-first-commit-keeps-code` — ใบงาน: commit แรกต้องรวมโค้ดเดิมของโปรเจกต์ (20261102-first-commit-keeps-code) (merge `70612b4`)
@@ -66,4 +67,3 @@
 - `2026-10-31` `20261031-skill-rewrite-on-reject` — ใบงานด่วน: ไม่เขียน SKILL.md ใหม่เมื่อไม่ได้อนุมัติกฎใด (20261031-skill-rewrite-on-reject) (merge `a27e546`)
 - `2026-10-31` `20261031-performance-and-accuracy-cleanup` — ใบงานปรับความเร็ว ลด Token และแก้ข้อความอ้างเกินจริง (20261031-performance-and-accuracy-cleanup) (merge `2aa0e94`)
 - `2026-10-31` `20261031-medium-fixes-and-personal-rules` — ใบงานแก้ไขปัญหาระดับ MEDIUM (20261031-medium-fixes-and-personal-rules) (merge `4ef0aa7`)
-- `2026-10-31` `20261031-high-severity-fixes` — ใบงานแก้ไขปัญหาระดับ HIGH จากผลตรวจ Deep Audit (20261031-high-severity-fixes) (merge `eccc619`)
