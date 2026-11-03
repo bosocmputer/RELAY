@@ -4033,6 +4033,10 @@ print(f"{ACC}│{RST}  {MUTED}รวม {len(rows)} ขั้น • ใช้�
 PYEOF
 }
 
+# codex sandbox (workspace-write) ปิดเน็ตเป็นค่าเริ่มต้น ➔ @qa/@dev ต่อฐานข้อมูล cloud หรือดาวน์โหลดแพ็กเกจไม่ได้
+# • เปิดเฉพาะเน็ต ไม่เปลี่ยนโหมด sandbox (ยังเขียนได้เฉพาะในโฟลเดอร์งาน)
+RELAY_CODEX_NET_CONFIG='sandbox_workspace_write.network_access=true'
+
 launch_provider_cli() {
   local provider="$1"
   local configured_model="$2"
@@ -4079,7 +4083,7 @@ launch_provider_cli() {
         exit "$rc"
         ;;
       claude) claude --model "$configured_model" "$initial_prompt" 2> >(filter_claude_permission_warnings) ;;
-      codex)  codex -m "$configured_model" "$initial_prompt" ;;
+      codex)  codex -m "$configured_model" -c "$RELAY_CODEX_NET_CONFIG" "$initial_prompt" ;;
     esac
   ) || cli_rc=$?
   RELAY_CHILD_ACTIVE=0
@@ -4251,7 +4255,8 @@ sync_task_docs_from_worktree() {
   for f in "$src"/* ; do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
-      LOOP_LOG.md|RUN_LOG.jsonl) continue ;;
+      # ไฟล์ของสคริปต์ (หลักฐานเทสต์ การอนุมัติคำสั่ง ประวัติผลตรวจ) ห้ามถูกสำเนาใน Worktree เขียนทับ
+      LOOP_LOG.md|RUN_LOG.jsonl|EVIDENCE.log|GATE_APPROVED|QA_HISTORY.jsonl) continue ;;
     esac
     cp -R "$f" "$dst/" 2>/dev/null || true
   done
@@ -4321,6 +4326,247 @@ guard_spec_after_dev() {
     printf "%s● คืน SPEC.md เป็นฉบับเดิมแล้ว%s\n" "$C_OK" "$C_RESET"
   fi
   rm -f "$snap"
+}
+
+# ─── ด่านเทสต์ที่สคริปต์รันเอง (ENV_CHECK / TEST ท้าย PLAN.md) ───
+# ผลเทสต์ที่ใช้ตัดสินต้องมาจากสคริปต์ ไม่ใช่จากรายงานของ AI • EVIDENCE.log / GATE_APPROVED / QA_HISTORY.jsonl
+# ในโฟลเดอร์ใบงานหลักเป็นของสคริปต์ (ไม่ถูก sync ทับจาก Worktree) — สำเนาใน Worktree มีไว้ให้ AI อ่านเท่านั้น
+get_arch_gate_note() {
+  printf ' • ท้าย PLAN.md ให้ใส่คำสั่งที่ RELAY จะรันเองเป็นหลักฐาน บรรทัดละ 1 คำสั่ง (รันจากรากโปรเจกต์ได้โดยไม่ต้องโต้ตอบ ห้ามเป็นคำสั่งติดตั้งหรือแก้ไฟล์): `ENV_CHECK: <คำสั่ง>` ตรวจว่าเครื่องมือ/บริการที่เทสต์ต้องใช้พร้อม เช่น ฐานข้อมูล (ไม่มีให้ข้าม) และ `TEST: <คำสั่ง>` ชุดทดสอบ/ตรวจ type/lint ที่ต้องผ่านก่อนส่งงาน'
+}
+
+# คำสั่งตามชนิด (ENV_CHECK|TEST) จาก PLAN.md — รองรับ bullet, ตัวหนา และ backtick ครอบ
+plan_gate_commands() {
+  local kind="$1" plan="$RELAY_DIR/tasks/$ACTIVE_TASK/PLAN.md" line cmd
+  [ -f "$plan" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in [-*]" "*) line="${line#??}"; line="${line#"${line%%[![:space:]]*}"}" ;; esac
+    line="${line#\*\*}"
+    line="${line#\`}"
+    case "$line" in "$kind:"*) ;; *) continue ;; esac
+    cmd="${line#"$kind:"}"
+    cmd="${cmd#\*\*}"
+    cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+    cmd="${cmd%"${cmd##*[![:space:]]}"}"
+    cmd="${cmd#\`}"
+    cmd="${cmd%\`}"
+    [ -n "$cmd" ] && printf '%s\n' "$cmd"
+  done < "$plan"
+  return 0
+}
+
+gate_commands_sig() {
+  { plan_gate_commands ENV_CHECK | sed 's/^/ENV_CHECK: /'; plan_gate_commands TEST | sed 's/^/TEST: /'; } | cksum | awk '{print $1 "-" $2}'
+}
+
+# คำสั่งใน PLAN.md มาจาก AI แต่รันนอก sandbox ของ AI ➔ ผู้ใช้ต้องอนุมัติก่อน (ถามใหม่เมื่อรายการคำสั่งเปลี่ยน)
+# คืน 0 = รันด่านได้ • 1 = ไม่มีคำสั่ง หรือไม่อนุมัติ
+RELAY_GATE_DECLINED=""
+gate_ensure_approved() {
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK" envs tests sig c
+  envs="$(plan_gate_commands ENV_CHECK)"
+  tests="$(plan_gate_commands TEST)"
+  [ -n "$envs$tests" ] || return 1
+  sig="$(gate_commands_sig)"
+  [ "$(cat "$task_dir/GATE_APPROVED" 2>/dev/null)" = "$sig" ] && return 0
+  [ "$RELAY_GATE_DECLINED" = "$sig" ] && return 1
+  echo ""
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  printf "%s│%s %sคำสั่งตรวจใน PLAN.md ที่ RELAY จะรันเองใน Worktree (เพื่อเก็บหลักฐานเทสต์ที่ AI ปลอมไม่ได้)%s\n" "$C_ACCENT" "$C_RESET" "$C_BOLD" "$C_RESET"
+  while IFS= read -r c; do [ -n "$c" ] && printf "%s│%s   ENV_CHECK : %s\n" "$C_ACCENT" "$C_RESET" "$c"; done <<< "$envs"
+  while IFS= read -r c; do [ -n "$c" ] && printf "%s│%s   TEST      : %s\n" "$C_ACCENT" "$C_RESET" "$c"; done <<< "$tests"
+  printf "%s│%s  %sคำสั่งเหล่านี้ AI เป็นผู้เขียน — ตรวจให้แน่ใจว่าไม่มีคำสั่งลบหรือแก้ไฟล์ก่อนอนุมัติ%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$C_RESET"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_ACCENT" "$C_RESET"
+  interactive_menu "อนุมัติให้ RELAY รันคำสั่งเหล่านี้ไหม?" 0 \
+    "y|★ อนุมัติ (ถามใหม่เมื่อ PLAN.md เปลี่ยนคำสั่ง)" \
+    "n|ไม่รันด่านเทสต์ในรอบนี้"
+  if [ "$MENU_RESULT" = "y" ]; then
+    printf '%s\n' "$sig" > "$task_dir/GATE_APPROVED"
+    return 0
+  fi
+  RELAY_GATE_DECLINED="$sig"
+  return 1
+}
+
+# สถานะโค้ดใน Worktree (commit + การแก้ค้าง ไม่นับ .relay/) ➔ รู้ว่าหลักฐานล่าสุดยังตรงกับโค้ดปัจจุบันไหม
+gate_code_state() {
+  local wt="$1" head dirty
+  head="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null || echo none)"
+  dirty="$( { git -C "$wt" status --porcelain -- . ':(exclude).relay'; git -C "$wt" diff -- . ':(exclude).relay'; } 2>/dev/null | cksum | awk '{print $1}')"
+  printf '%s+%s' "$head" "$dirty"
+}
+
+# รันคำสั่งด่านใน Worktree • TEST ➔ เขียน EVIDENCE.log ในใบงานหลัก (+สำเนาใน Worktree ให้ AI อ่าน)
+# • ENV_CHECK แสดงผลบนจอเท่านั้น (ไม่ทับหลักฐาน TEST ครั้งก่อน) • คืน 0 = ผ่านทุกคำสั่ง
+run_gate_commands() {
+  local kind="$1" wt="$2" stage="$3"
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK" ev="$RELAY_DIR/tasks/$ACTIVE_TASK/EVIDENCE.log"
+  local timeout_s="${RELAY_GATE_TIMEOUT:-900}" cmds cmd out rc t0 secs mark total=0 failed=0 lines="" tails=""
+  [[ "$timeout_s" =~ ^[0-9]+$ ]] || timeout_s=900
+  cmds="$(plan_gate_commands "$kind")"
+  [ -n "$cmds" ] || return 0
+  out="$(mktemp -t relay-gate.XXXXXX 2>/dev/null)" || return 0
+  echo ""
+  printf "%s● RELAY รัน %s จาก PLAN.md เอง (หลักฐานจากสคริปต์ ไม่ใช่จาก AI)...%s\n" "$C_MUTED" "$kind" "$C_RESET"
+  while IFS= read -r cmd <&3; do
+    [ -n "$cmd" ] || continue
+    total=$((total + 1))
+    printf "%s  ▸ %s%s\n" "$C_MUTED" "$cmd" "$C_RESET"
+    rc=0
+    t0="$(date +%s)"
+    RELAY_CHILD_ACTIVE=1
+    ( cd "$wt" && run_with_timeout "$timeout_s" /bin/bash -c "$cmd" ) < /dev/null > "$out" 2>&1 || rc=$?
+    RELAY_CHILD_ACTIVE=0
+    secs=$(( $(date +%s) - t0 ))
+    mark="PASS"
+    if [ "$rc" -ne 0 ]; then
+      mark="FAIL"
+      failed=$((failed + 1))
+      tails="${tails}--- ท้ายผลลัพธ์ (exit=${rc}$([ "$rc" -eq 124 ] && printf ' หมดเวลา %s วินาที' "$timeout_s")): ${cmd}"$'\n'"$(tail -n 20 "$out")"$'\n'
+    fi
+    lines="${lines}[${mark}] exit=${rc} ${secs}s :: ${cmd}"$'\n'
+  done 3<<< "$cmds"
+  rm -f "$out"
+
+  local result="PASS" color="$C_OK" head_txt="● ${kind} ผ่านครบ ${total}/${total} คำสั่ง"
+  if [ "$failed" -gt 0 ]; then
+    result="FAIL"
+    color="$C_WARN"
+    head_txt="▲ ${kind} ไม่ผ่าน ${failed}/${total} คำสั่ง"
+  fi
+  if [ "$kind" = "TEST" ]; then
+    {
+      printf '# EVIDENCE — ผลรันคำสั่ง TEST ใน PLAN.md โดยสคริปต์ RELAY (ไม่ใช่รายงานของ AI)\n'
+      printf 'STAGE: %s • %s\n' "$stage" "$(date '+%Y-%m-%d %H:%M:%S')"
+      printf 'CODE: %s\n' "$(gate_code_state "$wt")"
+      printf 'RESULT: %s (%s/%s ไม่ผ่าน)\n' "$result" "$failed" "$total"
+      printf '%s' "$lines"
+      printf '%s' "$tails"
+    } > "$ev"
+    [ -d "$wt/.relay/tasks/$ACTIVE_TASK" ] && cp "$ev" "$wt/.relay/tasks/$ACTIVE_TASK/EVIDENCE.log" 2>/dev/null
+  fi
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$color" "$C_RESET"
+  printf "%s│%s %s%s%s\n" "$color" "$C_RESET" "$C_BOLD" "$head_txt" "$C_RESET"
+  printf '%s' "$lines" | sed "s/^/${color}│${C_RESET}   /"
+  if [ -n "$tails" ]; then
+    printf '%s' "$tails" | tail -n 12 | sed "s/^/${color}│${C_RESET}   /"
+  fi
+  [ "$kind" = "TEST" ] && printf "%s│%s  • หลักฐาน: .relay/tasks/%s/EVIDENCE.log\n" "$color" "$C_RESET" "$ACTIVE_TASK"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$color" "$C_RESET"
+  [ "$failed" -eq 0 ]
+}
+
+# ก่อนเปิด @dev: ENV_CHECK ไม่ผ่าน ➔ ไม่เปิด AI (interactive ให้เลือก ตรวจใหม่/ทำต่อ/กลับ • loop คืน 1 ให้หยุด)
+# คืน 0 = เปิด @dev ได้
+gate_env_before_dev() {
+  local wt="$1" mode="${2:-interactive}"
+  gate_ensure_approved || return 0
+  [ -n "$(plan_gate_commands ENV_CHECK)" ] || return 0
+  while ! run_gate_commands ENV_CHECK "$wt" before-dev; do
+    [ "$mode" = "loop" ] && return 1
+    printf "%s▲ สภาพแวดล้อมยังรันเทสต์ไม่ได้ — ถ้าเปิด @dev ตอนนี้ เทสต์ส่วนนี้จะพิสูจน์ไม่ได้ทั้ง @dev และ @qa (ยังไม่เปิด AI)%s\n" "$C_WARN" "$C_RESET"
+    interactive_menu "เลือกการดำเนินการ" 0 \
+      "r|★ ตรวจใหม่ (หลังเตรียมเครื่องมือ/บริการแล้ว)" \
+      "c|เปิด @dev ต่อ (เช่น ให้ @dev ตั้งค่าสภาพแวดล้อมเอง)" \
+      "b|กลับหน้าหลัก"
+    case "$MENU_RESULT" in
+      r) continue ;;
+      c) return 0 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+gate_evidence_failed() {
+  grep -q '^RESULT: FAIL' "$1/EVIDENCE.log" 2>/dev/null
+}
+
+# ก่อน @qa: รัน TEST ใหม่เฉพาะเมื่อโค้ดเปลี่ยนจากหลักฐานล่าสุด (หลัง @dev ที่เพิ่งรันแล้วไม่รันซ้ำ)
+gate_tests_before_qa() {
+  local wt="$1" ev="$RELAY_DIR/tasks/$ACTIVE_TASK/EVIDENCE.log"
+  gate_ensure_approved || return 0
+  [ -n "$(plan_gate_commands TEST)" ] || return 0
+  if [ -f "$ev" ] && [ "$(sed -n 's/^CODE: //p' "$ev" | head -n 1)" = "$(gate_code_state "$wt")" ]; then
+    printf "%s● ใช้หลักฐานเทสต์ล่าสุดใน EVIDENCE.log (โค้ดไม่เปลี่ยนตั้งแต่รันครั้งก่อน)%s\n" "$C_MUTED" "$C_RESET"
+    return 0
+  fi
+  run_gate_commands TEST "$wt" before-qa || true
+}
+
+# ข้อความแนบ prompt ให้ AI อ่านหลักฐานของสคริปต์ (เฉพาะเมื่อมี EVIDENCE.log)
+get_evidence_prompt_note() {
+  local role="$1" ev="$RELAY_DIR/tasks/$ACTIVE_TASK/EVIDENCE.log"
+  [ -f "$ev" ] || return 0
+  if [ "$role" = "qa" ]; then
+    printf ' • ผลเทสต์ที่สคริปต์ RELAY รันเอง (TEST ใน PLAN.md) อยู่ที่ .relay/tasks/%s/EVIDENCE.log — ถ้ามีคำสั่งไม่ผ่าน ห้ามให้ PASS' "$ACTIVE_TASK"
+  else
+    printf ' • อ่านผลเทสต์ที่สคริปต์ RELAY รันเองล่าสุดใน .relay/tasks/%s/EVIDENCE.log ก่อน (ใช้เป็นหลักฐานหลัก ถ้ามีคำสั่งไม่ผ่านต้องแก้ให้ผ่าน)' "$ACTIVE_TASK"
+  fi
+}
+
+# ─── ประวัติผลตรวจรับ (สคริปต์เขียน) ➔ นับ FAIL ติดกันและดูแนวโน้มจำนวนข้อบกพร่อง ───
+record_qa_history() {
+  local d="$1" mode="$2" res
+  res="$(qa_verdict "$d")"
+  case "$res" in MISSING\|*) return 0 ;; esac
+  python3 - "$d" "$res" "$mode" <<'PYEOF' 2>/dev/null || true
+import json, os, sys, time
+d, res, mode = sys.argv[1:4]
+n = None
+try:
+    o = json.load(open(os.path.join(d, "QA_VERDICT.json"), encoding="utf-8"))
+    n = len(o.get("failed_criteria") or [])
+except Exception:
+    pass
+v, src = res.split("|", 1)
+row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "verdict": v, "source": src, "failed": n, "mode": mode}
+with open(os.path.join(d, "QA_HISTORY.jsonl"), "a", encoding="utf-8") as f:
+    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+PYEOF
+}
+
+qa_history_count() {
+  if [ -f "$1/QA_HISTORY.jsonl" ]; then awk 'END{print NR}' "$1/QA_HISTORY.jsonl"; else echo 0; fi
+}
+
+# คืน "<จำนวน FAIL ติดกันล่าสุด>|<จำนวนข้อบกพร่องต่อรอบ เช่น 3 → 4 → 3>"
+qa_fail_streak() {
+  local d="$1"
+  [ -f "$d/QA_HISTORY.jsonl" ] || { echo "0|"; return 0; }
+  python3 - "$d/QA_HISTORY.jsonl" <<'PYEOF' 2>/dev/null || echo "0|"
+import json, sys
+rows = []
+for l in open(sys.argv[1], encoding="utf-8"):
+    try:
+        rows.append(json.loads(l))
+    except Exception:
+        pass
+streak = []
+for r in reversed(rows):
+    if r.get("verdict") != "FAIL":
+        break
+    streak.append(r)
+streak.reverse()
+trend = " → ".join("?" if r.get("failed") is None else str(r["failed"]) for r in streak[-6:])
+print("%d|%s" % (len(streak), trend))
+PYEOF
+}
+
+print_qa_streak_warning() {
+  local s n trend
+  s="$(qa_fail_streak "$1")"
+  n="${s%%|*}"
+  trend="${s#*|}"
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 3 ] || return 0
+  printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s %s▲ @qa ตรวจไม่ผ่านติดกัน %s รอบ — ส่งกลับ @dev ซ้ำอาจไม่จบ ลองหาสาเหตุก่อน%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$n" "$C_RESET"
+  [ -n "$trend" ] && printf "%s│%s  • จำนวนข้อบกพร่องต่อรอบ : %s\n" "$C_WARN" "$C_RESET" "$trend"
+  printf "%s│%s  • สภาพแวดล้อมรันเทสต์ได้จริงไหม (ENV_CHECK / EVIDENCE.log) — ถ้ารันไม่ได้ QA ต้องตัดสินจากการอ่านโค้ดและจะเจอจุดใหม่ทุกรอบ\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s  • ใบงานใหญ่เกินไปไหม — แตกเป็นใบงานย่อยทีละเรื่อง แล้วผสานทีละใบ\n" "$C_WARN" "$C_RESET"
+  printf "%s│%s  • ข้อบกพร่องซ้ำเดิมหรือเปลี่ยนไปเรื่อยๆ — เทียบ .relay/tasks/%s/QA_REPORT.before-round-*.md\n" "$C_WARN" "$C_RESET" "$ACTIVE_TASK"
+  printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
 }
 
 # สรุปสถานะไฟล์ที่ทำค้างไว้ใน Git Worktree ด้วยสคริปต์ระบบ (ไม่เรียก AI — แต่ข้อความนี้ถูกแนบเข้า prompt จึงนับเป็น Token ของ prompt) เพื่อให้ Agent ตัวใหม่รับไม้ต่อได้ทันทีเมื่อสลับค่ายหรือทำต่อ
@@ -4420,8 +4666,13 @@ offer_next_step() {
         printf "%s▲ ยังไม่พบโค้ดใหม่ในกิ่ง feat/%s — กด [3] เพื่อให้ @dev ทำต่อ%s\n" "$C_WARN" "$ACTIVE_TASK" "$C_RESET"
         return 0
       fi
-      title="● @dev มีงานในกิ่ง feat/${ACTIVE_TASK} แล้ว — ทำขั้นถัดไปเลยไหม?"
-      items=("4|★ ขั้นตอนที่ 4: @qa ตรวจเทสต์และความปลอดภัย")
+      if gate_evidence_failed "$task_dir"; then
+        title="▲ เทสต์ที่ RELAY รันเอง (TEST ใน PLAN.md) ยังไม่ผ่าน — ดู EVIDENCE.log"
+        items=("3|★ ขั้นตอนที่ 3: ส่งกลับให้ @dev แก้ให้เทสต์ผ่านก่อน (ประหยัดโควต้า @qa)" "4|ขั้นตอนที่ 4: ให้ @qa ตรวจต่อเลย")
+      else
+        title="● @dev มีงานในกิ่ง feat/${ACTIVE_TASK} แล้ว — ทำขั้นถัดไปเลยไหม?"
+        items=("4|★ ขั้นตอนที่ 4: @qa ตรวจเทสต์และความปลอดภัย")
+      fi
       ;;
     4|fast)
       local res
@@ -4436,8 +4687,9 @@ offer_next_step() {
           items=("5|★ ขั้นตอนที่ 5: ผสานโค้ดเข้ากิ่งหลักและปิดงาน")
           ;;
         FAIL\|*)
-          title="▲ @qa ตรวจไม่ผ่าน (FAIL) — ดูรายละเอียดใน QA_REPORT.md"
+          title="▲ @qa ตรวจไม่ผ่าน (FAIL)$(verdict_source_note "${res#*|}") — ดูรายละเอียดใน QA_REPORT.md"
           items=("3|★ ขั้นตอนที่ 3: ส่งกลับให้ @dev แก้ตามรายงาน")
+          print_qa_streak_warning "$task_dir"
           ;;
         *)
           printf "%s▲ ยังไม่พบผลตรวจ (QA_VERDICT.json / QA_REPORT.md) — กด [4] เพื่อตรวจต่อ%s\n" "$C_WARN" "$C_RESET"
@@ -4489,7 +4741,7 @@ run_phase_2_arch() {
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note arch)"
-  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ): 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
+  local prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับไฟล์ความต้องการ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ): 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)$(get_arch_gate_note)"
   launch_provider_cli "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm ($(get_core_role_title arch))" "$PROJECT_DIR" "$prompt"
   LAST_COMPLETED_PHASE=2
   offer_next_step 2
@@ -4504,17 +4756,19 @@ run_phase_3_dev() {
     [ -t 0 ] && { read -r -p "กด Enter เพื่อกลับสู่หน้าจอหลัก..." _ || true; }
     return 0
   fi
+  gate_env_before_dev "$TASK_WORK_DIR" || return 0
 
   local learned_note commit_note role_note handoff_note
   learned_note="$(get_learned_skills_prompt_note)"
   commit_note="$(get_dev_quality_note)$(get_dev_commit_note)"
   role_note="$(get_core_role_prompt_note dev)"
   handoff_note="$(get_worktree_handoff_context_note "$TASK_WORK_DIR")"
-  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note} แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
+  local prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี) รวมถึง QA_REPORT.md หากเป็นการแก้ไขงาน${learned_note}${role_note}${handoff_note}$(get_evidence_prompt_note dev) แล้วดำเนินการพัฒนาโค้ดควบคู่กับชุดทดสอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter หรือ vercel-react-best-practices สำหรับงานเว็บ) โดยก่อน git commit ต้องรันคำสั่งตรวจโครงสร้างโค้ด/Type (เช่น flutter analyze, tsc --noEmit, หรือ npm run lint) คู่กับคำสั่งรัน Unit Test ให้ผ่านจริงเสมอ${commit_note}"
   local spec_snap
   spec_snap="$(snapshot_task_spec)"
   launch_provider_cli "$ROLE_DEV" "$MODEL_DEV" "ขั้นตอนที่ 3: @dev ($(get_core_role_title dev) ใน Git Worktree)" "$TASK_WORK_DIR" "$prompt"
   guard_spec_after_dev "$spec_snap" "$TASK_WORK_DIR"
+  if gate_ensure_approved; then run_gate_commands TEST "$TASK_WORK_DIR" after-dev || true; fi
   LAST_COMPLETED_PHASE=3
   offer_next_step 3
 }
@@ -4582,16 +4836,21 @@ run_phase_4_qa() {
   local target_work_dir="$PROJECT_DIR"
   [ -d "$worktree_dir" ] && target_work_dir="$worktree_dir"
   ensure_qa_playwright_mcp "$ROLE_QA" "$target_work_dir"
+  [ -d "$worktree_dir" ] && gate_tests_before_qa "$worktree_dir"
+  # เก็บผลตรวจรอบก่อนไว้ (ไม่เขียนทับ) — ชื่อเดียวกับโหมด loop จึงใช้สกัดบทเรียนได้เหมือนกัน
+  local task_dir="$RELAY_DIR/tasks/$ACTIVE_TASK"
+  archive_old_qa_outputs "$(( $(qa_history_count "$task_dir") + 1 ))" "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$task_dir"
 
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note qa)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note} โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หรือ 'VERDICT: FAIL' เพียงบรรทัดเดียว$(get_qa_prompt_contract)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}$(get_evidence_prompt_note qa) โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หรือ 'VERDICT: FAIL' เพียงบรรทัดเดียว$(get_qa_prompt_contract)"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec ($(get_core_role_title qa))" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
+  record_qa_history "$task_dir" interactive
   LAST_COMPLETED_PHASE=4
   offer_next_step 4
 }
@@ -5526,7 +5785,7 @@ exec_provider_autonomous() {
     # ห่อด้วย bash ลูกเพื่อกรองคำเตือน "Permission allow rule (...)" ออกจาก stderr (คำสั่งเดียวกับ filter_claude_permission_warnings)
     # exec ให้ claude แทนที่ bash ลูก จึงได้ exit code ของ claude และถูกหยุดพร้อมกันตอนหมดเวลา
     claude) cmd=(/bin/bash -c 'exec 2> >(grep -v "^Permission allow rule (" >&2 || true); exec claude "$@"' relay-claude --model "$configured_model" --permission-mode acceptEdits -p "$prompt") ;;
-    codex)  cmd=(codex exec --full-auto --skip-git-repo-check -m "$configured_model" "$prompt") ;;
+    codex)  cmd=(codex exec --full-auto --skip-git-repo-check -m "$configured_model" -c "$RELAY_CODEX_NET_CONFIG" "$prompt") ;;
     *)
       printf "%s✖ ไม่รู้จักค่าย '%s'%s\n" "$C_ERR" "$provider" "$C_RESET"
       return 2
@@ -5550,8 +5809,19 @@ exec_provider_autonomous() {
 }
 
 # ตัดสินผลตรวจรับ: อ่าน QA_VERDICT.json ก่อน (PASS ต้องไม่มี failed_criteria) ถ้าไม่มีจึงใช้ VERDICT ใน QA_REPORT.md เป็นทางสำรอง
-# คืนค่า "<PASS|FAIL|NONE|MISSING>|<json|invalid-json|md|->"
+# คืนค่า "<PASS|FAIL|NONE|MISSING>|<json|invalid-json|md|self|evidence|->"
+# • @qa เขียน PASS แต่ TEST ที่สคริปต์รันเอง (EVIDENCE.log) ไม่ผ่าน ➔ "FAIL|evidence"
 qa_verdict() {
+  local res
+  res="$(qa_verdict_ai "$1")"
+  if [ "${res%%|*}" = "PASS" ] && gate_evidence_failed "$1"; then
+    echo "FAIL|evidence"
+  else
+    echo "$res"
+  fi
+}
+
+qa_verdict_ai() {
   local d="$1"
   local json="$d/QA_VERDICT.json"
   local md="$d/QA_REPORT.md"
@@ -5620,6 +5890,7 @@ verdict_source_note() {
     md) printf " (ไม่มี QA_VERDICT.json — ใช้ VERDICT ใน QA_REPORT.md เป็นทางสำรอง)" ;;
     invalid-json) printf " (QA_VERDICT.json รูปแบบไม่ถูกต้อง)" ;;
     self) printf " (@dev ตรวจเองใน Fast Track — ยังไม่ผ่าน @qa)" ;;
+    evidence) printf " (@qa เขียน PASS แต่เทสต์ที่ RELAY รันเองไม่ผ่าน — ดู EVIDENCE.log)" ;;
   esac
 }
 
@@ -5789,7 +6060,7 @@ run_auto_relay_loop() {
       loop_halt "โควต้าของ @arch ต่ำกว่า ${min_quota_pct}%"
       return 1
     fi
-    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ) โดยไม่ต้องรอถามโต้ตอบ: 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)"
+    local arch_prompt="@arch @pm กรุณาอ่านไฟล์ .relay/PROJECT_STATE.md ร่วมกับ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${arch_role_note} และตรวจสอบไฟล์กำหนดแพ็กเกจ/โครงสร้างจริงของโปรเจกต์ (เช่น package.json, pubspec.yaml) ก่อนวางแผน ห้ามสมมติชื่อไฟล์หรือเพิ่มไลบรารีซ้ำซ้อน แล้วเขียนแยก 2 ไฟล์โดยไม่คัดลอกเนื้อหาซ้ำกัน (รวมกันไม่เกิน 60 บรรทัด ห้ามเขียนเกริ่นนำเยิ่นเย้อ) โดยไม่ต้องรอถามโต้ตอบ: 1. .relay/tasks/$ACTIVE_TASK/ARCH.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะโครงสร้างทางเทคนิคและรายชื่อไฟล์ที่ต้องสร้างหรือแก้ไข) 2. .relay/tasks/$ACTIVE_TASK/PLAN.md (ไม่เกิน 30 บรรทัด: ระบุเฉพาะลำดับขั้นการลงมือทำเป็นข้อๆ และคำสั่งรันทดสอบ)$(get_arch_gate_note)"
     rc=0
     exec_provider_autonomous "$ROLE_ARCH" "$MODEL_ARCH" "ขั้นตอนที่ 2: @arch & @pm" "$worktree_dir" "$arch_prompt" || rc=$?
     if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "arch" "ขั้นตอนที่ 2 (@arch)" "$min_quota_pct"; then
@@ -5806,6 +6077,11 @@ run_auto_relay_loop() {
     LAST_COMPLETED_PHASE=2
   else
     echo "- [x] ขั้นตอนที่ 2 (@arch/@pm): พบไฟล์ PLAN.md อยู่แล้ว ข้ามไปยังขั้นตอนที่ 3" >> "$LOOP_LOG_FILE"
+  fi
+
+  if ! gate_env_before_dev "$worktree_dir" loop; then
+    loop_halt "สภาพแวดล้อมยังรันเทสต์ไม่ได้ (ENV_CHECK ใน PLAN.md ไม่ผ่าน) — เตรียมเครื่องมือ/บริการแล้วกด [a] ใหม่"
+    return 1
   fi
 
   # 2. วนลูป @dev ⇄ @qa สูงสุดไม่เกิน max_rounds รอบ
@@ -5826,7 +6102,7 @@ run_auto_relay_loop() {
     if [ "$round" -eq 1 ]; then
       dev_prompt="@dev กรุณาอ่านเอกสาร .relay/tasks/$ACTIVE_TASK/SPEC.md ร่วมกับ ARCH.md และ PLAN.md (ถ้ามี)${learned_note}${dev_role_note}${handoff_note} แล้วลงมือพัฒนาโค้ดและรันชุดทดสอบให้ครบทุกข้อโดยไม่ต้องรอถามโต้ตอบ (เปิดอ่านเฉพาะไฟล์ทักษะ SKILL.md ที่จำเป็นต่องานนี้ เช่น flutter-best-practices สำหรับงาน Flutter และก่อน commit ต้องรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และ Unit Test ให้ผ่านจริง)${commit_note}"
     else
-      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และ QA_VERDICT.json ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note}${handoff_note} แล้วแก้ไขโค้ดและรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
+      dev_prompt="@dev การตรวจรับรอบก่อนหน้าไม่ผ่าน กรุณาอ่านข้อบกพร่องในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md และ QA_VERDICT.json (ถ้ามี) ร่วมกับ SPEC.md และ PLAN.md${learned_note}${dev_role_note}${handoff_note}$(get_evidence_prompt_note dev) แล้วแก้ไขโค้ดและรันทั้งคำสั่งตรวจโครงสร้างโค้ด/Type และชุดทดสอบให้ผ่านครบทุกจุดโดยไม่ต้องรอถามโต้ตอบ${commit_note}"
     fi
 
     rc=0
@@ -5843,6 +6119,13 @@ run_auto_relay_loop() {
     guard_spec_after_dev "$spec_snap" "$worktree_dir"
     LAST_COMPLETED_PHASE=3
 
+    # เทสต์ที่สคริปต์รันเองไม่ผ่าน ➔ ไม่ต้องเสียโควต้า @qa รอบนี้ ส่งกลับ @dev พร้อม EVIDENCE.log
+    if gate_ensure_approved && ! run_gate_commands TEST "$worktree_dir" after-dev; then
+      echo "- [RETRY] รอบที่ $round/$max_rounds: เทสต์ที่ RELAY รันเอง (TEST ใน PLAN.md) ไม่ผ่าน — ข้าม @qa รอบนี้ ดู EVIDENCE.log (\`$(date '+%H:%M:%S')\`)" >> "$LOOP_LOG_FILE"
+      round=$((round + 1))
+      continue
+    fi
+
     if ! check_role_quota_safe "$ROLE_QA" "$MODEL_QA" "@qa & @sec (รอบที่ $round/$max_rounds)" "$min_quota_pct" "qa"; then
       loop_halt "โควต้าของ @qa ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
@@ -5851,7 +6134,7 @@ run_auto_relay_loop() {
     # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
     archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note} โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note}$(get_evidence_prompt_note qa) โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "qa" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" "$min_quota_pct"; then
@@ -5864,6 +6147,7 @@ run_auto_relay_loop() {
       sync_task_docs_from_worktree "$wt_task_dir" "$task_dir"
     fi
     LAST_COMPLETED_PHASE=4
+    record_qa_history "$task_dir" auto
 
     local vres verdict vnote
     vres="$(qa_verdict "$task_dir")"
@@ -5906,6 +6190,7 @@ run_auto_relay_loop() {
     printf "%s│%s %s▲ [Circuit Breaker: ครบเพดาน %d รอบ] หยุดลูปอัตโนมัติเพื่อให้คุณตรวจสอบร่วมตัดสินใจ%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$max_rounds" "$C_RESET"
     printf "%s│%s  • กรุณาตรวจสอบรายละเอียดใน .relay/tasks/%s/QA_REPORT.md และ LOOP_LOG.md\n" "$C_WARN" "$C_RESET" "$ACTIVE_TASK"
     printf "%s╰────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
+    print_qa_streak_warning "$task_dir"
   fi
 
   if [ -t 0 ]; then
@@ -6027,7 +6312,7 @@ run_phase_5_merge() {
   elif [ "$qa_v" = "PASS" ]; then
     printf "%s│%s  • ผลตรวจรับ    : %sPASS%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
   else
-    printf "%s│%s  • ผลตรวจรับ    : %s%s — ยังไม่ผ่านการตรวจรับจาก @qa%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$qa_v" "$C_RESET"
+    printf "%s│%s  • ผลตรวจรับ    : %s%s — ยังไม่ผ่านการตรวจรับจาก @qa%s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$qa_v" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
   fi
   if [ "$dirty_count" -gt 0 ]; then
     printf "%s│%s  • %sไฟล์ที่ยังไม่ commit ใน Worktree : %s ไฟล์ (ไม่นับ .relay/)%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$dirty_count" "$C_RESET"

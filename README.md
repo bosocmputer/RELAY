@@ -153,6 +153,11 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
    - ทำต่อทีละขั้น `[2]` → `[3]` → `[4]` หรือกด `[a]` ให้ทำต่อเองอัตโนมัติ
    - ถ้ายังไม่มี `SPEC.md` RELAY จะไม่เปิด AI ในขั้น `[2]` / `[3]` และเสนอให้ไป `[1]` ก่อน
    - `SPEC.md` เป็นเกณฑ์ตรวจรับของคุณกับ `@po` ถ้า `@dev` แก้ไฟล์นี้ระหว่างทำงาน RELAY จะแสดงส่วนที่ถูกแก้ แล้วให้คุณเลือกคืนฉบับเดิม (ค่าเริ่มต้น) หรือยอมรับ
+   - **ด่านเทสต์ที่ RELAY รันเอง:** `@arch` ใส่บรรทัด `ENV_CHECK: <คำสั่ง>` (ตรวจเครื่องมือ/บริการที่เทสต์ต้องใช้ เช่น ฐานข้อมูล) และ `TEST: <คำสั่ง>` ไว้ท้าย `PLAN.md` • ครั้งแรกจะแสดงรายการคำสั่งให้คุณอนุมัติก่อน (ถามใหม่เมื่อคำสั่งเปลี่ยน) เพราะคำสั่งนี้ AI เขียน แต่สคริปต์รันนอก sandbox ของ AI
+     - ก่อนเปิด `@dev`: `ENV_CHECK` ไม่ผ่าน ➔ ยังไม่เปิด AI ให้เลือกตรวจใหม่ / เปิด `@dev` ต่อ / กลับ (ลูปอัตโนมัติจะหยุด)
+     - หลัง `@dev` และก่อน `@qa` (ถ้าโค้ดเปลี่ยน): RELAY รัน `TEST` ใน Worktree เอง แล้วเขียน exit code และท้ายผลลัพธ์ลง `.relay/tasks/<ใบงาน>/EVIDENCE.log` ให้ `@dev` / `@qa` อ่าน • มีคำสั่งไม่ผ่าน ➔ แนะนำส่งกลับ `@dev` ก่อน (ลูปข้าม `@qa` รอบนั้น) และผลตรวจรับเป็น FAIL แม้ `@qa` เขียน PASS
+     - ไม่มีบรรทัด `ENV_CHECK` / `TEST` หรือไม่อนุมัติ ➔ ทำงานแบบเดิม (ผลเทสต์มาจากรายงานของ AI)
+   - ผลตรวจของ `@qa` ทุกรอบถูกเก็บไว้ (`QA_REPORT.before-round-*.md`) และบันทึกใน `QA_HISTORY.jsonl` • ตรวจไม่ผ่านติดกัน 3 รอบขึ้นไป RELAY จะเตือนพร้อมจำนวนข้อบกพร่องต่อรอบและสาเหตุที่พบบ่อย (สภาพแวดล้อมรันเทสต์ไม่ได้ / ใบงานใหญ่เกินไป)
 5. **ปิดงาน** — เมื่อ `@qa` ตรวจผ่าน กด `[5]` เพื่อผสานโค้ดเข้ากิ่งหลักและเก็บใบงานเข้า `.relay/archive/`
    - dependency ที่ `@dev` ติดตั้งไว้อยู่ใน Worktree ซึ่งถูกลบหลังผสาน ถ้างานเปลี่ยนไฟล์ dependency RELAY จะแสดงคำสั่งให้รันในโฟลเดอร์หลัก เช่น `npm ci` (ระบบแค่แสดง ไม่รันให้เอง)
 
@@ -205,7 +210,7 @@ RELAY จะพาไปทีละขั้นเอง หน้าจอบ�
 - ทุกรอบบันทึกไว้ใน `.relay/tasks/<ใบงาน>/LOOP_LOG.md`
 
 > [!NOTE]
-> ในลูปอัตโนมัติ RELAY เรียก AI ด้วยโหมดที่ไม่ต้องถามยืนยันทีละครั้ง (`agy --mode auto`, `claude --permission-mode acceptEdits`, `codex exec --full-auto`) AI จึงแก้ไฟล์ในกิ่งงานได้เองโดยไม่ถาม • ถ้าใช้ `claude` เป็น `@dev` และอยากให้รันเทสต์เองได้ ให้เพิ่ม allow rule ของคำสั่งนั้นใน `.claude/settings.json`
+> ในลูปอัตโนมัติ RELAY เรียก AI ด้วยโหมดที่ไม่ต้องถามยืนยันทีละครั้ง (`agy --mode auto`, `claude --permission-mode acceptEdits`, `codex exec --full-auto`) AI จึงแก้ไฟล์ในกิ่งงานได้เองโดยไม่ถาม • `codex` ทุกโหมดเปิดด้วย `-c sandbox_workspace_write.network_access=true` ให้ใช้เน็ตได้ (เช่น ต่อฐานข้อมูล cloud หรือดาวน์โหลดแพ็กเกจ) โดยยังเขียนไฟล์ได้เฉพาะในโฟลเดอร์งาน • ถ้าใช้ `claude` เป็น `@dev` และอยากให้รันเทสต์เองได้ ให้เพิ่ม allow rule ของคำสั่งนั้นใน `.claude/settings.json`
 
 **ด่านตรวจก่อนผสาน (`[5]`):** RELAY แสดงจำนวน commit, ไฟล์ค้าง และผลตรวจล่าสุดก่อนเสมอ แล้ว
 - บล็อกทันทีถ้าพบไฟล์ความลับ (`.env`, `*.key`, `*.pem`, `*.db`, `*.sqlite`) ในงาน
@@ -288,7 +293,7 @@ RELAY ยังไม่มีสคริปต์ถอนการติด�
 - [`docs/SKILLS_AND_UPDATES.md`](./docs/SKILLS_AND_UPDATES.md) — ติดตั้ง อัปเดต และสร้างชุดทักษะ (`SKILL.md`) เอง
 - [`docs/CUSTOM_DOMAINS_GUIDE.md`](./docs/CUSTOM_DOMAINS_GUIDE.md) — ใช้ RELAY กับงานอื่นนอกจากเขียนโปรแกรม เช่น ผลิตวิดีโอ ([`domains/film-video-production/`](./domains/film-video-production/)) หรือบัญชี ([`domains/business-accounting/`](./domains/business-accounting/))
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — แนวทางร่วมพัฒนา
-- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 13 ชุดทดสอบ 305/305 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
+- [`tests/`](./tests/) — ชุดทดสอบอัตโนมัติที่ไม่ใช้โควต้า AI (รวม 14 ชุดทดสอบ 338/338 ข้อ) รันทั้งหมดด้วย `for t in tests/test_*.sh; do bash "$t" < /dev/null; done`
 
 แนวคิดระบบทักษะได้มาจาก Anthropic Agent Skills (Progressive Disclosure + Scripts as Tools), Hermes (Evidence-Based Skill Distillation) และ `tigerless-labs/autoharness` • ใช้ [`microsoft/playwright-mcp`](https://github.com/microsoft/playwright-mcp), [`trailofbits/skills`](https://github.com/trailofbits/skills) และ [`semgrep/skills`](https://github.com/semgrep/skills)
 

@@ -151,6 +151,29 @@ setup
 FAKE_DEV_EDIT_SPEC=1 FAKE_QA_SEQUENCE="PASS" run_loop
 grep -q "@dev แก้ไข SPEC.md" "$ROOT/out.log" && ! grep -q "เกณฑ์ที่ @dev เพิ่มเอง" "$ROOT/proj/.relay/tasks/$T/SPEC.md" && LOG | grep -q "PASS" && ok "Auto-Loop: @dev แก้ SPEC.md ➔ แจ้งเตือนและคืนฉบับเดิม (ค่าเริ่มต้น) แล้วลูปทำต่อ" || bad "Auto-Loop ไม่กันการแก้ SPEC.md"
 
+echo "== Evidence Gate: ด่านเทสต์ที่สคริปต์รันเองในลูป =="
+TDIR="$ROOT/proj/.relay/tasks/$T"
+gate_sig() { (cd "$ROOT/proj" && HOME="$ROOT/home" RELAY_SOURCE_ONLY=1 bash -c "source \"$RELAY\"; PROJECT_DIR=\"\$PWD\"; refresh_project_paths; ACTIVE_TASK=$T; gate_commands_sig"); }
+setup
+# app.txt เริ่ม 1 บรรทัด • @dev จำลองเพิ่มรอบละ 1 บรรทัด ➔ รอบ 1 ไม่ผ่าน รอบ 2 ผ่าน
+printf 'TEST: [ "$(wc -l < app.txt)" -ge 3 ]\n' > "$TDIR/PLAN.md"
+gate_sig > "$TDIR/GATE_APPROVED"
+FAKE_QA_SEQUENCE="PASS" run_loop
+LOG | grep -q "รอบที่ 1/3: เทสต์ที่ RELAY รันเอง.*ข้าม @qa" && LOG | grep -q "\[PASS\] รอบที่ 2/3" && [ "$(cat "$ROOT/fake.qa-count")" = "1" ] && ok "TEST ไม่ผ่านหลัง @dev ➔ ข้าม @qa รอบนั้น • รอบถัดไปผ่าน ➔ @qa ถูกเรียกครั้งเดียว" || bad "ลูปไม่ข้าม @qa เมื่อเทสต์ของสคริปต์ไม่ผ่าน"
+grep -q "^RESULT: PASS" "$TDIR/EVIDENCE.log" && [ "$(grep -c "EVIDENCE.log" "$ROOT/fake.dev-prompts")" = "1" ] && grep -q "EVIDENCE.log" "$ROOT/fake.qa-prompts" && ok "EVIDENCE.log ล่าสุดเป็น PASS • prompt @dev รอบแก้และ @qa ให้อ่าน EVIDENCE.log" || bad "EVIDENCE.log หรือ prompt ไม่ถูกต้อง"
+setup
+printf 'ENV_CHECK: test -f "$HOME/no-such-db"\nTEST: true\n' > "$TDIR/PLAN.md"
+gate_sig > "$TDIR/GATE_APPROVED"
+FAKE_QA_SEQUENCE="PASS" run_loop
+LOG | grep -q "สภาพแวดล้อมยังรันเทสต์ไม่ได้" && [ ! -f "$ROOT/fake.dev-prompts" ] && ok "ENV_CHECK ไม่ผ่าน ➔ ลูปหยุดก่อนเปิด @dev พร้อมเหตุผล" || bad "ลูปไม่หยุดเมื่อ ENV_CHECK ไม่ผ่าน"
+setup
+printf 'TEST: false\n' > "$TDIR/PLAN.md"
+FAKE_QA_SEQUENCE="PASS" run_loop
+grep -q "TEST      : false" "$ROOT/out.log" && LOG | grep -q "\[PASS\] รอบที่ 1/3" && [ ! -f "$TDIR/EVIDENCE.log" ] && ok "ยังไม่อนุมัติคำสั่ง (ไม่มีคนตอบ) ➔ ไม่รันคำสั่งจาก PLAN ลูปทำงานเหมือนเดิม" || bad "รันคำสั่งที่ยังไม่อนุมัติ หรือลูปเปลี่ยนพฤติกรรม"
+setup
+FAKE_QA_SEQUENCE="FAIL,FAIL,FAIL" run_loop
+grep -q "ตรวจไม่ผ่านติดกัน 3 รอบ" "$ROOT/out.log" && [ "$(awk 'END{print NR}' "$TDIR/QA_HISTORY.jsonl")" = "3" ] && ok "ครบเพดานรอบ ➔ QA_HISTORY 3 รอบ และเตือน FAIL ติดกันพร้อมสาเหตุที่พบบ่อย" || bad "ไม่เตือน FAIL ติดกันในลูป"
+
 echo ""
 echo "ผลรวม: ผ่าน $pass • ไม่ผ่าน $fail"
 [ "$fail" -eq 0 ]
