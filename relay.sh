@@ -4507,21 +4507,32 @@ get_evidence_prompt_note() {
 }
 
 # ─── ประวัติผลตรวจรับ (สคริปต์เขียน) ➔ นับ FAIL ติดกันและดูแนวโน้มจำนวนข้อบกพร่อง ───
+# • head = commit ที่ @qa ตรวจ (รอบแก้ถัดไปตรวจเฉพาะ diff ตั้งแต่ commit นี้) • blocking = จำนวนข้อที่บล็อกการผสาน
 record_qa_history() {
-  local d="$1" mode="$2" res
+  local d="$1" mode="$2" wt="${3:-}" res head=""
   res="$(qa_verdict "$d")"
   case "$res" in MISSING\|*) return 0 ;; esac
-  python3 - "$d" "$res" "$mode" <<'PYEOF' 2>/dev/null || true
+  [ -n "$wt" ] && head="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null || true)"
+  python3 - "$d" "$res" "$mode" "$head" <<'PYEOF' 2>/dev/null || true
 import json, os, sys, time
-d, res, mode = sys.argv[1:4]
-n = None
+d, res, mode, head = sys.argv[1:5]
+v, src = res.split("|", 1)
+n = blocking = follow = None
 try:
     o = json.load(open(os.path.join(d, "QA_VERDICT.json"), encoding="utf-8"))
-    n = len(o.get("failed_criteria") or [])
+    findings = o.get("findings")
+    if isinstance(findings, list):
+        f = [x for x in findings if isinstance(x, dict)]
+        blocking = len([x for x in f if str(x.get("severity", "")).lower() in ("critical", "high") and str(x.get("repro", "")).strip()])
+        follow = len(o.get("follow_ups") or []) + len(f) - blocking
+        n = len(f)
+    else:
+        n = len(o.get("failed_criteria") or [])
+        blocking = n if v == "FAIL" else 0
 except Exception:
     pass
-v, src = res.split("|", 1)
-row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "verdict": v, "source": src, "failed": n, "mode": mode}
+row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "verdict": v, "source": src, "failed": n,
+       "blocking": blocking, "follow_ups": follow, "head": head or None, "mode": mode}
 with open(os.path.join(d, "QA_HISTORY.jsonl"), "a", encoding="utf-8") as f:
     f.write(json.dumps(row, ensure_ascii=False) + "\n")
 PYEOF
@@ -4549,8 +4560,32 @@ for r in reversed(rows):
         break
     streak.append(r)
 streak.reverse()
-trend = " → ".join("?" if r.get("failed") is None else str(r["failed"]) for r in streak[-6:])
+def cnt(r):
+    c = r.get("blocking") if r.get("blocking") is not None else r.get("failed")
+    return "?" if c is None else str(c)
+trend = " → ".join(cnt(r) for r in streak[-6:])
 print("%d|%s" % (len(streak), trend))
+PYEOF
+}
+
+# ไม่ลู่เข้า = FAIL ติดกัน ≥3 รอบ และจำนวนข้อที่บล็อกรอบล่าสุดไม่น้อยกว่า 2 รอบก่อน (ตัดสินด้วยสคริปต์ ไม่ใช่ prompt)
+qa_nonconverging() {
+  [ -f "$1/QA_HISTORY.jsonl" ] || return 1
+  python3 - "$1/QA_HISTORY.jsonl" <<'PYEOF' 2>/dev/null
+import json, sys
+rows = []
+for l in open(sys.argv[1], encoding="utf-8"):
+    try:
+        rows.append(json.loads(l))
+    except Exception:
+        pass
+tail = rows[-3:]
+def cnt(r):
+    c = r.get("blocking") if r.get("blocking") is not None else r.get("failed")
+    return c if isinstance(c, int) else None
+ok = len(tail) == 3 and all(r.get("verdict") == "FAIL" for r in tail)
+a, b = (cnt(tail[0]), cnt(tail[-1])) if ok else (None, None)
+sys.exit(0 if ok and a is not None and b is not None and b >= a else 1)
 PYEOF
 }
 
@@ -4562,7 +4597,7 @@ print_qa_streak_warning() {
   [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 3 ] || return 0
   printf "%s╭────────────────────────────────────────────────────────────────────────%s\n" "$C_WARN" "$C_RESET"
   printf "%s│%s %s▲ @qa ตรวจไม่ผ่านติดกัน %s รอบ — ส่งกลับ @dev ซ้ำอาจไม่จบ ลองหาสาเหตุก่อน%s\n" "$C_WARN" "$C_RESET" "$C_BOLD" "$n" "$C_RESET"
-  [ -n "$trend" ] && printf "%s│%s  • จำนวนข้อบกพร่องต่อรอบ : %s\n" "$C_WARN" "$C_RESET" "$trend"
+  [ -n "$trend" ] && printf "%s│%s  • ข้อที่บล็อกต่อรอบ : %s\n" "$C_WARN" "$C_RESET" "$trend"
   printf "%s│%s  • สภาพแวดล้อมรันเทสต์ได้จริงไหม (ENV_CHECK / EVIDENCE.log) — ถ้ารันไม่ได้ QA ต้องตัดสินจากการอ่านโค้ดและจะเจอจุดใหม่ทุกรอบ\n" "$C_WARN" "$C_RESET"
   printf "%s│%s  • ใบงานใหญ่เกินไปไหม — แตกเป็นใบงานย่อยทีละเรื่อง แล้วผสานทีละใบ\n" "$C_WARN" "$C_RESET"
   printf "%s│%s  • ข้อบกพร่องซ้ำเดิมหรือเปลี่ยนไปเรื่อยๆ — เทียบ .relay/tasks/%s/QA_REPORT.before-round-*.md\n" "$C_WARN" "$C_RESET" "$ACTIVE_TASK"
@@ -4683,13 +4718,21 @@ offer_next_step() {
           items=("4|★ ขั้นตอนที่ 4: ให้ @qa ตรวจก่อนผสาน (แนะนำ)" "5|ขั้นตอนที่ 5: ผสานโค้ดเลย")
           ;;
         PASS\|*)
-          title="● @qa ตรวจผ่าน (PASS) — ผสานโค้ดเลยไหม?"
+          local fu
+          fu="$(qa_followup_count "$task_dir")"
+          title="● @qa ตรวจผ่าน (PASS)$(verdict_source_note "${res#*|}") — ผสานโค้ดเลยไหม?"
+          [ "${fu:-0}" -gt 0 ] 2>/dev/null && title="${title} (งานภายหลัง ${fu} ข้อ ใน QA_VERDICT.json)"
           items=("5|★ ขั้นตอนที่ 5: ผสานโค้ดเข้ากิ่งหลักและปิดงาน")
           ;;
         FAIL\|*)
           title="▲ @qa ตรวจไม่ผ่าน (FAIL)$(verdict_source_note "${res#*|}") — ดูรายละเอียดใน QA_REPORT.md"
           items=("3|★ ขั้นตอนที่ 3: ส่งกลับให้ @dev แก้ตามรายงาน")
           print_qa_streak_warning "$task_dir"
+          if qa_nonconverging "$task_dir"; then
+            title="▲ ข้อที่บล็อกไม่ลดลงใน 3 รอบล่าสุด — ส่งกลับ @dev ซ้ำไม่น่าจะจบ"
+            items=("s|★ หยุดวนก่อน — อ่านข้อที่บล็อกแล้วเลือกเอง: แตกใบงานย่อย / ให้ @po ปรับ SPEC / ผสานพร้อมยอมรับความเสี่ยง"
+              "3|ส่งกลับ @dev อีกรอบ" "5|ผสานเลย (ยอมรับความเสี่ยงเอง)")
+          fi
           ;;
         *)
           printf "%s▲ ยังไม่พบผลตรวจ (QA_VERDICT.json / QA_REPORT.md) — กด [4] เพื่อตรวจต่อ%s\n" "$C_WARN" "$C_RESET"
@@ -4844,13 +4887,13 @@ run_phase_4_qa() {
   local learned_note role_note
   learned_note="$(get_learned_skills_prompt_note)"
   role_note="$(get_core_role_prompt_note qa)"
-  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}$(get_evidence_prompt_note qa) โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หรือ 'VERDICT: FAIL' เพียงบรรทัดเดียว$(get_qa_prompt_contract)"
+  local prompt="@qa @sec กรุณาตรวจสอบผลงานตามเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${role_note}$(get_evidence_prompt_note qa)$(get_qa_scope_note "$task_dir" "$worktree_dir") โดย: 1. รันชุดทดสอบจริงของโครงการผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. สรุปผลการตรวจสอบแบบกระชับ (ไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หรือ 'VERDICT: FAIL' เพียงบรรทัดเดียว$(get_qa_prompt_contract)"
   launch_provider_cli "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec ($(get_core_role_title qa))" "$target_work_dir" "$prompt"
 
   if [ -d "$worktree_dir/.relay/tasks/$ACTIVE_TASK" ]; then
     sync_task_docs_from_worktree "$worktree_dir/.relay/tasks/$ACTIVE_TASK" "$RELAY_DIR/tasks/$ACTIVE_TASK"
   fi
-  record_qa_history "$task_dir" interactive
+  record_qa_history "$task_dir" interactive "$worktree_dir"
   LAST_COMPLETED_PHASE=4
   offer_next_step 4
 }
@@ -5437,7 +5480,9 @@ if before_verdicts and os.path.isfile(final_verdict_path):
             fix_summary = re.sub(r"\s+", " ", str(final_v.get("summary", "")).strip())
             for bv_path in before_verdicts:
                 bv = json.load(open(bv_path, encoding="utf-8"))
-                failed_list = bv.get("failed_criteria") or []
+                failed_list = bv.get("failed_criteria") or [
+                    f.get("issue") for f in (bv.get("findings") or [])
+                    if isinstance(f, dict) and str(f.get("severity", "")).lower() in ("critical", "high") and f.get("issue")]
                 for fc in failed_list[:2]:
                     fc_clean = re.sub(r"\s+", " ", str(fc).strip())
                     if fc_clean:
@@ -5826,19 +5871,38 @@ qa_verdict_ai() {
   local json="$d/QA_VERDICT.json"
   local md="$d/QA_REPORT.md"
   if [ -f "$json" ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$json" <<'PYEOF'
+    local ev_pass=0
+    grep -q '^RESULT: PASS' "$d/EVIDENCE.log" 2>/dev/null && ev_pass=1
+    python3 - "$json" "$ev_pass" <<'PYEOF'
 import json, sys
+
+def blocking(f):
+    # ข้อที่บล็อกการผสาน = critical/high ที่มีวิธีพิสูจน์ (no failing test, no bug)
+    return (isinstance(f, dict) and str(f.get("severity", "")).strip().lower() in ("critical", "high")
+            and str(f.get("repro", "")).strip() != "")
+
 try:
     o = json.load(open(sys.argv[1], encoding="utf-8"))
+    ev_pass = sys.argv[2] == "1"
     v = str(o.get("verdict", "")).strip().upper()
-    fc = o.get("failed_criteria") or []
-    if v == "PASS" and not fc:
-        # tests_run == ["fast-track"] คือ verdict ที่ @dev เขียนเองตาม prompt ของ Fast Track (ยังไม่ผ่าน @qa)
-        print("PASS|self" if o.get("tests_run") == ["fast-track"] else "PASS|json")
-    elif v in ("PASS", "FAIL"):
-        print("FAIL|json")
+    findings = o.get("findings")
+    if isinstance(findings, list):
+        # รูปแบบใหม่: สคริปต์ตัดสินจากระดับความร้ายแรงของ findings ไม่ใช่จากคำตัดสินของ AI
+        if any(blocking(f) for f in findings):
+            print("FAIL|json")
+        elif not (o.get("tests_run") or ev_pass):
+            print("FAIL|no-tests")
+        else:
+            print("PASS|json" if v == "PASS" else "PASS|severity")
     else:
-        print("NONE|invalid-json")
+        fc = o.get("failed_criteria") or []
+        if v == "PASS" and not fc:
+            # tests_run == ["fast-track"] คือ verdict ที่ @dev เขียนเองตาม prompt ของ Fast Track (ยังไม่ผ่าน @qa)
+            print("PASS|self" if o.get("tests_run") == ["fast-track"] else "PASS|json")
+        elif v in ("PASS", "FAIL"):
+            print("FAIL|json")
+        else:
+            print("NONE|invalid-json")
 except Exception:
     print("NONE|invalid-json")
 PYEOF
@@ -5882,7 +5946,44 @@ get_qa_prompt_contract() {
   if [ -x "$GLOBAL_DIR/bin/relay-verify-task" ]; then
     verify_tool_note=" (สามารถรันสคริปต์ '$GLOBAL_DIR/bin/relay-verify-task .relay/tasks/$ACTIVE_TASK' เพื่อตรวจเพดานบรรทัดเอกสาร, ไฟล์ความลับ และโครงสร้าง JSON อัตโนมัติ)"
   fi
-  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "failed_criteria": ["เกณฑ์ที่ไม่ผ่าน"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} โดยให้ PASS ได้เฉพาะเมื่อ failed_criteria ว่างและรันเทสต์จริงแล้ว (tests_run ใส่เฉพาะคำสั่งที่รันจริง • ถ้ารันเทสต์ไม่ได้ให้ FAIL พร้อมเหตุผล • เกณฑ์ที่ตรวจไม่ได้ให้ระบุใน summary) • ตรวจ git diff ด้านคุณภาพโค้ดด้วย: โค้ดที่คัดลอกซ้ำ, ฟังก์ชันหรือคอมโพเนนต์ใหม่ที่ซ้ำกับของเดิมที่ใช้ได้, หรือผิดโครงสร้างและแบบแผนเดิมของโปรเจกต์ ➔ ใส่ใน failed_criteria พร้อม file:line (เฉพาะที่เห็นชัด ไม่ใช่เรื่องความชอบส่วนตัว) และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
+  printf ' จากนั้นต้องเขียนไฟล์ .relay/tasks/%s/QA_VERDICT.json เป็น JSON รูปแบบ {"verdict": "PASS" หรือ "FAIL", "findings": [{"severity": "critical|high|medium|low", "criterion": "เกณฑ์ใน SPEC.md ที่เกี่ยวข้อง", "where": "file:line", "issue": "ปัญหา", "repro": "คำสั่ง/เทสต์/ขั้นตอนที่ทำให้เห็นปัญหาจริง", "carry_over": true หรือ false}], "follow_ups": ["งานที่ทำภายหลังได้"], "tests_run": ["คำสั่งทดสอบที่รันจริง"], "summary": "สรุปสั้น"} • ระดับ critical/high = ผิดเกณฑ์ตรวจรับใน SPEC.md หรือช่องโหว่ความปลอดภัย/ข้อมูลเสียหายที่ยืนยันได้ • medium/low = ปรับปรุงได้ภายหลัง • สคริปต์ RELAY ตัดสินผลเอง: FAIL เฉพาะเมื่อมี critical/high ที่มี repro (ไม่มีวิธีพิสูจน์ ถือเป็นงานภายหลัง) • ข้อจำกัดของสภาพแวดล้อมที่ใช้ตรวจ (เช่น sandbox รันคำสั่งไม่ได้) ไม่ใช่ข้อบกพร่องของโค้ด ห้ามใส่ใน findings — ถ้า EVIDENCE.log ของ RELAY ผ่านให้ใช้ผลนั้น ถ้าไม่มีหลักฐานเทสต์เลยให้บอกใน summary • tests_run ใส่เฉพาะคำสั่งที่รันจริง • ตรวจ git diff ด้านคุณภาพโค้ดด้วย: โค้ดที่คัดลอกซ้ำ, ฟังก์ชันหรือคอมโพเนนต์ใหม่ที่ซ้ำกับของเดิมที่ใช้ได้, หรือผิดโครงสร้างและแบบแผนเดิมของโปรเจกต์ ➔ ใส่ใน findings พร้อม file:line ตามระดับผลกระทบ (เฉพาะที่เห็นชัด ไม่ใช่เรื่องความชอบส่วนตัว) และห้ามแก้ไขไฟล์ .relay/PROJECT_STATE.md%s' "$ACTIVE_TASK" "$verify_tool_note"
+}
+
+# ขอบเขตการตรวจของ @qa: รอบก่อน FAIL ➔ ตรวจเฉพาะ diff ตั้งแต่ commit ที่ QA ตรวจล่าสุด + ยืนยันข้อเดิม
+# (ตรวจทั้งแอปใหม่ทุกรอบทำให้เจอจุดใหม่ไม่รู้จบและเปลือง token) • ไม่มีประวัติ ➔ ตรวจทั้งงานและรายงานทุกข้อในรอบเดียว
+get_qa_scope_note() {
+  local task_dir="$1" wt="$2" last_head=""
+  if [ -f "$task_dir/QA_HISTORY.jsonl" ]; then
+    last_head="$(python3 - "$task_dir/QA_HISTORY.jsonl" <<'PYEOF' 2>/dev/null
+import json, sys
+rows = []
+for l in open(sys.argv[1], encoding="utf-8"):
+    try:
+        rows.append(json.loads(l))
+    except Exception:
+        pass
+if rows and rows[-1].get("verdict") == "FAIL":
+    print(rows[-1].get("head") or "")
+PYEOF
+)"
+  fi
+  if [ -n "$last_head" ] && [ -n "$wt" ] && git -C "$wt" cat-file -e "${last_head}^{commit}" 2>/dev/null; then
+    printf ' • รอบแก้ไข (QA รอบก่อนตรวจถึง commit %s): ตรวจเฉพาะการเปลี่ยนแปลง `git diff %s..HEAD` และยืนยันข้อบกพร่องเดิมใน QA_VERDICT.before-round-*.json ล่าสุดว่าแก้แล้วจริง (ข้อเดิมที่ยังไม่ผ่านใส่ "carry_over": true) • ไม่ต้องตรวจทั้งแอปใหม่ • ข้อใหม่ที่อยู่นอก diff นี้ให้ใส่ follow_ups เว้นแต่ระดับ critical' "$last_head" "$last_head"
+  else
+    printf ' • รอบนี้ตรวจทั้งงาน: รายงานข้อบกพร่องทั้งหมดที่พบในรอบเดียว ไม่หยุดที่ข้อแรก (รอบแก้ไขถัดไปจะตรวจเฉพาะส่วนที่เปลี่ยน)'
+  fi
+}
+
+# จำนวนงานภายหลัง (follow_ups + findings ที่ไม่บล็อก) ใน QA_VERDICT.json
+qa_followup_count() {
+  [ -f "$1/QA_VERDICT.json" ] || { echo 0; return 0; }
+  python3 - "$1/QA_VERDICT.json" <<'PYEOF' 2>/dev/null || echo 0
+import json, sys
+o = json.load(open(sys.argv[1], encoding="utf-8"))
+f = [x for x in (o.get("findings") or []) if isinstance(x, dict)]
+nb = [x for x in f if not (str(x.get("severity", "")).lower() in ("critical", "high") and str(x.get("repro", "")).strip())]
+print(len(o.get("follow_ups") or []) + len(nb))
+PYEOF
 }
 
 verdict_source_note() {
@@ -5891,6 +5992,8 @@ verdict_source_note() {
     invalid-json) printf " (QA_VERDICT.json รูปแบบไม่ถูกต้อง)" ;;
     self) printf " (@dev ตรวจเองใน Fast Track — ยังไม่ผ่าน @qa)" ;;
     evidence) printf " (@qa เขียน PASS แต่เทสต์ที่ RELAY รันเองไม่ผ่าน — ดู EVIDENCE.log)" ;;
+    severity) printf " (สคริปต์ตัดสินจากระดับความร้ายแรง: ไม่มีข้อ critical/high ที่มีวิธีพิสูจน์ แม้ @qa เขียน FAIL)" ;;
+    no-tests) printf " (ไม่มีข้อที่บล็อก แต่ไม่มีหลักฐานเทสต์ทั้งจาก @qa และ EVIDENCE.log)" ;;
   esac
 }
 
@@ -6091,6 +6194,12 @@ run_auto_relay_loop() {
     echo ""
     printf "%s═══ ⚡ [Auto-Relay Loop] รอบที่ %d/%d : ขั้นตอนที่ 3 (@dev) ⇄ ขั้นตอนที่ 4 (@qa) ═══%s\n" "$C_SEL" "$round" "$max_rounds" "$C_RESET"
 
+    if qa_nonconverging "$task_dir"; then
+      print_qa_streak_warning "$task_dir"
+      loop_halt "ข้อที่บล็อกการผสานไม่ลดลงใน 3 รอบล่าสุด (ไม่ลู่เข้า) — อ่าน QA_VERDICT.json แล้วเลือกแตกใบงาน / ปรับ SPEC / ผสานพร้อมยอมรับความเสี่ยง"
+      return 1
+    fi
+
     if ! check_role_quota_safe "$ROLE_DEV" "$MODEL_DEV" "@dev (รอบที่ $round/$max_rounds)" "$min_quota_pct" "dev"; then
       loop_halt "โควต้าของ @dev ต่ำกว่า ${min_quota_pct}% (รอบที่ $round)"
       return 1
@@ -6134,7 +6243,7 @@ run_auto_relay_loop() {
     # ย้ายผลตรวจรับเก่าออก เพื่อไม่ให้ผลรอบก่อนถูกนับเป็นผลของรอบนี้
     archive_old_qa_outputs "$round" "$wt_task_dir" "$task_dir"
 
-    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note}$(get_evidence_prompt_note qa) โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
+    local qa_prompt="@qa @sec กรุณาตรวจสอบผลงานในโฟลเดอร์นี้เทียบกับเกณฑ์ Acceptance Criteria ในไฟล์ .relay/tasks/$ACTIVE_TASK/SPEC.md${learned_note}${qa_role_note}$(get_evidence_prompt_note qa)$(get_qa_scope_note "$task_dir" "$worktree_dir") โดย: 1. รันคำสั่งทดสอบจริงผ่าน Terminal 2. ตรวจสอบ git diff ด้านความมั่นคงปลอดภัยและตรวจว่าไม่มีไฟล์ความลับหลุดรอด (เปิดอ่านทักษะเฉพาะทางเมื่อจำเป็นเท่านั้น) 3. เฉพาะกรณีที่ใบงานมีการแก้ไขหน้าเว็บ UI ตาม SPEC.md จึงใช้ Playwright MCP ทดสอบและบันทึกภาพหน้าจอไว้ที่ .relay/tasks/$ACTIVE_TASK/screenshots/ 4. เขียนรายงานสรุปแบบกระชับ (ความยาวไม่เกิน 30 บรรทัด) ลงในไฟล์ .relay/tasks/$ACTIVE_TASK/QA_REPORT.md โดยต้องมีบรรทัด 'VERDICT: PASS' หากผ่านครบทุกข้อ หรือ 'VERDICT: FAIL' พร้อมรายการจุดที่ต้องแก้ไขหากยังไม่ผ่าน (ใส่เพียงบรรทัดเดียว)$(get_qa_prompt_contract)"
     rc=0
     exec_provider_autonomous "$ROLE_QA" "$MODEL_QA" "ขั้นตอนที่ 4: @qa & @sec (รอบที่ $round/$max_rounds)" "$worktree_dir" "$qa_prompt" || rc=$?
     if [ "$rc" -ne 0 ] && try_mid_step_failover "$rc" "qa" "ขั้นตอนที่ 4 (@qa รอบที่ $round)" "$min_quota_pct"; then
@@ -6147,7 +6256,7 @@ run_auto_relay_loop() {
       sync_task_docs_from_worktree "$wt_task_dir" "$task_dir"
     fi
     LAST_COMPLETED_PHASE=4
-    record_qa_history "$task_dir" auto
+    record_qa_history "$task_dir" auto "$worktree_dir"
 
     local vres verdict vnote
     vres="$(qa_verdict "$task_dir")"
@@ -6313,6 +6422,11 @@ run_phase_5_merge() {
     printf "%s│%s  • ผลตรวจรับ    : %sPASS%s%s\n" "$C_ACCENT" "$C_RESET" "$C_OK" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
   else
     printf "%s│%s  • ผลตรวจรับ    : %s%s — ยังไม่ผ่านการตรวจรับจาก @qa%s%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$qa_v" "$C_RESET" "$(verdict_source_note "${qa_res#*|}")"
+  fi
+  local fu_count
+  fu_count="$(qa_followup_count "$task_dir")"
+  if [ "${fu_count:-0}" -gt 0 ] 2>/dev/null; then
+    printf "%s│%s  • งานภายหลัง   : %s ข้อ (follow_ups / findings ที่ไม่บล็อก ใน QA_VERDICT.json — ใช้เป็นใบงานถัดไป)\n" "$C_ACCENT" "$C_RESET" "$fu_count"
   fi
   if [ "$dirty_count" -gt 0 ]; then
     printf "%s│%s  • %sไฟล์ที่ยังไม่ commit ใน Worktree : %s ไฟล์ (ไม่นับ .relay/)%s\n" "$C_ACCENT" "$C_RESET" "$C_WARN" "$dirty_count" "$C_RESET"
