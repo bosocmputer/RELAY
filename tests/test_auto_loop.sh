@@ -174,6 +174,15 @@ setup
 FAKE_QA_SEQUENCE="FAIL,FAIL,FAIL" run_loop
 grep -q "ตรวจไม่ผ่านติดกัน 3 รอบ" "$ROOT/out.log" && [ "$(awk 'END{print NR}' "$TDIR/QA_HISTORY.jsonl")" = "3" ] && ok "ครบเพดานรอบ ➔ QA_HISTORY 3 รอบ และเตือน FAIL ติดกันพร้อมสาเหตุที่พบบ่อย" || bad "ไม่เตือน FAIL ติดกันในลูป"
 
+echo "== QA Convergence: ลูปหยุดเมื่อข้อที่บล็อกไม่ลดลง =="
+setup
+printf '{"verdict":"FAIL","blocking":2}\n{"verdict":"FAIL","blocking":1}\n{"verdict":"FAIL","blocking":2}\n' > "$TDIR/QA_HISTORY.jsonl"
+FAKE_QA_SEQUENCE="PASS" run_loop
+LOG | grep -q "ไม่ลู่เข้า" && [ ! -f "$ROOT/fake.dev-prompts" ] && ok "ประวัติ FAIL 3 รอบที่ข้อบล็อกไม่ลดลง ➔ ลูปหยุดก่อนเปิด @dev" || bad "ลูปไม่หยุดเมื่อไม่ลู่เข้า"
+setup
+FAKE_QA_SEQUENCE="FAIL,PASS" run_loop
+grep -q "รายงานข้อบกพร่องทั้งหมดที่พบในรอบเดียว" "$ROOT/fake.qa-prompts" && sed -n 2p "$ROOT/fake.qa-prompts" | grep -q "git diff .*\.\.HEAD" && ok "ลูป: @qa รอบแรกตรวจทั้งงาน • รอบแก้ตรวจเฉพาะ git diff ตั้งแต่ commit ที่ตรวจรอบก่อน" || bad "ขอบเขตการตรวจของ @qa ในลูปไม่ถูกต้อง"
+
 echo ""
 echo "ผลรวม: ผ่าน $pass • ไม่ผ่าน $fail"
 [ "$fail" -eq 0 ]

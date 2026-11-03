@@ -66,7 +66,7 @@ sequenceDiagram
    - ผสานแนวคิด **Loop Engineering** เข้ากับโครงสร้างของ `RELAY` โดยให้มนุษย์เป็นผู้ควบคุม **ขั้นตอนที่ 1 (`@po` สร้าง `SPEC.md`)** และ **ขั้นตอนที่ 5 (`Merge & Archive`)** ขณะที่ขั้นตอนที่ **`2 (@arch) ➔ 3 (@dev) ⇄ 4 (@qa)`** สามารถรันต่อกันแบบอัตโนมัติภายใต้เบรกนิรภัย 4 ชั้น:
      1. **Quota Circuit Breaker (`>= 20%`):** ตรวจสอบโควต้าคงเหลือล่าสุดที่ดึงไว้ทั้ง `5h` และ `7d` ก่อนเริ่มทุกขั้นตอน (ถ้าเลยเวลารีเซ็ตแล้วถือว่าเป็น 100% จนกว่าจะดึงค่าใหม่)
      2. **Max Remediation Cap (`3 รอบ`):** จำกัดการวนแก้บั๊ก `@dev ⇄ @qa` พร้อมบันทึก `LOOP_LOG.md` และเก็บรายงานรอบก่อนเป็น `QA_REPORT.before-round-N.md` เพื่อไม่ให้รายงานเก่าถูกนับซ้ำ
-     3. **Cross-Provider Verification:** ตัดสินจาก `QA_VERDICT.json` แบบมีโครงสร้างก่อน (`PASS` ต้องไม่มี `failed_criteria`, JSON เสียรูปแบบ = ไม่ผ่าน) และใช้ `VERDICT:` ใน `QA_REPORT.md` เป็นทางสำรองเท่านั้น
+     3. **Cross-Provider Verification:** ตัดสินจาก `QA_VERDICT.json` แบบมีโครงสร้างก่อน — รูปแบบใหม่ `findings` สคริปต์ให้ FAIL เฉพาะ `critical`/`high` ที่มี `repro` (รูปแบบเดิม: `PASS` ต้องไม่มี `failed_criteria`) • JSON เสียรูปแบบ = ไม่ผ่าน และใช้ `VERDICT:` ใน `QA_REPORT.md` เป็นทางสำรองเท่านั้น
      4. **Step Guard:** หยุดเมื่อ agent คืน error, ไม่สร้างไฟล์ผลลัพธ์, หรือเกินเพดานเวลาต่อขั้น (watchdog แบบ bash ล้วน ค่าเริ่มต้น 30 นาที ปรับด้วย `RELAY_STEP_TIMEOUT`)
    - Worktree ถูกสร้างผ่าน `prepare_task_worktree` ตัวเดียวกับขั้นตอนที่ 3 — ถ้าสร้างไม่ได้จะหยุดพร้อมข้อความ error จริง (ไม่ตกไปทำงานบนกิ่งหลัก) และเพิ่ม `.relay/worktrees/` ใน `.gitignore` อัตโนมัติ
    - โหมดสิทธิ์: `agy --mode auto`, `claude --permission-mode acceptEdits`, `codex exec --full-auto` (ไม่ใช้โหมดข้ามสิทธิ์ทั้งหมด)

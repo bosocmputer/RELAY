@@ -99,13 +99,30 @@ except Exception as e:
     sys.exit(1)
 v = str(d.get("verdict", "")).strip().upper()
 fc = d.get("failed_criteria")
+fd = d.get("findings")
 tr = d.get("tests_run")
 sm = d.get("summary")
 if v not in ("PASS", "FAIL"):
     print("BAD_VERDICT:verdict ต้องเป็น PASS หรือ FAIL")
     sys.exit(1)
+if isinstance(fd, list):
+    # รูปแบบใหม่: findings มีระดับความร้ายแรง • FAIL เฉพาะ critical/high ที่มี repro
+    sev = ("critical", "high", "medium", "low")
+    for i, f in enumerate(fd):
+        if not isinstance(f, dict) or str(f.get("severity", "")).lower() not in sev or not str(f.get("issue", "")).strip():
+            print(f"BAD_FINDING:findings[{i}] ต้องมี severity (critical|high|medium|low) และ issue")
+            sys.exit(1)
+    if not isinstance(d.get("follow_ups", []), list) or not isinstance(tr, list) or not isinstance(sm, str):
+        print("BAD_FIELDS:ต้องมี follow_ups (list), tests_run (list), summary (str)")
+        sys.exit(1)
+    blocking = [f for f in fd if f["severity"].lower() in ("critical", "high") and str(f.get("repro", "")).strip()]
+    if v == "PASS" and blocking:
+        print("CONTRADICTION:verdict เป็น PASS แต่มี finding ระดับ critical/high ที่มี repro")
+        sys.exit(1)
+    print(f"OK:{v} (tests={len(tr)}, blocking={len(blocking)}, findings={len(fd)})")
+    sys.exit(0)
 if not isinstance(fc, list) or not isinstance(tr, list) or not isinstance(sm, str):
-    print("BAD_FIELDS:ต้องมี failed_criteria (list), tests_run (list), summary (str)")
+    print("BAD_FIELDS:ต้องมี findings (list) หรือ failed_criteria (list), tests_run (list), summary (str)")
     sys.exit(1)
 if v == "PASS" and len(fc) > 0:
     print("CONTRADICTION:verdict เป็น PASS แต่ failed_criteria ไม่ว่าง")

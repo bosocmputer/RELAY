@@ -184,8 +184,8 @@ for fn in run_phase_3_dev run_fast_track_dev; do
 done
 check 'grep -q "ห้ามคัดลอกโค้ดมาแก้" "$REPO_ROOT/templates/relay-roles-SKILL.md" && grep -q "ด้านคุณภาพโค้ด" "$REPO_ROOT/templates/relay-roles-SKILL.md"' "relay-roles SKILL.md (ใช้เมื่อเรียกบทบาทเองใน CLI) มีกฎคุณภาพโค้ดของ @dev และ @qa"
 qa_contract="$(relay_src "$P5_HOME" 'ACTIVE_TASK=t1; get_qa_prompt_contract')"
-check 'printf "%s" "$qa_contract" | grep -q "ถ้ารันเทสต์ไม่ได้ให้ FAIL" && printf "%s" "$qa_contract" | grep -q "tests_run ใส่เฉพาะคำสั่งที่รันจริง"' "สัญญาผลตรวจของ @qa ห้าม PASS ถ้าไม่ได้รันเทสต์จริง"
-check 'printf "%s" "$qa_contract" | grep -q "ตรวจ git diff ด้านคุณภาพโค้ด" && printf "%s" "$qa_contract" | grep -q "file:line"' "สัญญาผลตรวจของ @qa ให้ใส่โค้ดซ้ำ/ผิดแบบแผนใน failed_criteria พร้อม file:line"
+check 'printf "%s" "$qa_contract" | grep -q "ถ้าไม่มีหลักฐานเทสต์เลยให้บอกใน summary" && printf "%s" "$qa_contract" | grep -q "tests_run ใส่เฉพาะคำสั่งที่รันจริง"' "สัญญาผลตรวจของ @qa ใส่เฉพาะเทสต์ที่รันจริง (สคริปต์ไม่ยอม PASS ถ้าไม่มีหลักฐานเทสต์)"
+check 'printf "%s" "$qa_contract" | grep -q "ตรวจ git diff ด้านคุณภาพโค้ด" && printf "%s" "$qa_contract" | grep -q "file:line"' "สัญญาผลตรวจของ @qa ให้ใส่โค้ดซ้ำ/ผิดแบบแผนใน findings พร้อม file:line"
 check '! grep -q "ยืนยันชุดทักษะ" "$RELAY_SH" && ! grep -q "สถานะ: พร้อมปฏิบัติงาน" "$RELAY_SH" && grep -q "ทดสอบเฉพาะการเชื่อมต่อ CLI ยังไม่ได้ทดสอบการทำงานจริง" "$RELAY_SH"' "[t] ไม่สั่งให้ AI ยืนยันสิ่งที่ยังไม่ได้ตรวจ และบอกตามจริงว่าทดสอบแค่การเชื่อมต่อ"
 
 echo "=== [PRIVACY] ไม่มีพาธส่วนตัวของผู้พัฒนาในไฟล์ที่ track (เตรียมแจกจ่าย) ==="
